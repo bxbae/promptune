@@ -16,5 +16,9 @@ ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
 
+jwt:
+  secret: ${JWT_SECRET:promptune-dev-secret-key-change-in-production-please}
+  expiration-ms: 86400000
+
 server:
   port: 8080

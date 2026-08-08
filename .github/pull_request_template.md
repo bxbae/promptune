@@ -12,8 +12,8 @@
 
 ## 체크리스트
 
-- [ ] docs/MOCK_GUIDE.md의 입출력 형식(schema)을 유지했다
-- [ ] 로컬에서 docker compose up으로 전체 흐름이 동작한다
+- [ ] `docs/MOCK_GUIDE.md`의 입출력 형식(schema)을 유지했다
+- [ ] 로컬에서 `docker compose up`으로 전체 흐름이 동작한다
 - [ ] CI가 통과한다
 
 ## 관련 단계

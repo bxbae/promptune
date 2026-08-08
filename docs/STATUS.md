@@ -6,6 +6,7 @@
 
 ## 인프라
 - ✅ 폴더 구조 · docs
+- ✅ CI/CD (GitHub Actions — 3서비스 빌드·테스트)
 - ✅ docker-compose (통합, 헬스체크·순서 보장)
 - ✅ PostgreSQL + pgvector 시드 (Flyway V2)
 

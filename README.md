@@ -1,5 +1,7 @@
 # PrompTune (프롬프튠)
 
+[![CI](https://github.com/bxbae/promptune-mockup/actions/workflows/ci.yml/badge.svg)](https://github.com/bxbae/promptune-mockup/actions/workflows/ci.yml)
+
 한국어 프롬프트 개선 AI 코파일럿. 사용자가 입력한 거친 업무 지시문에서
 **부족한 요소(8요소)를 감지해 되묻고**, 보완된 프롬프트로 최종 결과물을 생성한다.
 
