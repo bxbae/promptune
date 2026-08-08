@@ -1,0 +1,3 @@
+# 표준 라이브러리만으로 동작 (fetch/prelabel/kappa 모두).
+# MySQL 소스 사용 시에만 필요:
+pymysql>=1.1

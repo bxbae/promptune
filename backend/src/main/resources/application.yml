@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/promptune}
+    username: ${SPRING_DATASOURCE_USERNAME:promptune}
+    password: ${SPRING_DATASOURCE_PASSWORD:promptune}
+  jpa:
+    hibernate:
+      ddl-auto: validate      # 스키마는 Flyway가 관리
+    properties:
+      hibernate.format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
+
+server:
+  port: 8080

@@ -1,0 +1,64 @@
+# PrompTune 전체 스택 (목업)
+# docker compose up --build 하나로 프론트·백·AI·DB가 순서대로 떠서 연결된다.
+#
+# 기동 순서: db(healthy) → ai-service, backend(Flyway 스키마+시드) → frontend
+# 접속: 프론트 http://localhost:3000 / 백엔드 :8080 / AI :8000/docs
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: promptune
+      POSTGRES_USER: promptune
+      POSTGRES_PASSWORD: promptune
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptune"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ai-service:
+    build: ./ai-service
+    environment:
+      USE_REAL_MODELS: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/promptune
+      SPRING_DATASOURCE_USERNAME: promptune
+      SPRING_DATASOURCE_PASSWORD: promptune
+      AI_SERVICE_URL: http://ai-service:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy      # Flyway가 스키마+시드(V1,V2) 실행
+      ai-service:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
