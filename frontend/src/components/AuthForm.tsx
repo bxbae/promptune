@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { login, signup, saveToken } from "@/lib/auth";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => void }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -25,6 +27,11 @@ export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => v
     }
   }
 
+  // 소셜 로그인: 백엔드 OAuth2 시작 경로로 이동
+  function social(provider: "google" | "kakao" | "naver") {
+    window.location.href = `${API}/oauth2/authorization/${provider}`;
+  }
+
   return (
     <div className="auth">
       <div className="auth-tabs">
@@ -46,14 +53,13 @@ export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => v
         {loading ? "처리 중…" : mode === "login" ? "로그인" : "가입하기"}
       </button>
 
-      {/* 소셜 로그인 자리 (다음 단계에서 연결) */}
       <div className="auth-divider">또는</div>
       <div className="social-buttons">
-        <button className="social google" disabled title="다음 단계에서 연결">Google로 계속</button>
-        <button className="social kakao" disabled title="다음 단계에서 연결">카카오로 계속</button>
-        <button className="social naver" disabled title="다음 단계에서 연결">네이버로 계속</button>
+        <button className="social google" onClick={() => social("google")}>Google로 계속</button>
+        <button className="social kakao" onClick={() => social("kakao")}>카카오로 계속</button>
+        <button className="social naver" onClick={() => social("naver")}>네이버로 계속</button>
       </div>
-      <p className="auth-note">소셜 로그인은 준비 중입니다 (로컬 로그인 먼저 구현).</p>
+      <p className="auth-note">소셜 로그인은 각 제공자 키 설정 후 작동합니다 (docs/AUTH.md).</p>
     </div>
   );
 }
