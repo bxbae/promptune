@@ -2,6 +2,8 @@ package com.promptune.controller;
 
 import com.promptune.dto.PipelineDtos.*;
 import com.promptune.service.*;
+import com.promptune.domain.User;              // 추가
+import com.promptune.repository.UserRepository; // 추가
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
@@ -17,11 +19,20 @@ public class PipelineController {
     private final AiServiceClient ai;
     private final RecommendService recommend;
     private final GraphMockService graph;
+    private final RequestClassificationService classification;   // 추가
+    private final UserRepository userRepository;                 // 추가 (companyId 조회용)
+    private final BehaviorLogService behaviorLog;   // 필드 추가
 
     public PipelineController(GateService gate, AiServiceClient ai,
-                              RecommendService recommend, GraphMockService graph) {
+                              RecommendService recommend, GraphMockService graph,
+                              RequestClassificationService classification,
+                              UserRepository userRepository,
+                              BehaviorLogService behaviorLog) {
         this.gate = gate; this.ai = ai;
         this.recommend = recommend; this.graph = graph;
+        this.classification = classification;
+        this.userRepository = userRepository;
+        this.behaviorLog = behaviorLog;
     }
 
     /**
@@ -38,7 +49,7 @@ public class PipelineController {
         // 5번 진단 (ai-service 호출)
         DiagnoseResult d = ai.diagnose(req.text());
         // 6번 수정요소 선정
-        RecommendResult r = recommend.select(d);
+        RecommendResult r = recommend.select(d, req.userId());
         return new AnalyzeResponse(g, d, r);
     }
 
@@ -48,14 +59,18 @@ public class PipelineController {
      */
     @PostMapping("/execute")
     public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
-        // 12번 분류 + 14번 생성 (진단으로 taskType 파악)
         DiagnoseResult d = ai.diagnose(req.finalPrompt());
-        Map result = ai.generate(req.finalPrompt(), d.taskType(), false);
-        // 16번 행동 저장 (mock — 실제론 DB)
-        // TODO(형기): 행동 로그를 PostgreSQL에 저장, 개인화 점수 갱신
+
+        String companyId = userRepository.findById(req.userId())
+                .map(User::getCompanyId).orElse("default-company");
+        boolean needsInternalDocs = classification.needsInternalDocs(
+                d.needsInternalDocs(), req.finalPrompt(), companyId);
+
+        Map result = ai.generate(req.finalPrompt(), d.taskType(), needsInternalDocs);
+        behaviorLog.recordAction(req.userId(), d.taskType(), "tab");
         return Map.of(
                 "taskType", d.taskType(),
-                "needsInternalDocs", d.needsInternalDocs(),
+                "needsInternalDocs", needsInternalDocs,
                 "result", result
         );
     }
