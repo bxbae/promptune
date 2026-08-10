@@ -27,6 +27,11 @@ public class User {
     @Column(name = "provider_id")
     private String providerId;
 
+    @Column(name = "company_id")
+    private String companyId;             // 신규: 12번 요청분류에서 사용
+
+    public String getCompanyId() { return companyId; }   // getter도 추가
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
