@@ -91,3 +91,9 @@ export GOOGLE_CLIENT_SECRET=...
 
 - 키(secret)는 **절대 코드·git에 넣지 않는다**. 환경변수만.
 - `.env`는 `.gitignore`에 포함돼 있다 (확인 완료).
+
+## 실전 참고 (형기, 2026-08-10)
+- 최근 생성된 카카오 앱은 클라이언트 시크릿이 기본 필수(활성화 ON)입니다.
+  [앱]>[플랫폼 키]>[REST API 키]>[클라이언트 시크릿]에서 발급 필요.
+- 테스트할 땐 항상 localhost:3000에서 시작하세요.
+  8080을 직접 열거나 새로고침하면 "authorization_request_not_found" 에러가 납니다.
