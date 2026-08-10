@@ -1,0 +1,27 @@
+# 공통
+.env
+.env.local
+*.log
+.DS_Store
+
+# Node
+node_modules/
+.next/
+frontend/out/
+
+# Java
+backend/target/
+backend/build/
+*.class
+
+# Python
+__pycache__/
+*.pyc
+ai-service/.venv/
+ml/**/outputs/*.json
+ml/**/data/*.csv
+
+# 모델 파일 (크니까 제외)
+*.bin
+*.safetensors
+*.pt
