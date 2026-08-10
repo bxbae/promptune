@@ -25,3 +25,9 @@ ml/**/data/*.csv
 *.bin
 *.safetensors
 *.pt
+
+# Gradle 빌드 캐시·산출물 (실수 커밋 방지)
+backend/.gradle/
+backend/bin/
+backend/build/
+.gradle/
