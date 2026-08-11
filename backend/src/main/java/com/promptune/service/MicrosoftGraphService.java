@@ -143,7 +143,10 @@ public class MicrosoftGraphService {
     }
 
     public JsonNode getProfile(Long userId) {
-        return graphGet(userId, "/v1.0/me");
+        return graphGet(
+                userId,
+                "/v1.0/me?$select=id,displayName,userPrincipalName,mail,companyName,department,jobTitle"
+        );
     }
 
     public JsonNode getEvents(Long userId) {
