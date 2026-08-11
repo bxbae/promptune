@@ -29,9 +29,19 @@ USE_REAL_DIAGNOSIS = (
     == "true"
 )
 
+USE_REAL_SUGGESTION = (
+    os.getenv(
+        "USE_REAL_SUGGESTION",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
 
 if USE_REAL_DIAGNOSIS:
     from app.services import diagnose_real
+
+if USE_REAL_SUGGESTION:
+    from app.services import suggest_hcx
 
 
 router = APIRouter()
@@ -57,6 +67,9 @@ def diagnose(req: DiagnoseRequest):
     tags=["7.추천생성"],
 )
 def suggest(req: SuggestRequest):
+    if USE_REAL_SUGGESTION:
+        return suggest_hcx.suggest(req)
+
     return pipeline_mock.suggest(req)
 
 
