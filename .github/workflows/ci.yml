@@ -86,3 +86,55 @@ jobs:
         run: docker compose config
       - name: 이미지 빌드 (기동 없이 빌드만)
         run: docker compose build
+
+  # ---------- ECR 배포 (main 머지 시에만) ----------
+  # AWS_ROLE_ARN이 GitHub Secrets에 아직 등록되지 않았다면 이 job은 스킵됩니다.
+  # 실제 AWS 계정/IAM Role 설정 후 Settings > Secrets and variables > Actions 에
+  # AWS_ROLE_ARN 을 등록하면 자동으로 동작합니다.
+  push-to-ecr:
+    name: ECR 이미지 푸시
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      id-token: write   # OIDC로 임시 자격증명 발급받기 위해 필요
+      contents: read
+    env:
+      AWS_REGION: ap-northeast-2
+      # TODO: 실제 ECR 저장소 이름과 다르면 여기 세 값만 바꾸면 됩니다.
+      ECR_REPO_BACKEND: promptune-backend
+      ECR_REPO_FRONTEND: promptune-frontend
+      ECR_REPO_AI: promptune-ai-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AWS 자격증명 설정 (OIDC, 장기 액세스키 없음)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 이미지 빌드 & 태깅
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPO_BACKEND:$IMAGE_TAG -t $REGISTRY/$ECR_REPO_BACKEND:latest ./backend
+          docker build -t $REGISTRY/$ECR_REPO_FRONTEND:$IMAGE_TAG -t $REGISTRY/$ECR_REPO_FRONTEND:latest ./frontend
+          docker build -t $REGISTRY/$ECR_REPO_AI:$IMAGE_TAG -t $REGISTRY/$ECR_REPO_AI:latest ./ai-service
+
+      - name: ECR로 푸시
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $REGISTRY/$ECR_REPO_BACKEND:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPO_BACKEND:latest
+          docker push $REGISTRY/$ECR_REPO_FRONTEND:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPO_FRONTEND:latest
+          docker push $REGISTRY/$ECR_REPO_AI:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPO_AI:latest

@@ -41,6 +41,8 @@ public class PipelineController {
      */
     @PostMapping("/analyze")
     public AnalyzeResponse analyze(@RequestBody AnalyzeRequest req) {
+        System.out.println("========== /api/analyze 호출됨 ==========");
+        System.out.println("받은 text 값: " + (req != null ? req.text() : "req가 null입니다"));
         // 3번 게이트
         GateResult g = gate.check(req.text());
         if (!g.passed()) {

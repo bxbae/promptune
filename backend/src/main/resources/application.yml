@@ -59,3 +59,12 @@ jwt:
 
 server:
   port: 8080
+
+
+microsoft:
+  client-id: ${MICROSOFT_CLIENT_ID:}
+  client-secret: ${MICROSOFT_CLIENT_SECRET:}
+  tenant: ${MICROSOFT_TENANT:common}
+  redirect-uri: ${MICROSOFT_REDIRECT_URI:http://localhost:8080/api/integrations/microsoft/callback}
+  frontend-url: ${MICROSOFT_FRONTEND_URL:http://localhost:3000}
+  token-key: ${MICROSOFT_TOKEN_KEY:}

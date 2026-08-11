@@ -1,0 +1,6 @@
+<svg width="256" height="256" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1.5" y="1.5" width="61" height="61" rx="15" fill="#55806A"/>
+  <!-- 모노라인 'P' -->
+  <path d="M25,50 L25,14.5 C40,14.5 44.5,18.5 44.5,24.5 C44.5,30.5 39,33.5 25,33.5"
+        fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
