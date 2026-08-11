@@ -26,6 +26,9 @@ services:
       AI_DIAGNOSIS_MODEL_PATH: /app/models/prompt-diagnosis
       AI_DIAGNOSIS_MAX_LENGTH: "128"
       AI_DIAGNOSIS_DEVICE: "cpu"
+      USE_REAL_SPELLCHECK: "${USE_REAL_SPELLCHECK:-false}"
+      BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
+      BAREUN_API_URL: "${BAREUN_API_URL:-https://api.bareun.ai}"
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
     ports:

@@ -25,9 +25,25 @@ TASK_TYPE_HINTS = {
 
 
 TYPO_DICT = {
+    # 요청/명령 표현
     "요약해조": "요약해줘",
-    "부착해요": "부탁해요",
+    "정리헤줘": "정리해줘",
+    "작성헤줘": "작성해줘",
+    "검토헤줘": "검토해줘",
     "해줄레": "해줄래",
+
+    # 조사/어미
+    "한태": "한테",
+    "드림니다": "드립니다",
+    "부탁드림니다": "부탁드립니다",
+
+    # 자주 발생하는 맞춤법 오류
+    "됬습니다": "됐습니다",
+    "됬어요": "됐어요",
+    "되요": "돼요",
+    "몇일": "며칠",
+
+    "보내주새요": "보내 주세요",
 }
 
 
@@ -40,11 +56,34 @@ def detect_task_type(text: str) -> str:
 
 
 def detect_typos(text: str) -> list[Typo]:
-    return [
-        Typo(span=wrong, suggest=correct)
-        for wrong, correct in TYPO_DICT.items()
-        if wrong in text
-    ]
+    found: list[Typo] = []
+    matched_ranges: list[tuple[int, int]] = []
+
+    # 긴 표현부터 검사해서
+    # "부탁드림니다"와 "드림니다" 같은 중복 검출을 방지
+    for wrong, correct in sorted(
+        TYPO_DICT.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        start = text.find(wrong)
+
+        while start != -1:
+            end = start + len(wrong)
+
+            overlaps = any(
+                start < matched_end and end > matched_start
+                for matched_start, matched_end in matched_ranges
+            )
+
+            if not overlaps:
+                found.append(Typo(span=wrong, suggest=correct))
+                matched_ranges.append((start, end))
+                break
+
+            start = text.find(wrong, start + 1)
+
+    return found
 
 
 def needs_internal_docs(task_type: str) -> bool:
