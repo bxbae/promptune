@@ -16,7 +16,7 @@ interface AppShellProps {
   onNewChat?: () => void;
   userEmail?: string;
   onLogout?: () => void;
-  onSwitchAccount?: () => void;
+  // onSwitchAccount?: () => void;
   children: React.ReactNode;
 }
 
@@ -27,12 +27,12 @@ export default function AppShell({
   // userEmail은 로그인 후 사용자 이메일로 표시되도록 추후 구현 예정
   userEmail = "demo@promptune.dev",
   onLogout,
-  onSwitchAccount,
+  // onSwitchAccount,
   children,
 }: AppShellProps) {
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   // 저장된 다크모드 · 사이드바 접힘 상태 복원
@@ -51,7 +51,7 @@ export default function AppShell({
   }, [collapsed]);
 
   // 계정 메뉴 바깥 클릭 시 닫기
-  useEffect(() => {
+  /* useEffect(() => {
     if (!accountMenuOpen) return;
     function handleClickOutside(e: MouseEvent) {
       if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
@@ -60,7 +60,7 @@ export default function AppShell({
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [accountMenuOpen]);
+  }, [accountMenuOpen]); */
 
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시 (임시)
@@ -99,8 +99,9 @@ export default function AppShell({
             onNewChat?.();
           }}
         >
-          <span className="label">+ 새 채팅</span>
-          <span className="label-icon"><img src="/icons/plus.png" alt="" /></span>
+          <span className="label-icon"><img src="/icons/plus-muted.png" alt="" /></span>
+          <span className="label-icon-active"><img src="/icons/plus-active.png" alt="" /></span>
+          <span className="label">새 채팅</span>
         </button>
 
         {/* 네비게이션 메뉴 */}
@@ -109,11 +110,12 @@ export default function AppShell({
             className={`nav-item ${active === "chat" ? "active" : ""}`}
             onClick={() => onNavigate("chat")}
           >
+            <span className="label-icon"><img src="/icons/chats-muted.png" alt="" /></span>
+            <span className="label-icon-active"><img src="/icons/chats-active.png" alt="" /></span>
             <span className="label">채팅</span>
-            <span className="label-icon"><img src="/icons/chats.png" alt="" /></span>
           </button>
 
-          <div className="sidebar-bottom" />
+          <div className="sidebar-spacer" style={{ borderTop: "1px solid var(--line)" }} />
 
           {NAV_ITEMS.map((item) => (
             <button
@@ -122,10 +124,13 @@ export default function AppShell({
               onClick={() => onNavigate(item.key)}
               title={item.label}
             >
-              <span className="label">{item.label}</span>
               <span className="label-icon">
-                <img src={`/icons/${item.icon}.png`} alt="" />
+                <img src={`/icons/${item.icon}-muted.png`} alt="" />
               </span>
+              <span className="label-icon-active">
+                <img src={`/icons/${item.icon}-active.png`} alt="" />
+              </span>
+              <span className="label">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -153,9 +158,9 @@ export default function AppShell({
             <button
               type="button"
               className="user-row"
-              onClick={() => setAccountMenuOpen((v) => !v)}
+              // onClick={() => setAccountMenuOpen((v) => !v)}
               aria-haspopup="menu"
-              aria-expanded={accountMenuOpen}
+              // aria-expanded={accountMenuOpen}
               title={userEmail}
             >
               <span className="avatar">{initial}</span>
@@ -165,7 +170,7 @@ export default function AppShell({
               </span>
             </button>
 
-            {accountMenuOpen && (
+            {/*{accountMenuOpen && (
               <div className="account-menu" role="menu">
                 <button
                   type="button"
@@ -179,12 +184,12 @@ export default function AppShell({
                   계정 전환
                 </button>
               </div>
-            )}
+            )}*/}
           </div>
 
           {/* 로그아웃 버튼 */}
           <button className="logout-link label" onClick={onLogout}>
-            <span className="label-icon"><img src="/icons/logout.png" alt="" /></span>
+            <span className="label-icon"><img src="/icons/logout.png" /></span>
             로그아웃
           </button>
         </div>
