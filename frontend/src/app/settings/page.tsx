@@ -10,7 +10,7 @@ import {
   microsoftMessages,
   microsoftProfile,
   microsoftStatus,
-} from "../../lib/microsoft";
+} from "@/lib/microsoft";
 
 type Status = {
   connected: boolean;
@@ -66,7 +66,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 24 }}>
+    <>
       <h1>설정</h1>
 
       <section style={{ marginTop: 32, padding: 24, border: "1px solid #ddd" }}>
@@ -107,10 +107,6 @@ export default function SettingsPage() {
             </pre>
           ) : null}
       </section>
-
-      <p style={{ marginTop: 24 }}>
-        <a href="/">메인으로 돌아가기</a>
-      </p>
-    </main>
+    </>
   );
 }
