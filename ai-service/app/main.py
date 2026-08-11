@@ -24,6 +24,11 @@ USE_REAL_DIAGNOSIS = (
     == "true"
 )
 
+USE_REAL_SPELLCHECK = (
+    os.getenv("USE_REAL_SPELLCHECK", "false").lower() == "true"
+)
+
+
 
 app = FastAPI(
     title="PrompTune AI Service",
@@ -44,19 +49,22 @@ def health():
     }
 
 
-@app.get("/mock-status", tags=["시스템"])
+@app.get("/mock-status")
 def mock_status():
-    """현재 각 파이프라인 단계의 mock/real 상태."""
+    if USE_REAL_DIAGNOSIS:
+        if USE_REAL_SPELLCHECK:
+            stage5_status = "real(KcELECTRA + Bareun + Rule)"
+        else:
+            stage5_status = "real(KcELECTRA + Rule)"
+    else:
+        stage5_status = "mock"
 
     return {
         "use_real_models": USE_REAL_MODELS,
         "use_real_diagnosis": USE_REAL_DIAGNOSIS,
+        "use_real_spellcheck": USE_REAL_SPELLCHECK,
         "stages": {
-            "5_diagnose": (
-                "real(KcELECTRA)"
-                if USE_REAL_DIAGNOSIS
-                else "mock(규칙)"
-            ),
+            "5_diagnose": stage5_status,
             "7_suggest": "mock(템플릿)",
             "8_safety": "real(규칙)",
             "13_retrieve": "mock(샘플)",

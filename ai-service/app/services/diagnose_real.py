@@ -3,7 +3,8 @@
 
 역할:
 - KcELECTRA: 8요소 누락 여부 판단
-- Rule Engine: task_type, typo, 내부문서 필요 여부 판단
+- Bareun + Rule Engine: 맞춤법/오탈자 진단
+- Rule Engine: task_type, 내부문서 필요 여부 판단
 
 KcELECTRA는 Promptune의 8개 missing label만 담당한다.
 
@@ -38,6 +39,8 @@ from app.services.diagnose_rules import (
     needs_internal_docs,
 )
 
+from app.services.spellcheck_bareun import check_spelling_hybrid
+
 
 # ------------------------------------------------------------------
 # 환경 설정
@@ -61,6 +64,10 @@ DEVICE_SETTING = os.getenv(
     "AI_DIAGNOSIS_DEVICE",
     "cpu",
 ).lower()
+
+USE_REAL_SPELLCHECK = (
+    os.getenv("USE_REAL_SPELLCHECK", "false").lower() == "true"
+)
 
 
 # ------------------------------------------------------------------
@@ -259,7 +266,7 @@ def diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
 
     - missing: KcELECTRA
     - task_type: Rule Engine
-    - typos: Rule Engine
+    - typos: Bareun API + Rule Engine
     - needs_internal_docs: Rule Engine
     """
 
@@ -268,7 +275,10 @@ def diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
     missing = predict_missing(text)
 
     task_type = detect_task_type(text)
-    typos = detect_typos(text)
+    if USE_REAL_SPELLCHECK:
+        typos = check_spelling_hybrid(text)
+    else:
+        typos = detect_typos(text)
     internal_docs = needs_internal_docs(task_type)
 
     return DiagnoseResponse(
