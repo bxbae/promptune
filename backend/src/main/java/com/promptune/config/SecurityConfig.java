@@ -44,7 +44,19 @@ public class SecurityConfig {
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
+        CorsConfiguration microsoftCallback = new CorsConfiguration();
+        microsoftCallback.setAllowedOrigins(List.of("null"));
+        microsoftCallback.setAllowedMethods(List.of("POST"));
+        microsoftCallback.setAllowedHeaders(List.of("*"));
+        microsoftCallback.setAllowCredentials(false);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration(
+                "/api/integrations/microsoft/callback",
+                microsoftCallback
+        );
+
         source.registerCorsConfiguration("/**", config);
         return source;
     }
@@ -58,6 +70,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/health", "/actuator/**").permitAll()
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                .requestMatchers("/api/integrations/microsoft/callback").permitAll()
                 .requestMatchers("/api/analyze", "/api/execute", "/api/context/**").permitAll()
                 .anyRequest().authenticated()
             )
