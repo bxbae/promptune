@@ -42,7 +42,7 @@ public class User {
     this.passwordHash = passwordHash;
     this.name = name;
     this.provider = "local";
-    this.companyId = (companyId == null || companyId.isBlank()) ? "default-company" : companyId;
+    this.companyId = (companyId == null || companyId.isBlank()) ? null : companyId;
 }
 
     // getter

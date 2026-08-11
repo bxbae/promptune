@@ -26,7 +26,7 @@ public class AuthService {
             throw new IllegalArgumentException("이미 가입된 이메일입니다.");
         }
         String hash = encoder.encode(req.password());       // 비밀번호 해싱
-        User user = new User(req.email(), hash, req.name(), req.companyId());
+        User user = new User(req.email(), hash, req.name(), null);
         users.save(user);
         String token = jwt.issue(user.getEmail());
         return new AuthResponse(token, user.getEmail(), user.getName());
