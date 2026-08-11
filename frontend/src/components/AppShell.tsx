@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 export type NavKey = "newChat" | "chat" | "documents" | "history" | "dashboard" | "settings";
 
 const NAV_ITEMS: { key: NavKey; label: string, icon: string }[] = [
-  { key: "documents", label: "문서관리", icon: "📄" },
-  { key: "history", label: "히스토리", icon: "🕒" },
-  { key: "dashboard", label: "대시보드", icon: "📊" },
-  { key: "settings", label: "설정", icon: "⚙️" },
+  { key: "documents", label: "문서관리", icon: "documents" },
+  { key: "history", label: "히스토리", icon: "history" },
+  { key: "dashboard", label: "대시보드", icon: "dashboard" },
+  { key: "settings", label: "설정", icon: "settings" },
 ]
 
 interface AppShellProps {
@@ -87,7 +87,7 @@ export default function AppShell({
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "펼치기" : "접기"}
           >
-            {collapsed ? "›" : "‹"}
+            <img src="/icons/collapse.png" alt="" />
           </button>
         </div>
 
@@ -100,7 +100,7 @@ export default function AppShell({
           }}
         >
           <span className="label">+ 새 채팅</span>
-          <span className="label-icon">+</span>
+          <span className="label-icon"><img src="/icons/plus.png" alt="" /></span>
         </button>
 
         {/* 네비게이션 메뉴 */}
@@ -110,7 +110,7 @@ export default function AppShell({
             onClick={() => onNavigate("chat")}
           >
             <span className="label">채팅</span>
-            <span className="label-icon"></span>
+            <span className="label-icon"><img src="/icons/chats.png" alt="" /></span>
           </button>
 
           <div className="sidebar-bottom" />
@@ -123,7 +123,9 @@ export default function AppShell({
               title={item.label}
             >
               <span className="label">{item.label}</span>
-              <span className="label-icon">{item.icon}</span>
+              <span className="label-icon">
+                <img src={`/icons/${item.icon}.png`} alt="" />
+              </span>
             </button>
           ))}
         </nav>
@@ -182,6 +184,7 @@ export default function AppShell({
 
           {/* 로그아웃 버튼 */}
           <button className="logout-link label" onClick={onLogout}>
+            <span className="label-icon"><img src="/icons/logout.png" alt="" /></span>
             로그아웃
           </button>
         </div>

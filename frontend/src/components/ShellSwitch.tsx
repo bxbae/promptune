@@ -4,8 +4,10 @@ import AppShell, { NavKey } from "./AppShell";
 import { logout } from "@/lib/auth";
 
 // URL ↔ 사이드바 탭 매핑. 새 페이지가 생기면 이 두 곳에 추가
+// "새 채팅"(newChat)과 "채팅"(chat, 목록)은 서로 다른 화면이라 경로도 분리함.
 const PATH_TO_KEY: Record<string, NavKey> = {
-  "/chat": "chat",
+  "/chat": "newChat",
+  "/chats": "chat",
   "/documents": "documents",
   "/history": "history",
   "/dashboard": "dashboard",
@@ -13,7 +15,7 @@ const PATH_TO_KEY: Record<string, NavKey> = {
 }
 const KEY_TO_PATH: Record<NavKey, string> = {
   newChat: "/chat",
-  chat: "/chat",
+  chat: "/chats",
   documents: "/documents",
   history: "/history",
   dashboard: "/dashboard",
@@ -30,7 +32,7 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
   if (pathname === "/") return <>{children}</>;
 
   const topSegment = "/" + (pathname.split("/")[1] ?? "");
-  const active = PATH_TO_KEY[topSegment] ?? "chat";
+  const active = PATH_TO_KEY[topSegment] ?? "newChat";
 
   return (
     <AppShell
