@@ -6,11 +6,12 @@ KcELECTRA:
 
 Rule:
 - 업무 유형(task_type)
-- 오탈자(typos)
+- 고신뢰 오탈자 보정
 - 내부문서 필요 여부
 """
 
 from app.schemas.models import Typo
+from app.services.typo_models import DetectedTypo, TypoRule
 
 
 TASK_TYPE_HINTS = {
@@ -24,27 +25,98 @@ TASK_TYPE_HINTS = {
 }
 
 
-TYPO_DICT = {
-    # 요청/명령 표현
-    "요약해조": "요약해줘",
-    "정리헤줘": "정리해줘",
-    "작성헤줘": "작성해줘",
-    "검토헤줘": "검토해줘",
-    "해줄레": "해줄래",
+TYPO_RULES = (
+    # ------------------------------------------------------------
+    # 빠른 입력 / 키보드형 오타
+    # ------------------------------------------------------------
+    TypoRule(
+        wrong="요약해조",
+        correct="요약해줘",
+        category="keyboard_typo",
+        priority=100,
+    ),
+    TypoRule(
+        wrong="정리헤줘",
+        correct="정리해줘",
+        category="keyboard_typo",
+        priority=100,
+    ),
+    TypoRule(
+        wrong="작성헤줘",
+        correct="작성해줘",
+        category="keyboard_typo",
+        priority=100,
+    ),
+    TypoRule(
+        wrong="검토헤줘",
+        correct="검토해줘",
+        category="keyboard_typo",
+        priority=100,
+    ),
+    TypoRule(
+        wrong="보내주새요",
+        correct="보내 주세요",
+        category="keyboard_typo",
+        priority=100,
+    ),
 
-    # 조사/어미
-    "한태": "한테",
-    "드림니다": "드립니다",
-    "부탁드림니다": "부탁드립니다",
+    # ------------------------------------------------------------
+    # 조사 / 어미 오타
+    # ------------------------------------------------------------
+    TypoRule(
+        wrong="부탁드림니다",
+        correct="부탁드립니다",
+        category="ending_typo",
+        priority=110,
+    ),
+    TypoRule(
+        wrong="드림니다",
+        correct="드립니다",
+        category="ending_typo",
+        priority=100,
+    ),
+    TypoRule(
+        wrong="해줄레",
+        correct="해줄래",
+        category="ending_typo",
+        priority=95,
+    ),
+    TypoRule(
+        wrong="한태",
+        correct="한테",
+        category="particle_typo",
+        priority=95,
+    ),
 
+    # ------------------------------------------------------------
     # 자주 발생하는 맞춤법 오류
-    "됬습니다": "됐습니다",
-    "됬어요": "됐어요",
-    "되요": "돼요",
-    "몇일": "며칠",
-
-    "보내주새요": "보내 주세요",
-}
+    # Bareun도 잡을 수 있지만, 교정이 명확한 표현만 보조 Rule로 유지
+    # ------------------------------------------------------------
+    TypoRule(
+        wrong="됬습니다",
+        correct="됐습니다",
+        category="spelling",
+        priority=90,
+    ),
+    TypoRule(
+        wrong="됬어요",
+        correct="됐어요",
+        category="spelling",
+        priority=90,
+    ),
+    TypoRule(
+        wrong="되요",
+        correct="돼요",
+        category="spelling",
+        priority=90,
+    ),
+    TypoRule(
+        wrong="몇일",
+        correct="며칠",
+        category="spelling",
+        priority=90,
+    ),
+)
 
 
 def detect_task_type(text: str) -> str:
@@ -55,36 +127,126 @@ def detect_task_type(text: str) -> str:
     return "email"
 
 
-def detect_typos(text: str) -> list[Typo]:
-    found: list[Typo] = []
-    matched_ranges: list[tuple[int, int]] = []
+def _ranges_overlap(
+    start_a: int,
+    end_a: int,
+    start_b: int,
+    end_b: int,
+) -> bool:
+    """
+    두 문자열 범위가 실제로 겹치는지 확인한다.
 
-    # 긴 표현부터 검사해서
-    # "부탁드림니다"와 "드림니다" 같은 중복 검출을 방지
-    for wrong, correct in sorted(
-        TYPO_DICT.items(),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    ):
-        start = text.find(wrong)
+    범위는 Python slice 방식인 [start, end)를 사용한다.
+    """
+    return start_a < end_b and start_b < end_a
 
-        while start != -1:
-            end = start + len(wrong)
 
-            overlaps = any(
-                start < matched_end and end > matched_start
-                for matched_start, matched_end in matched_ranges
+def detect_typos_detailed(text: str) -> list[DetectedTypo]:
+    """
+    Rule Engine의 상세 탐지 결과를 반환한다.
+
+    특징:
+    - priority가 높은 Rule 우선
+    - 같은 priority에서는 긴 표현 우선
+    - 실제 start/end 위치 보존
+    - 중첩된 Rule 중복 탐지 방지
+    - 동일 오타가 문장에 여러 번 등장하면 각각 위치를 보존
+    """
+
+    found: list[DetectedTypo] = []
+
+    sorted_rules = sorted(
+        TYPO_RULES,
+        key=lambda rule: (
+            -rule.priority,
+            -len(rule.wrong),
+        ),
+    )
+
+    for rule in sorted_rules:
+        search_from = 0
+
+        while True:
+            start = text.find(
+                rule.wrong,
+                search_from,
             )
 
-            if not overlaps:
-                found.append(Typo(span=wrong, suggest=correct))
-                matched_ranges.append((start, end))
+            if start == -1:
                 break
 
-            start = text.find(wrong, start + 1)
+            end = start + len(rule.wrong)
+
+            overlaps_existing = any(
+                _ranges_overlap(
+                    start,
+                    end,
+                    detected.start,
+                    detected.end,
+                )
+                for detected in found
+            )
+
+            if not overlaps_existing:
+                found.append(
+                    DetectedTypo(
+                        span=rule.wrong,
+                        suggest=rule.correct,
+                        start=start,
+                        end=end,
+                        source="rule",
+                        category=rule.category,
+                        priority=rule.priority,
+                    )
+                )
+
+            search_from = start + 1
+
+    found.sort(
+        key=lambda detected: (
+            detected.start,
+            -detected.priority,
+            -(detected.end - detected.start),
+        )
+    )
 
     return found
 
 
+def detect_typos(text: str) -> list[Typo]:
+    """
+    기존 DiagnoseResponse와의 호환성을 위한 API용 함수.
+
+    내부에서는 DetectedTypo를 사용하지만,
+    외부에는 기존 Typo(span, suggest) 형식을 그대로 반환한다.
+    """
+
+    results: list[Typo] = []
+    seen: set[tuple[str, str]] = set()
+
+    for detected in detect_typos_detailed(text):
+        key = (
+            detected.span,
+            detected.suggest,
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        results.append(
+            Typo(
+                span=detected.span,
+                suggest=detected.suggest,
+            )
+        )
+
+    return results
+
+
 def needs_internal_docs(task_type: str) -> bool:
-    return task_type.endswith("_internal") or task_type == "application"
+    return (
+        task_type.endswith("_internal")
+        or task_type == "application"
+    )
