@@ -16,25 +16,48 @@ import os
 from urllib import error, request
 
 from app.schemas.models import Typo
-
+from app.services.diagnose_rules import detect_typos_detailed
+from app.services.typo_models import DetectedTypo
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BAREUN_API_URL = "https://api.bareun.ai"
 CORRECT_ERROR_PATH = "/bareun.RevisionService/CorrectError"
 
+BAREUN_CATEGORY_PRIORITY = {
+    "TYPO": 80,
+    "GRAMMER": 70,
+    "STANDARD": 65,
+    "SPACING": 60,
+}
 
-def _extract_typos(response_data: dict) -> list[Typo]:
+DEFAULT_BAREUN_PRIORITY = 50
+
+def _extract_detected_typos(
+    response_data: dict,
+) -> list[DetectedTypo]:
     """
-    바른 API revisedBlocks를 PrompTune Typo 형식으로 변환한다.
+    Bareun revisedBlocks를 내부 DetectedTypo 형식으로 변환한다.
+
+    보존 정보:
+    - span / suggest
+    - beginOffset -> start
+    - length -> end
+    - category
+    - source
+    - 내부 priority
 
     정책:
     - 단순 구두점 교정은 제외한다.
-    - helpId가 Merged이고 nested가 있으면 부모 결과 대신
-      더 세밀한 nested 결과를 사용한다.
+    - helpId가 Merged이고 nested가 있으면
+      부모 결과 대신 세부 nested 결과를 사용한다.
     """
-    results: list[Typo] = []
-    seen: set[tuple[str, str]] = set()
+
+    results: list[DetectedTypo] = []
+
+    seen: set[
+        tuple[int, int, str, str]
+    ] = set()
 
     blocks = response_data.get(
         "revisedBlocks",
@@ -45,8 +68,6 @@ def _extract_typos(response_data: dict) -> list[Typo]:
         revisions = block.get("revisions", [])
         nested = block.get("nested") or []
 
-        # Merged 블록은 여러 교정을 뭉친 결과이므로
-        # 세부 nested 결과가 있으면 nested를 사용한다.
         is_merged = any(
             revision.get("helpId") == "Merged"
             for revision in revisions
@@ -55,9 +76,10 @@ def _extract_typos(response_data: dict) -> list[Typo]:
         if is_merged and nested:
             for child in nested:
                 add_block(child)
+
             return
 
-        # 단순 문장부호 교정 제외
+        # 단순 구두점 교정은 PrompTune 오탈자 표시에서 제외
         if revisions and all(
             revision.get("helpId") == "구두점"
             for revision in revisions
@@ -66,8 +88,13 @@ def _extract_typos(response_data: dict) -> list[Typo]:
 
         origin = block.get("origin") or {}
 
-        span = str(origin.get("content", "")).strip()
-        suggest = str(block.get("revised", "")).strip()
+        span = str(
+            origin.get("content", "")
+        )
+
+        suggest = str(
+            block.get("revised", "")
+        )
 
         if not span or not suggest:
             return
@@ -75,7 +102,53 @@ def _extract_typos(response_data: dict) -> list[Typo]:
         if span == suggest:
             return
 
-        key = (span, suggest)
+        try:
+            start = int(
+                origin.get("beginOffset", -1)
+            )
+
+            length = int(
+                origin.get("length", 0)
+            )
+
+        except (TypeError, ValueError):
+            return
+
+        if start < 0 or length <= 0:
+            return
+
+        end = start + length
+
+        categories = [
+            str(revision.get("category", "UNKNOWN"))
+            for revision in revisions
+            if revision.get("category")
+        ]
+
+        if categories:
+            category = max(
+                categories,
+                key=lambda value: (
+                    BAREUN_CATEGORY_PRIORITY.get(
+                        value,
+                        DEFAULT_BAREUN_PRIORITY,
+                    )
+                ),
+            )
+        else:
+            category = "UNKNOWN"
+
+        priority = BAREUN_CATEGORY_PRIORITY.get(
+            category,
+            DEFAULT_BAREUN_PRIORITY,
+        )
+
+        key = (
+            start,
+            end,
+            span,
+            suggest,
+        )
 
         if key in seen:
             return
@@ -83,34 +156,75 @@ def _extract_typos(response_data: dict) -> list[Typo]:
         seen.add(key)
 
         results.append(
-            Typo(
+            DetectedTypo(
                 span=span,
                 suggest=suggest,
+                start=start,
+                end=end,
+                source="bareun",
+                category=category,
+                priority=priority,
             )
         )
 
     for block in blocks:
         add_block(block)
 
+    results.sort(
+        key=lambda detected: (
+            detected.start,
+            -(detected.end - detected.start),
+            -detected.priority,
+        )
+    )
+
     return results
 
 
-def check_spelling(text: str) -> list[Typo]:
+def _extract_typos(
+    response_data: dict,
+) -> list[Typo]:
     """
-    바른 API를 호출해 맞춤법 검사 결과를 반환한다.
-
-    Returns:
-        list[Typo]
-
-    Raises:
-        RuntimeError:
-            API Key 누락, HTTP 오류, 네트워크 오류,
-            JSON 파싱 오류 등이 발생한 경우
+    기존 check_spelling() 인터페이스 호환용 변환 함수.
     """
-    if not text.strip():
-        return []
 
-    api_key = os.getenv("BAREUN_API_KEY", "").strip()
+    results: list[Typo] = []
+    seen: set[tuple[str, str]] = set()
+
+    for detected in _extract_detected_typos(
+        response_data
+    ):
+        key = (
+            detected.span,
+            detected.suggest,
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        results.append(
+            Typo(
+                span=detected.span,
+                suggest=detected.suggest,
+            )
+        )
+
+    return results
+
+
+def _request_bareun(text: str) -> dict:
+    """
+    Bareun CorrectError API를 호출하고
+    원본 JSON 응답을 반환한다.
+    """
+
+    api_key = os.getenv(
+        "BAREUN_API_KEY",
+        "",
+    ).strip()
+
     base_url = os.getenv(
         "BAREUN_API_URL",
         DEFAULT_BAREUN_API_URL,
@@ -154,7 +268,11 @@ def check_spelling(text: str) -> list[Typo]:
             req,
             timeout=5,
         ) as response:
-            response_body = response.read().decode("utf-8")
+            response_body = (
+                response
+                .read()
+                .decode("utf-8")
+            )
 
     except error.HTTPError as exc:
         error_body = exc.read().decode(
@@ -163,7 +281,8 @@ def check_spelling(text: str) -> list[Typo]:
         )
 
         logger.error(
-            "Bareun API HTTP error: status=%s body=%s",
+            "Bareun API HTTP error: "
+            "status=%s body=%s",
             exc.code,
             error_body[:500],
         )
@@ -183,7 +302,9 @@ def check_spelling(text: str) -> list[Typo]:
         ) from exc
 
     try:
-        response_data = json.loads(response_body)
+        return json.loads(
+            response_body
+        )
 
     except json.JSONDecodeError as exc:
         logger.error(
@@ -195,120 +316,340 @@ def check_spelling(text: str) -> list[Typo]:
             "Bareun API 응답을 JSON으로 해석할 수 없습니다."
         ) from exc
 
-    return _extract_typos(response_data)
 
-def merge_spellcheck_results(
+def check_spelling_detailed(
     text: str,
-    rule_typos: list[Typo],
-    bareun_typos: list[Typo],
-) -> list[Typo]:
+) -> list[DetectedTypo]:
     """
-    Rule + Bareun 결과 병합.
+    Bareun 상세 검사 결과를 반환한다.
 
-    원칙:
-    1. Rule은 고신뢰 오타 교정으로 우선한다.
-    2. Bareun의 더 넓은 교정 결과 안에 Rule 대상이 포함되어 있고,
-       Bareun suggestion에도 Rule 원문이 그대로 남아 있다면
-       두 교정을 하나로 합친다.
-    3. Bareun과 Rule이 충돌하면 Rule을 사용한다.
+    Merge Engine 내부에서 사용하는 함수.
     """
 
-    del text  # 현재 병합에서는 직접 사용하지 않음
+    if not text.strip():
+        return []
 
-    results: list[Typo] = []
-    seen: set[tuple[str, str]] = set()
+    response_data = _request_bareun(text)
 
-    # 긴 Rule부터 처리
-    sorted_rules = sorted(
-        rule_typos,
-        key=lambda typo: len(typo.span),
-        reverse=True,
+    return _extract_detected_typos(
+        response_data
     )
 
-    covered_rule_indexes: set[int] = set()
 
-    # 1. Bareun 결과를 먼저 살펴보면서
-    #    Rule과 안전하게 결합 가능한 경우 결합
-    for bareun in bareun_typos:
-        suggest = bareun.suggest
+def check_spelling(
+    text: str,
+) -> list[Typo]:
+    """
+    기존 코드와의 호환성을 위한 맞춤법 검사 함수.
 
+    외부에는 기존 Typo(span, suggest) 구조를 유지한다.
+    """
+
+    if not text.strip():
+        return []
+
+    response_data = _request_bareun(text)
+
+    return _extract_typos(
+        response_data
+    )
+
+def _ranges_overlap(
+    a: DetectedTypo,
+    b: DetectedTypo,
+) -> bool:
+    """
+    두 교정 범위가 실제 입력 문장에서 겹치는지 확인한다.
+
+    범위는 [start, end) 방식이다.
+    """
+    return (
+        a.start < b.end
+        and b.start < a.end
+    )
+
+
+def _contains_range(
+    outer: DetectedTypo,
+    inner: DetectedTypo,
+) -> bool:
+    """
+    outer가 inner의 전체 범위를 포함하는지 확인한다.
+    """
+    return (
+        outer.start <= inner.start
+        and outer.end >= inner.end
+    )
+
+def merge_detected_typos(
+    text: str,
+    rule_typos: list[DetectedTypo],
+    bareun_typos: list[DetectedTypo],
+) -> list[DetectedTypo]:
+    """
+    Rule + Bareun 상세 결과를 위치 기반으로 병합한다.
+
+    원칙:
+    1. 고신뢰 Rule이 Bareun보다 우선한다.
+    2. 겹침 판단은 문자열 포함이 아니라 start/end 위치를 사용한다.
+    3. Bareun의 넓은 띄어쓰기 교정 안에 Rule 교정이 포함되면
+       가능한 경우 두 결과를 하나로 합친다.
+    4. 동일 영역에서 서로 다른 방식으로 수정하면
+       priority가 높은 Rule을 사용한다.
+    5. Bareun 내부의 더 높은 priority 교정도
+       넓은 Bareun 결과에 안전하게 합칠 수 있으면 합친다.
+    """
+
+    del text  # 현재는 위치가 각 DetectedTypo에 이미 저장되어 있음
+
+    results: list[DetectedTypo] = []
+
+    sorted_rules = sorted(
+        rule_typos,
+        key=lambda item: (
+            -item.priority,
+            item.start,
+            -(item.end - item.start),
+        ),
+    )
+
+    sorted_bareun = sorted(
+        bareun_typos,
+        key=lambda item: (
+            item.start,
+            -(item.end - item.start),
+            -item.priority,
+        ),
+    )
+
+    covered_rule_ids: set[int] = set()
+
+    for bareun in sorted_bareun:
+        suggestion = bareun.suggest
         conflicting = False
-        applied_rule_indexes: list[int] = []
+        applied_rule_ids: list[int] = []
 
-        for index, rule in enumerate(sorted_rules):
+        # --------------------------------------------------------
+        # 1. Bareun 결과와 겹치는 Rule 처리
+        # --------------------------------------------------------
+        for rule_index, rule in enumerate(sorted_rules):
+            if not _ranges_overlap(
+                bareun,
+                rule,
+            ):
+                continue
 
-            # Bareun 범위 안에 Rule 범위가 포함된 경우
-            if rule.span in bareun.span:
-
-                # Bareun suggestion 안에도 원래 오타가 남아 있으면
-                # Rule 교정을 추가 적용할 수 있다.
-                if rule.span in suggest:
-                    suggest = suggest.replace(
+            # Bareun의 더 넓은 범위 안에 Rule이 포함된 경우
+            if _contains_range(
+                bareun,
+                rule,
+            ):
+                # Bareun 교정 이후에도 Rule 원문이 남아 있으면
+                # Rule 교정을 Bareun suggestion에 추가 적용
+                if rule.span in suggestion:
+                    suggestion = suggestion.replace(
                         rule.span,
                         rule.suggest,
                         1,
                     )
-                    applied_rule_indexes.append(index)
 
-                else:
-                    # Bareun이 같은 영역을 다른 방식으로 바꿨다면
-                    # Rule과 충돌하므로 Bareun 결과를 버린다.
+                    applied_rule_ids.append(
+                        rule_index
+                    )
+
+                    continue
+
+                # 이미 Bareun이 같은 영역을 다른 형태로 바꿨다면
+                # 더 높은 priority인 Rule을 우선한다.
+                if rule.priority > bareun.priority:
                     conflicting = True
                     break
 
-            # Bareun이 Rule 범위 내부에 있는 경우
-            elif bareun.span in rule.span:
+            # Rule이 Bareun 전체 범위를 포함하거나
+            # 서로 일부만 겹치는 경우
+            elif rule.priority >= bareun.priority:
                 conflicting = True
                 break
 
         if conflicting:
             continue
 
-        key = (bareun.span, suggest)
+        # --------------------------------------------------------
+        # 2. 같은 Bareun 결과 안의 더 높은 priority 교정을 흡수
+        #
+        # 예:
+        # 회의록정리헤줘 → 회의록 정리헤줘 (SPACING 60)
+        # 헤줘 → 해줘                       (TYPO 80)
+        # --------------------------------------------------------
+        for inner in sorted_bareun:
+            if inner is bareun:
+                continue
 
-        if key in seen:
+            if inner.priority <= bareun.priority:
+                continue
+
+            if not _contains_range(
+                bareun,
+                inner,
+            ):
+                continue
+
+            if inner.span not in suggestion:
+                continue
+
+            suggestion = suggestion.replace(
+                inner.span,
+                inner.suggest,
+                1,
+            )
+
+        # 이미 채택한 더 넓은 결과와 겹치면 중복 표시하지 않는다.
+        if any(
+            _ranges_overlap(
+                accepted,
+                bareun,
+            )
+            for accepted in results
+        ):
             continue
 
         results.append(
-            Typo(
+            DetectedTypo(
                 span=bareun.span,
-                suggest=suggest,
+                suggest=suggestion,
+                start=bareun.start,
+                end=bareun.end,
+                source="hybrid",
+                category=bareun.category,
+                priority=bareun.priority,
             )
         )
 
-        seen.add(key)
-        covered_rule_indexes.update(applied_rule_indexes)
+        covered_rule_ids.update(
+            applied_rule_ids
+        )
 
-    # 2. Bareun 결과에 이미 흡수되지 않은 Rule만 추가
-    for index, rule in enumerate(sorted_rules):
-
-        if index in covered_rule_indexes:
+    # ------------------------------------------------------------
+    # 3. Bareun에 흡수되지 않은 Rule 추가
+    # ------------------------------------------------------------
+    for rule_index, rule in enumerate(sorted_rules):
+        if rule_index in covered_rule_ids:
             continue
 
-        key = (rule.span, rule.suggest)
+        overlaps_existing = any(
+            _ranges_overlap(
+                accepted,
+                rule,
+            )
+            for accepted in results
+        )
+
+        if overlaps_existing:
+            # 기존 결과가 Rule보다 낮은 우선순위라면 교체
+            overlapping_indexes = [
+                index
+                for index, accepted in enumerate(results)
+                if _ranges_overlap(
+                    accepted,
+                    rule,
+                )
+            ]
+
+            higher_or_equal_exists = any(
+                results[index].priority
+                >= rule.priority
+                for index in overlapping_indexes
+            )
+
+            if higher_or_equal_exists:
+                continue
+
+            results = [
+                accepted
+                for accepted in results
+                if not _ranges_overlap(
+                    accepted,
+                    rule,
+                )
+            ]
+
+        results.append(rule)
+
+    results.sort(
+        key=lambda item: (
+            item.start,
+            -item.priority,
+            -(item.end - item.start),
+        )
+    )
+
+    return results
+
+def _to_api_typos(
+    detected_typos: list[DetectedTypo],
+) -> list[Typo]:
+    """
+    내부 DetectedTypo 결과를 기존 API Typo 형식으로 변환한다.
+
+    Backend / Frontend 계약은 변경하지 않는다.
+    """
+
+    results: list[Typo] = []
+    seen: set[tuple[str, str]] = set()
+
+    for detected in detected_typos:
+        key = (
+            detected.span,
+            detected.suggest,
+        )
 
         if key in seen:
             continue
 
-        results.append(rule)
         seen.add(key)
+
+        results.append(
+            Typo(
+                span=detected.span,
+                suggest=detected.suggest,
+            )
+        )
 
     return results
 
-def check_spelling_hybrid(text: str) -> list[Typo]:
-    from app.services.diagnose_rules import detect_typos
+def check_spelling_hybrid(
+    text: str,
+) -> list[Typo]:
+    """
+    Rule + Bareun Hybrid 맞춤법 검사.
 
-    rule_typos = detect_typos(text)
+    - Rule Engine: 고신뢰 비정형 오타
+    - Bareun: 일반 맞춤법/띄어쓰기/문법
+    - Merge: start/end + priority 기반
+    """
+
+    rule_typos = detect_typos_detailed(
+        text
+    )
 
     try:
-        bareun_typos = check_spelling(text)
-    except RuntimeError:
-        # 바른 장애 / API Key 문제 발생 시
-        # 5번 전체를 죽이지 않고 Rule만 반환
-        return rule_typos
+        bareun_typos = check_spelling_detailed(
+            text
+        )
 
-    return merge_spellcheck_results(
+    except RuntimeError:
+        # Bareun 장애 / API Key 문제 발생 시
+        # 전체 진단을 실패시키지 않고 Rule만 반환
+        return _to_api_typos(
+            rule_typos
+        )
+
+    merged = merge_detected_typos(
         text=text,
         rule_typos=rule_typos,
         bareun_typos=bareun_typos,
+    )
+
+    return _to_api_typos(
+        merged
     )
