@@ -1,14 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export type NavKey = "newChat" | "chat"| "documents" | "history" | "dashboard" | "settings";
+export type NavKey = "newChat" | "chat" | "documents" | "history" | "dashboard" | "settings";
 
-const NAV_ITEMS: { key: NavKey; label: string }[] = [
-  // { key: "chat", label: "채팅" },
-  { key: "documents", label: "문서관리" },
-  { key: "history", label: "히스토리" },
-  { key: "dashboard", label: "대시보드" },
-  { key: "settings", label: "설정" },
+const NAV_ITEMS: { key: NavKey; label: string, icon: string }[] = [
+  { key: "documents", label: "문서관리", icon: "📄" },
+  { key: "history", label: "히스토리", icon: "🕒" },
+  { key: "dashboard", label: "대시보드", icon: "📊" },
+  { key: "settings", label: "설정", icon: "⚙️" },
 ]
 
 interface AppShellProps {
@@ -32,19 +31,24 @@ export default function AppShell({
   children,
 }: AppShellProps) {
   const [dark, setDark] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
-  // 저장된 다크모드 선호도 복원
+  // 저장된 다크모드 · 사이드바 접힘 상태 복원
   useEffect(() => {
-    const saved = localStorage.getItem("pt_theme");
-    if (saved === "dark") setDark(true);
+    if (localStorage.getItem("pt_theme") === "dark") setDark(true);
+    if (localStorage.getItem("pt_sidebar_collapsed") === "1") setCollapsed(true);
   }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     localStorage.setItem("pt_theme", dark ? "dark" : "light");
   }, [dark]);
+
+  useEffect(() => {
+    localStorage.setItem("pt_sidebar_collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   // 계정 메뉴 바깥 클릭 시 닫기
   useEffect(() => {
@@ -66,17 +70,26 @@ export default function AppShell({
   return (
     <div className="shell">
       {/* 사이드바 */}
-      <aside className="sidebar">
-        {/* 로고: 클릭 시 홈으로 이동 */}
-        <button type="button" className="sidebar-logo"
-          onClick={() => {
-            onNavigate("newChat");
-            onNewChat?.();
-          }}
-          style={{ width: "fit-content", background: "none", border: "none", cursor: "pointer" }}>
-          <span className="logo-icon">P</span>
-          <span>PrompTune</span>
-        </button>
+      <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+        {/* 로고: 클릭 시 홈으로 이동 + 사이드바 토글*/}
+        <div className="sidebar-header">
+          <button type="button" className="sidebar-logo"
+            onClick={() => {
+              onNavigate("newChat");
+              onNewChat?.();
+            }}
+            style={{ width: "fit-content", background: "none", border: "none", cursor: "pointer" }}>
+            <span className="logo-icon">P</span>
+            <span>PrompTune</span>
+          </button>
+          <button
+            className="collapse-btn"
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? "펼치기" : "접기"}
+          >
+            {collapsed ? "›" : "‹"}
+          </button>
+        </div>
 
         {/* 새 채팅 버튼 */}
         <button
@@ -86,7 +99,8 @@ export default function AppShell({
             onNewChat?.();
           }}
         >
-          <span>+</span> 새 채팅
+          <span className="label">+ 새 채팅</span>
+          <span className="label-icon">+</span>
         </button>
 
         {/* 네비게이션 메뉴 */}
@@ -95,18 +109,21 @@ export default function AppShell({
             className={`nav-item ${active === "chat" ? "active" : ""}`}
             onClick={() => onNavigate("chat")}
           >
-            채팅
+            <span className="label">채팅</span>
+            <span className="label-icon"></span>
           </button>
 
-          <div className="sidebar-bottom"/>
+          <div className="sidebar-bottom" />
 
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
               className={`nav-item ${active === item.key ? "active" : ""}`}
               onClick={() => onNavigate(item.key)}
+              title={item.label}
             >
-              {item.label}
+              <span className="label">{item.label}</span>
+              <span className="label-icon">{item.icon}</span>
             </button>
           ))}
         </nav>
@@ -117,7 +134,7 @@ export default function AppShell({
         <div className="sidebar-bottom">
           {/* 다크모드 토글 */}
           <div className="theme-row">
-            <span>다크 모드</span>
+            <span className="label">다크 모드</span>
             <label className="switch">
               <input
                 type="checkbox"
@@ -137,9 +154,10 @@ export default function AppShell({
               onClick={() => setAccountMenuOpen((v) => !v)}
               aria-haspopup="menu"
               aria-expanded={accountMenuOpen}
+              title={userEmail}
             >
               <span className="avatar">{initial}</span>
-              <span className="user-meta">
+              <span className="user-meta label">
                 <span className="user-name">{name}</span>
                 <span className="user-email">{userEmail}</span>
               </span>
@@ -163,7 +181,7 @@ export default function AppShell({
           </div>
 
           {/* 로그아웃 버튼 */}
-          <button className="logout-link" onClick={onLogout}>
+          <button className="logout-link label" onClick={onLogout}>
             로그아웃
           </button>
         </div>
