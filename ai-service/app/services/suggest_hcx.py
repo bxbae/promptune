@@ -245,35 +245,35 @@ def suggest(
     suggestions: list[Suggestion] = []
 
     context = (
-    req.context.strip()
-    if req.context and req.context.strip()
-    else None
-)
+        req.context.strip()
+        if req.context and req.context.strip()
+        else None
+    )
 
     for element in target_elements:
         candidates = get_candidates(
-        element=element,
-        text=req.text,
-        context=context,
-        limit=3,
-    )
-
-    selected_index = _rerank(
-        text=req.text,
-        context=context,
-        element=element,
-        candidates=candidates,
+            element=element,
+            text=req.text,
+            context=context,
+            limit=3,
         )
 
-    primary = candidates[selected_index]
+        selected_index = _rerank(
+            text=req.text,
+            context=context,
+            element=element,
+            candidates=candidates,
+        )
 
-    alternatives = [
+        primary = candidates[selected_index]
+
+        alternatives = [
             candidate
             for index, candidate in enumerate(candidates)
             if index != selected_index
         ]
 
-    suggestions.append(
+        suggestions.append(
             Suggestion(
                 element=element,
                 primary=primary,

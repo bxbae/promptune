@@ -1,13 +1,18 @@
 package com.promptune.service;
 
 import com.promptune.dto.PipelineDtos.DiagnoseResult;
+import com.promptune.dto.PipelineDtos.SuggestResult;
 import com.promptune.domain.ModelUsageLog;
 import com.promptune.repository.ModelUsageLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
 import java.util.Map;
+import java.util.List;
 
 @Service
 public class AiServiceClient {
@@ -18,7 +23,16 @@ public class AiServiceClient {
     private ModelUsageLogRepository logRepository;
 
     public AiServiceClient(@Value("${ai.service.url:http://localhost:8000}") String baseUrl) {
-        this.client = RestClient.builder().baseUrl(baseUrl).build();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+
+        this.client = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
+                .build();
     }
 
     public DiagnoseResult diagnose(String text) {
@@ -26,6 +40,7 @@ public class AiServiceClient {
         try {
             DiagnoseResult result = client.post()
                     .uri("/api/ai/diagnose")
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("text", text))
                     .retrieve()
                     .body(DiagnoseResult.class);
@@ -37,12 +52,39 @@ public class AiServiceClient {
         }
     }
 
+    public SuggestResult suggest(
+            String text,
+            List<String> targetElements) {
+        long start = System.currentTimeMillis();
+
+        try {
+            SuggestResult result = client.post()
+                    .uri("/api/ai/suggest")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "text", text,
+                            "target_elements", targetElements))
+                    .retrieve()
+                    .body(SuggestResult.class);
+
+            log("ai-service", "/api/ai/suggest", start, "success");
+
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/suggest", start, "error");
+            throw e;
+        }
+    }
+
     public Map generate(String prompt, String taskType, boolean useWebSearch) {
         long start = System.currentTimeMillis();
         try {
             Map result = client.post()
                     .uri("/api/ai/generate")
-                    .body(Map.of("prompt", prompt, "task_type", taskType,
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "prompt", prompt,
+                            "task_type", taskType,
                             "use_web_search", useWebSearch))
                     .retrieve()
                     .body(Map.class);

@@ -110,6 +110,40 @@ class HcxSuggestionTest(unittest.TestCase):
 
         mock_rerank.assert_called_once()
 
+    @patch("app.services.suggest_hcx._rerank", return_value=0)
+    def test_suggest_returns_one_suggestion_per_target_element(
+        self,
+        mock_rerank,
+    ):
+        req = SuggestRequest(
+            text="경쟁사 세 곳의 가격과 기능 정리해줘",
+            target_elements=[
+                "TASK",
+                "AUDIENCE",
+                "CONTEXT",
+            ],
+            context=None,
+        )
+
+        result = suggest(req)
+
+        self.assertEqual(len(result.suggestions), 3)
+
+        self.assertEqual(
+            [item.element for item in result.suggestions],
+            [
+                "TASK",
+                "AUDIENCE",
+                "CONTEXT",
+            ],
+        )
+
+        self.assertEqual(mock_rerank.call_count, 3)
+
+        for item in result.suggestions:
+            self.assertTrue(item.primary)
+            self.assertEqual(len(item.alternatives), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
