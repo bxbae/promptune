@@ -4,12 +4,9 @@ const API =
   process.env.NEXT_PUBLIC_API_URL ||
   ["http", "://", "localhost:8080"].join("");
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = getToken();
-
-  return {
-    Authorization: `Bearer ${token}`,
-  };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export async function microsoftStatus() {
@@ -72,5 +69,15 @@ export async function microsoftMessages() {
   );
 
   if (!res.ok) throw new Error("메일 조회 실패");
+  return res.json();
+}
+
+export async function microsoftProfile() {
+  const res = await fetch(
+    `${API}/api/integrations/microsoft/profile`,
+    { headers: authHeaders() }
+  );
+
+  if (!res.ok) throw new Error("Microsoft 프로필 조회 실패");
   return res.json();
 }

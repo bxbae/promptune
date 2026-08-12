@@ -49,7 +49,7 @@ public class OAuth2UserService extends DefaultOAuth2UserService {
         // DB 조회, 없으면 자동 가입
         if (email != null) {
             users.findByEmail(email).orElseGet(() -> {
-                User u = new User(email, null, name);   // 소셜은 비밀번호 없음
+                User u = new User(email, null, name, null);   // 소셜은 비밀번호·회사코드 없음, companyId는 default-company로 자동 처리됨
                 return users.save(u);
             });
         }

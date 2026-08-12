@@ -39,6 +39,7 @@ class DiagnoseResponse(BaseModel):
 class SuggestRequest(BaseModel):
     text: str
     target_elements: list[str]   # 6번에서 선정된 1~3개 요소
+    context: str | None = None   # 업무 맥락, 없으면 원문만 사용
 
 
 class Suggestion(BaseModel):

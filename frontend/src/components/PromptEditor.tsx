@@ -1,143 +1,269 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { analyze, execute, AnalyzeResponse } from "@/lib/api";
+import { analyze, execute } from "@/lib/api";
 
-const EL_KOR: Record<string, string> = {
-  TASK: "작업", AUDIENCE: "대상", CONTEXT: "배경", FORMAT: "형식",
-  TONE: "어조", LENGTH: "분량", CONSTRAINT: "제약", EXAMPLE: "예시",
-};
-// 6번에서 추천된 요소 → Ghost text 후보 (mock: 실제론 7번 ai /suggest 호출)
-const GHOST: Record<string, string> = {
-  AUDIENCE: " 팀장님께", TONE: " 정중하게", FORMAT: " 표로",
-  LENGTH: " 300자 이내로", CONTEXT: " 지난 회의 관련해서",
-  CONSTRAINT: " 전문용어는 빼고", EXAMPLE: " 지난번 양식처럼", TASK: " 요약해줘",
-};
+/**
+ * 모호성 규칙 (mock)
+ * ------------------------------------------------------------
+ * 실제로는 KcELECTRA가 문장을 분석해 "어떤 부분이 왜 모호한지"를
+ * 좌표(span)까지 함께 돌려줘야 하는데, 지금 백엔드(/api/analyze)는
+ * 요소별 충족 여부(0/1)만 주고 정확한 위치는 안 줍니다.
+ * 그래서 화면(밑줄 표시 위치)만 프론트에서 임시로 흉내 냅니다.
+ * → 백엔드가 span을 내려주기 시작하면 find() 부분만 교체하면 됩니다.
+ */
+interface AmbiguityRule {
+  id: string;
+  dependsOn?: string; // 이 규칙이 나타나려면 먼저 해결돼야 하는 규칙
+  find: (text: string) => { match: string; index: number } | null;
+  label: string;      // 팝업 상단 빨간 점 옆 문구
+  question: string;   // 팝업의 굵은 질문
+  options: string[];
+}
+
+// 백엔드 연결 전, 모호성 규칙을 프론트에서 임시로 정의
+// "메일"이 들어가면 모호성으로 간주
+const RULES: AmbiguityRule[] = [
+  {
+    id: "task",
+    find: (t) => {
+      const i = t.indexOf("메일");
+      return i >= 0 ? { match: "메일", index: i } : null;
+    },
+    label: "무엇을 요청하는 메일인지 불명확해요",
+    question: "어떤 내용의 메일인가요?",
+    options: ["보고서 제출 요청 메일", "회의 일정 안내 메일"],
+  },
+  {
+    id: "tone",
+    dependsOn: "task",
+    find: (t) => {
+      if (/정중하게|친근하게/.test(t)) return null;
+      const m = t.match(/(좀)\s*보내(줘|주세요|줄래)?/);
+      if (!m || m.index === undefined) return null;
+      return { match: m[1], index: m.index };
+    },
+    label: "어조·말투 조건이 불명확해요",
+    question: "어떤 어조로 보낼까요?",
+    options: ["정중하게", "친근하게"],
+  },
+];
 
 export default function PromptEditor() {
   const [text, setText] = useState("");
-  const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
-  const [ghostIdx, setGhostIdx] = useState(0);      // 10번: ↑↓ 대안 인덱스
-  const [result, setResult] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+  const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const [optIdx, setOptIdx] = useState(0);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customValue, setCustomValue] = useState("");
+
+  const [gate, setGate] = useState<{ passed: boolean; reason: string } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState("");
+  const [sending, setSending] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 2번: 입력 중단 감지 (0.8초) → 분석. 재입력 시 이전 요청 취소.
+  // 지금 화면에 떠 있어야 할 모호성 규칙 (한 번에 하나만)
+  const activeRule = RULES.find(
+    (r) =>
+      !resolved.has(r.id) &&
+      (!r.dependsOn || resolved.has(r.dependsOn)) &&
+      r.find(text)
+  );
+  const match = activeRule ? activeRule.find(text) : null;
+
+  // 0.7~1초 입력 중단 감지 → 실제 백엔드 진단 호출 (게이트 검사용)
   const scheduleAnalyze = useCallback((value: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (abortRef.current) abortRef.current.abort();   // 이전 요청 취소
-    if (!value.trim()) { setAnalysis(null); return; }
+    if (abortRef.current) abortRef.current.abort();
+    if (!value.trim()) { setGate(null); return; }
     timerRef.current = setTimeout(async () => {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
-        setLoading(true);
+        setAnalyzing(true);
         const res = await analyze(value, ctrl.signal);
-        setAnalysis(res);
-        setGhostIdx(0);
+        setGate(res.gate);
       } catch (e: any) {
         if (e.name !== "AbortError") console.error(e);
       } finally {
-        setLoading(false);
+        setAnalyzing(false);
       }
     }, 800);
   }, []);
 
-  useEffect(() => () => {   // 언마운트 정리
+  useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (abortRef.current) abortRef.current.abort();
   }, []);
 
-  // 6번 추천 요소 (Ghost text로 보여줄 것)
-  const targets = analysis?.recommend?.targetElements ?? [];
-  const ghostEl = targets[ghostIdx % (targets.length || 1)];
-  const ghostText = ghostEl ? GHOST[ghostEl] ?? "" : "";
+  // 오버레이(밑줄 표시용 div)와 textarea의 스크롤 위치를 항상 맞춰줌
+  function syncScroll() {
+    if (overlayRef.current && textareaRef.current) {
+      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  }
 
-  // 10번: 키보드 조작 (Tab 적용 / Esc 무시 / ↑↓ 대안)
+  function applyOption(value: string) {
+    if (!activeRule || !match) return;
+    const next = text.slice(0, match.index) + value + text.slice(match.index + match.match.length);
+    setText(next);
+    setResolved((prev) => new Set(prev).add(activeRule.id));
+    setOptIdx(0);
+    setCustomOpen(false);
+    setCustomValue("");
+    scheduleAnalyze(next);
+  }
+
+  function skipActiveRule() {
+    if (!activeRule) return;
+    setResolved((prev) => new Set(prev).add(activeRule.id));
+    setOptIdx(0);
+    setCustomOpen(false);
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (!ghostText) {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onExecute(); }
-      return;
+    if (activeRule && !customOpen) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        applyOption(activeRule.options[optIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        skipActiveRule();
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setOptIdx((i) => Math.min(activeRule.options.length - 1, i + 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setOptIdx((i) => Math.max(0, i - 1));
+        return;
+      }
     }
-    if (e.key === "Tab") {                    // 적용
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      const next = text + ghostText;
-      setText(next);
-      scheduleAnalyze(next);
-    } else if (e.key === "Escape") {          // 무시
-      setAnalysis((a) => a ? { ...a, recommend: { targetElements: [] } } : a);
-    } else if (e.key === "ArrowDown") {       // 대안 다음
-      e.preventDefault(); setGhostIdx((i) => i + 1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault(); setGhostIdx((i) => Math.max(0, i - 1));
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); onExecute();
+      onExecute();
     }
   }
 
-  async function onExecute() {               // 11번
-    if (!text.trim()) return;
-    setLoading(true);
-    const res = await execute(text);
-    setResult(res?.result?.result ?? JSON.stringify(res));
-    setLoading(false);
+  async function onExecute() {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      const res = await execute(text);
+      setResult(res?.result?.result ?? JSON.stringify(res));
+    } finally {
+      setSending(false);
+    }
   }
 
-  const missing = analysis?.diagnose?.missing ?? {};
-  const gateBlocked = analysis && !analysis.gate.passed;
+  // 오버레이용: 텍스트를 [이전 | 모호한 구간(밑줄) | 이후] 로 쪼갬
+  let before = text, underline = "", after = "";
+  if (activeRule && match) {
+    before = text.slice(0, match.index);
+    underline = match.match;
+    after = text.slice(match.index + match.match.length);
+  }
+
+  const gateBlocked = gate && !gate.passed;
 
   return (
-    <div className="editor">
-      <label className="eyebrow">프롬프트 입력</label>
-      <div className="input-wrap">
-        <textarea
-          value={text}
-          onChange={(e) => { setText(e.target.value); scheduleAnalyze(e.target.value); }}
-          onKeyDown={onKeyDown}
-          placeholder="업무 지시문을 입력하세요. 예: 회의록 정리해줘"
-          rows={3}
-        />
-        {/* 9번: Ghost text (흐린 자동완성) */}
-        {ghostText && (
-          <div className="ghost" aria-hidden>
-            <span className="ghost-typed">{text}</span>
-            <span className="ghost-suggest">{ghostText}</span>
+    <div className="composer-wrap">
+      <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>
+
+      <div className="composer-box">
+        <div className="input-wrap">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => { setText(e.target.value); scheduleAnalyze(e.target.value); }}
+            onScroll={syncScroll}
+            onKeyDown={onKeyDown}
+            placeholder="보내기 전에 먼저 다듬어드려요"
+            rows={2}
+          />
+          {/* 밑줄 오버레이: 실제 글자는 투명, 모호한 구간만 빨간 점선 밑줄 */}
+          <div className="overlay" ref={overlayRef} aria-hidden>
+            <span className="ov-plain">{before}</span>
+            {activeRule && (
+              <span className="ov-underline">
+                {underline}
+                <span className="popup">
+                  <span className="popup-label">
+                    <span className="popup-dot" /> {activeRule.label}
+                  </span>
+                  <div className="popup-question">{activeRule.question}</div>
+                  {activeRule.options.map((opt, i) => (
+                    <button
+                      key={opt}
+                      className={`popup-option ${i === optIdx && !customOpen ? "active" : ""}`}
+                      onMouseDown={(e) => { e.preventDefault(); applyOption(opt); }}
+                      onMouseEnter={() => setOptIdx(i)}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                  {!customOpen ? (
+                    <button className="popup-custom-btn" onMouseDown={(e) => { e.preventDefault(); setCustomOpen(true); }}>
+                      직접 입력
+                    </button>
+                  ) : (
+                    <input
+                      className="popup-custom-input"
+                      autoFocus
+                      value={customValue}
+                      onChange={(e) => setCustomValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") { e.preventDefault(); applyOption(customValue || underline); }
+                        if (e.key === "Escape") { e.preventDefault(); setCustomOpen(false); }
+                      }}
+                      placeholder="직접 입력 후 Enter"
+                    />
+                  )}
+                </span>
+              </span>
+            )}
+            <span className="ov-plain">{after}</span>
           </div>
-        )}
+        </div>
+
+        <div className="composer-actions">
+          <div className="composer-icons">
+            <button className="icon-btn" type="button" title="첨부 (미구현)">
+              <img src="/icons/plus-muted.png" alt="" />
+            </button>
+            <button className="icon-btn" type="button" title="링크 (미구현)">
+              <img src="/icons/link.png" alt="" />
+            </button>
+          </div>
+          <div className="composer-right">
+            <span className="char-analyzing">{analyzing && "분석 중…"}</span>
+            <button
+              className="send-btn"
+              disabled={!text.trim() || sending}
+              onClick={onExecute}
+              title="Enter로도 실행됩니다"
+            >
+              ↑
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="hint">
-        {loading ? "분석 중…" :
-          ghostText ? <>Tab 적용 · Esc 무시 · ↑↓ 대안 · Enter 실행</> :
-          "입력을 멈추면 분석합니다 · Enter 실행"}
+        <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
       </div>
 
-      {/* 3번 게이트 차단 */}
-      {gateBlocked && <div className="gate-block">⚠ {analysis!.gate.reason}</div>}
+      {gateBlocked && <div className="gate-block">⚠ {gate!.reason}</div>}
 
-      {/* 5번 진단 결과 — 8요소 상태 */}
-      {analysis?.diagnose && (
-        <div className="diagnose">
-          <div className="row">
-            <span className="tag">업무유형</span>
-            <b>{analysis.diagnose.taskType}</b>
-            {analysis.diagnose.needsInternalDocs && <span className="badge">내부문서 참조</span>}
-          </div>
-          <div className="elements">
-            {Object.entries(missing).map(([el, v]) => (
-              <span key={el} className={`el ${v === 1 ? "miss" : "ok"} ${targets.includes(el) ? "target" : ""}`}>
-                {EL_KOR[el]}{v === 1 ? " 보완필요" : " 충분"}
-              </span>
-            ))}
-          </div>
-          {analysis.diagnose.typos.length > 0 && (
-            <div className="typos">오탈자: {analysis.diagnose.typos.map(t => `${t.span}→${t.suggest}`).join(", ")}</div>
-          )}
-        </div>
-      )}
-
-      {/* 14번 결과 */}
       {result && (
         <div className="result">
           <label className="eyebrow">생성 결과</label>

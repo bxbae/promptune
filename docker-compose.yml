@@ -26,8 +26,17 @@ services:
       AI_DIAGNOSIS_MODEL_PATH: /app/models/prompt-diagnosis
       AI_DIAGNOSIS_MAX_LENGTH: "128"
       AI_DIAGNOSIS_DEVICE: "cpu"
+      USE_REAL_SPELLCHECK: "${USE_REAL_SPELLCHECK:-false}"
+      BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
+      BAREUN_API_URL: "${BAREUN_API_URL:-https://api.bareun.ai}"
+      USE_REAL_SUGGESTION: "${USE_REAL_SUGGESTION:-false}"
+      HF_TOKEN: "${HF_TOKEN:-}"
+      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
+      HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
+      HF_HOME: /root/.cache/huggingface
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     depends_on:
@@ -83,3 +92,4 @@ services:
 
 volumes:
   pgdata:
+  hf_cache:

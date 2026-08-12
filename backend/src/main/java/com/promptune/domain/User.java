@@ -37,12 +37,13 @@ public class User {
 
     protected User() {}   // JPA 기본 생성자
 
-    public User(String email, String passwordHash, String name) {
-        this.email = email;
-        this.passwordHash = passwordHash;
-        this.name = name;
-        this.provider = "local";
-    }
+    public User(String email, String passwordHash, String name, String companyId) {
+    this.email = email;
+    this.passwordHash = passwordHash;
+    this.name = name;
+    this.provider = "local";
+    this.companyId = (companyId == null || companyId.isBlank()) ? null : companyId;
+}
 
     // getter
     public Long getId() { return id; }
@@ -50,4 +51,5 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public String getName() { return name; }
     public String getProvider() { return provider; }
+    public void setCompanyId(String companyId) { this.companyId = companyId; }
 }
