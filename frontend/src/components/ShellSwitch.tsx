@@ -8,7 +8,7 @@ import { logout } from "@/lib/auth";
 const PATH_TO_KEY: Record<string, NavKey> = {
   "/chat": "newChat",
   "/chats": "chat",
-  "/documents": "documents",
+  "/files": "files",
   "/history": "history",
   "/dashboard": "dashboard",
   "/settings": "settings",
@@ -16,7 +16,7 @@ const PATH_TO_KEY: Record<string, NavKey> = {
 const KEY_TO_PATH: Record<NavKey, string> = {
   newChat: "/chat",
   chat: "/chats",
-  documents: "/documents",
+  files: "/files",
   history: "/history",
   dashboard: "/dashboard",
   settings: "/settings",

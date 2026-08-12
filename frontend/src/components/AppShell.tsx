@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export type NavKey = "newChat" | "chat" | "documents" | "history" | "dashboard" | "settings";
+export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
 
 const NAV_ITEMS: { key: NavKey; label: string, icon: string }[] = [
-  { key: "documents", label: "문서관리", icon: "documents" },
+  { key: "files", label: "파일관리", icon: "files" },
   { key: "history", label: "히스토리", icon: "history" },
   { key: "dashboard", label: "대시보드", icon: "dashboard" },
   { key: "settings", label: "설정", icon: "settings" },

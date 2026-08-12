@@ -66,7 +66,7 @@ export default function OnboardingPage() {
                   cursor: "pointer", fontFamily: "inherit",
                 }}
               >
-                <div style={{ fontWeight: 600 }}>{opt.label}</div>
+                <div style={{ fontWeight: 600, color: "var(--ink)" }}>{opt.label}</div>
                 <div style={{ fontSize: 13, color: "var(--muted)" }}>{opt.desc}</div>
               </button>
             ))}
