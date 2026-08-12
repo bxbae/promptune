@@ -31,3 +31,11 @@ backend/.gradle/
 backend/bin/
 backend/build/
 .gradle/
+
+# 환경변수 파일 (실제 키·비밀번호 - 절대 커밋 금지)
+.env
+.env.production
+.env.local
+*.env
+!.env.example
+!.env.production.example
