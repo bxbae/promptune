@@ -237,11 +237,15 @@ export default function PromptEditor() {
 
         <div className="composer-actions">
           <div className="composer-icons">
-            <button className="icon-btn" type="button" title="첨부 (미구현)">+</button>
-            <button className="icon-btn" type="button" title="링크 (미구현)">🔗</button>
+            <button className="icon-btn" type="button" title="첨부 (미구현)">
+              <img src="/icons/plus-muted.png" alt="" />
+            </button>
+            <button className="icon-btn" type="button" title="링크 (미구현)">
+              <img src="/icons/link.png" alt="" />
+            </button>
           </div>
           <div className="composer-right">
-            <span className="char-count">{text.length}자</span>
+            <span className="char-analyzing">{analyzing && "분석 중…"}</span>
             <button
               className="send-btn"
               disabled={!text.trim() || sending}
@@ -256,8 +260,6 @@ export default function PromptEditor() {
 
       <div className="hint">
         <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
-        <br />
-        {analyzing && "분석 중…"}
       </div>
 
       {gateBlocked && <div className="gate-block">⚠ {gate!.reason}</div>}
