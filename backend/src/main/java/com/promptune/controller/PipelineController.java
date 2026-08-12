@@ -2,7 +2,7 @@ package com.promptune.controller;
 
 import com.promptune.dto.PipelineDtos.*;
 import com.promptune.service.*;
-import com.promptune.domain.User;              // 추가
+import com.promptune.domain.User; // 추가
 import com.promptune.repository.UserRepository; // 추가
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -19,17 +19,19 @@ public class PipelineController {
     private final AiServiceClient ai;
     private final RecommendService recommend;
     private final GraphMockService graph;
-    private final RequestClassificationService classification;   // 추가
-    private final UserRepository userRepository;                 // 추가 (companyId 조회용)
-    private final BehaviorLogService behaviorLog;   // 필드 추가
+    private final RequestClassificationService classification; // 추가
+    private final UserRepository userRepository; // 추가 (companyId 조회용)
+    private final BehaviorLogService behaviorLog; // 필드 추가
 
     public PipelineController(GateService gate, AiServiceClient ai,
-                              RecommendService recommend, GraphMockService graph,
-                              RequestClassificationService classification,
-                              UserRepository userRepository,
-                              BehaviorLogService behaviorLog) {
-        this.gate = gate; this.ai = ai;
-        this.recommend = recommend; this.graph = graph;
+            RecommendService recommend, GraphMockService graph,
+            RequestClassificationService classification,
+            UserRepository userRepository,
+            BehaviorLogService behaviorLog) {
+        this.gate = gate;
+        this.ai = ai;
+        this.recommend = recommend;
+        this.graph = graph;
         this.classification = classification;
         this.userRepository = userRepository;
         this.behaviorLog = behaviorLog;
@@ -37,7 +39,7 @@ public class PipelineController {
 
     /**
      * 2번: 프롬프트 분석 (입력 중단 시 프론트가 호출).
-     * 흐름: 3게이트 → 5진단(AI) → 6추천선정
+     * 흐름: 3게이트 → 5진단(AI) → 6수정요소선정 → 7추천문구선정(AI)
      */
     @PostMapping("/analyze")
     public AnalyzeResponse analyze(@RequestBody AnalyzeRequest req) {
@@ -46,13 +48,34 @@ public class PipelineController {
         // 3번 게이트
         GateResult g = gate.check(req.text());
         if (!g.passed()) {
-            return new AnalyzeResponse(g, null, null);
+            return new AnalyzeResponse(
+                    g,
+                    null,
+                    null,
+                    null);
         }
         // 5번 진단 (ai-service 호출)
         DiagnoseResult d = ai.diagnose(req.text());
+
         // 6번 수정요소 선정
         RecommendResult r = recommend.select(d, req.userId());
-        return new AnalyzeResponse(g, d, r);
+
+        // 7번 문맥 기반 추천문구 선정
+        SuggestResult s;
+
+        if (r.targetElements().isEmpty()) {
+            s = new SuggestResult(java.util.List.of());
+        } else {
+            s = ai.suggest(
+                    req.text(),
+                    r.targetElements());
+        }
+
+        return new AnalyzeResponse(
+                g,
+                d,
+                r,
+                s);
     }
 
     /**
@@ -73,8 +96,7 @@ public class PipelineController {
         return Map.of(
                 "taskType", d.taskType(),
                 "needsInternalDocs", needsInternalDocs,
-                "result", result
-        );
+                "result", result);
     }
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) */
@@ -82,7 +104,6 @@ public class PipelineController {
     public Map<String, Object> context(@PathVariable Long userId) {
         return Map.of(
                 "firstVisit", graph.isFirstVisit(userId),
-                "workContext", graph.getUserContext(userId)
-        );
+                "workContext", graph.getUserContext(userId));
     }
 }

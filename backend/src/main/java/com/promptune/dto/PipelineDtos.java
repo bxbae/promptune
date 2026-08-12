@@ -11,31 +11,49 @@ import java.util.Map;
  */
 public class PipelineDtos {
 
-    public record AnalyzeRequest(String text, Long userId) {}
+        public record AnalyzeRequest(String text, Long userId) {
+        }
 
-    public record GateResult(boolean passed, String reason) {}
+        public record GateResult(boolean passed, String reason) {
+        }
 
-    // 5번 ai-service /diagnose 응답. snake_case JSON을 camelCase로 매핑.
-    public record DiagnoseResult(
-            Map<String, Integer> missing,
-            @JsonProperty("task_type") String taskType,
-            List<Map<String, String>> typos,
-            @JsonProperty("needs_internal_docs") boolean needsInternalDocs
-    ) {}
+        // 5번 ai-service /diagnose 응답. snake_case JSON을 camelCase로 매핑.
+        public record DiagnoseResult(
+                        Map<String, Integer> missing,
+                        @JsonProperty("task_type") String taskType,
+                        List<Map<String, String>> typos,
+                        @JsonProperty("needs_internal_docs") boolean needsInternalDocs) {
+        }
 
-    public record RecommendResult(List<String> targetElements) {}
+        public record RecommendResult(List<String> targetElements) {
+        }
 
-    public record AnalyzeResponse(
-            GateResult gate,
-            DiagnoseResult diagnose,
-            RecommendResult recommend
-    ) {}
+        // 7번 ai-service /suggest 응답
+        public record SuggestionItem(
+                        String element,
+                        String primary,
+                        List<String> alternatives) {
+        }
 
-    public record ExecuteRequest(String finalPrompt, Long userId) {}
+        public record SuggestResult(
+                        List<SuggestionItem> suggestions) {
+        }
 
-    public record ClassifyResult(
-            @JsonProperty("task_type") String taskType,
-            @JsonProperty("needs_internal_docs") boolean needsInternalDocs) {}
+        public record AnalyzeResponse(
+                        GateResult gate,
+                        DiagnoseResult diagnose,
+                        RecommendResult recommend,
+                        SuggestResult suggest) {
+        }
 
-    public record BehaviorLog(Long userId, String action, String element) {}
+        public record ExecuteRequest(String finalPrompt, Long userId) {
+        }
+
+        public record ClassifyResult(
+                        @JsonProperty("task_type") String taskType,
+                        @JsonProperty("needs_internal_docs") boolean needsInternalDocs) {
+        }
+
+        public record BehaviorLog(Long userId, String action, String element) {
+        }
 }
