@@ -96,6 +96,23 @@ public class AiServiceClient {
         }
     }
 
+    public String summarizeTitle(String text) {
+        long start = System.currentTimeMillis();
+        try {
+            Map result = client.post()
+                    .uri("/api/ai/summarize-title")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("text", text))
+                    .retrieve()
+                    .body(Map.class);
+            log("ai-service", "/api/ai/summarize-title", start, "success");
+            return (String) result.get("title");
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/summarize-title", start, "error");
+            return null;   // 실패해도 전체 흐름은 안 끊기게, null 반환
+        }
+    }
+
     private void log(String provider, String endpoint, long startTime, String status) {
         int elapsed = (int) (System.currentTimeMillis() - startTime);
         logRepository.save(new ModelUsageLog(provider, endpoint, elapsed, status));
