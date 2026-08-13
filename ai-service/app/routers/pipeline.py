@@ -37,11 +37,23 @@ USE_REAL_SUGGESTION = (
     == "true"
 )
 
+
+USE_REAL_RETRIEVAL = (
+    os.getenv(
+        "USE_REAL_RETRIEVAL",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
+
 if USE_REAL_DIAGNOSIS:
     from app.services import diagnose_real
 
 if USE_REAL_SUGGESTION:
     from app.services import suggest_hcx
+
+if USE_REAL_RETRIEVAL:
+    from app.services.retrieval import rag_retriever
 
 
 router = APIRouter()
@@ -88,6 +100,9 @@ def safety_check(req: SafetyRequest):
     tags=["13.내부검색"],
 )
 def retrieve(req: RetrieveRequest):
+    if USE_REAL_RETRIEVAL:
+        return rag_retriever.retrieve(req)
+
     return pipeline_mock.retrieve(req)
 
 
