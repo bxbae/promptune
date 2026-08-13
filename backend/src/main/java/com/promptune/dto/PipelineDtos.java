@@ -46,7 +46,7 @@ public class PipelineDtos {
                         SuggestResult suggest) {
         }
 
-        public record ExecuteRequest(String finalPrompt, Long userId) {
+        public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId) {
         }
 
         public record ClassifyResult(

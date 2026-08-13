@@ -22,12 +22,16 @@ public class PipelineController {
     private final RequestClassificationService classification; // 추가
     private final UserRepository userRepository; // 추가 (companyId 조회용)
     private final BehaviorLogService behaviorLog; // 필드 추가
+    private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
+private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
 
     public PipelineController(GateService gate, AiServiceClient ai,
-            RecommendService recommend, GraphMockService graph,
-            RequestClassificationService classification,
-            UserRepository userRepository,
-            BehaviorLogService behaviorLog) {
+        RecommendService recommend, GraphMockService graph,
+        RequestClassificationService classification,
+        UserRepository userRepository,
+        BehaviorLogService behaviorLog,
+        com.promptune.repository.PromptSessionRepository promptSessionRepository,
+        com.promptune.repository.ChatSessionRepository chatSessionRepository) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -35,6 +39,8 @@ public class PipelineController {
         this.classification = classification;
         this.userRepository = userRepository;
         this.behaviorLog = behaviorLog;
+        this.promptSessionRepository = promptSessionRepository;
+        this.chatSessionRepository = chatSessionRepository;
     }
 
     /**
@@ -83,21 +89,35 @@ public class PipelineController {
      * 흐름: 12분류 → (13검색) → 14생성(AI) → 16저장
      */
     @PostMapping("/execute")
-    public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
-        DiagnoseResult d = ai.diagnose(req.finalPrompt());
+public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
+    DiagnoseResult d = ai.diagnose(req.finalPrompt());
 
-        String companyId = userRepository.findById(req.userId())
-                .map(User::getCompanyId).orElse("default-company");
-        boolean needsInternalDocs = classification.needsInternalDocs(
-                d.needsInternalDocs(), req.finalPrompt(), companyId);
+    String companyId = userRepository.findById(req.userId())
+            .map(User::getCompanyId).orElse("default-company");
+    boolean needsInternalDocs = classification.needsInternalDocs(
+            d.needsInternalDocs(), req.finalPrompt(), companyId);
 
-        Map result = ai.generate(req.finalPrompt(), d.taskType(), needsInternalDocs);
-        behaviorLog.recordAction(req.userId(), d.taskType(), "tab");
-        return Map.of(
-                "taskType", d.taskType(),
-                "needsInternalDocs", needsInternalDocs,
-                "result", result);
+    Map result = ai.generate(req.finalPrompt(), d.taskType(), needsInternalDocs);
+    behaviorLog.recordAction(req.userId(), d.taskType(), "tab");
+
+    // prompt_sessions 저장 (지금까지 없던 로직, 이번에 신규 추가) + chat_session 연결
+    com.promptune.domain.PromptSession session = new com.promptune.domain.PromptSession(
+            req.userId(), req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
+    promptSessionRepository.save(session);
+
+    // 이 대화에 새 메시지가 쌓였으니 최근활동순 정렬을 위해 chat_sessions.updated_at 갱신
+    if (req.chatSessionId() != null) {
+        chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
+            chat.touch();
+            chatSessionRepository.save(chat);
+        });
     }
+
+    return Map.of(
+            "taskType", d.taskType(),
+            "needsInternalDocs", needsInternalDocs,
+            "result", result);
+}
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) */
     @GetMapping("/context/{userId}")
