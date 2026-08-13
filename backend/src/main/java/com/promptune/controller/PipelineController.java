@@ -105,9 +105,15 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
             req.userId(), req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
     promptSessionRepository.save(session);
 
-    // 이 대화에 새 메시지가 쌓였으니 최근활동순 정렬을 위해 chat_sessions.updated_at 갱신
     if (req.chatSessionId() != null) {
         chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
+            // 이 대화의 첫 프롬프트라면(title이 아직 없으면) 원문 앞부분으로 제목 자동 생성
+            // 임시 방식: 앞 20자 자르기. AI 요약 방식은 팀 결정 시 이 부분만 교체하면 됨
+            if (chat.getTitle() == null || chat.getTitle().isBlank()) {
+                String raw = req.finalPrompt();
+                String title = raw.length() > 20 ? raw.substring(0, 20) + "..." : raw;
+                chat.setTitle(title);
+            }
             chat.touch();
             chatSessionRepository.save(chat);
         });

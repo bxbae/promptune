@@ -26,6 +26,8 @@ public class PromptSession {
     @Column(name = "chat_session_id")
     private Long chatSessionId;
 
+    private String satisfaction;   // 'good' / 'bad' / null
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -41,5 +43,9 @@ public class PromptSession {
     }
 
     public Long getId() { return id; }
+    public Long getUserId() { return userId; }
     public Long getChatSessionId() { return chatSessionId; }
+    public String getTaskType() { return taskType; }
+    public String getSatisfaction() { return satisfaction; }
+    public void setSatisfaction(String satisfaction) { this.satisfaction = satisfaction; }
 }
