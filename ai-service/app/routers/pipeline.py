@@ -122,3 +122,18 @@ def generate(req: GenerateRequest):
 )
 def validate(req: ValidateRequest):
     return pipeline_mock.validate(req)
+
+
+@router.post(
+    "/summarize-title",
+    tags=["대화 제목 요약"],
+)
+def summarize_title(req: dict):
+    """대화의 첫 프롬프트를 짧은 제목으로 요약. 지금은 mock(앞부분 자르기)이고,
+    승득님이 실제 모델(HyperCLOVA 등)로 교체 예정."""
+    text = req.get("text", "")
+    # TODO(승득): 실제 요약 모델 호출로 교체
+    # 지금은 mock: 앞 15자만 사용 (기존 백엔드 로직이 20자였던 것보다 더 짧게,
+    # "AI가 다듬은 느낌"을 흉내내기 위해 임시로 이렇게 처리)
+    title = text[:15].strip()
+    return {"title": title}

@@ -106,18 +106,25 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     promptSessionRepository.save(session);
 
     if (req.chatSessionId() != null) {
-        chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
-            // 이 대화의 첫 프롬프트라면(title이 아직 없으면) 원문 앞부분으로 제목 자동 생성
-            // 임시 방식: 앞 20자 자르기. AI 요약 방식은 팀 결정 시 이 부분만 교체하면 됨
-            if (chat.getTitle() == null || chat.getTitle().isBlank()) {
-                String raw = req.finalPrompt();
-                String title = raw.length() > 20 ? raw.substring(0, 20) + "..." : raw;
-                chat.setTitle(title);
+    chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
+        // 이 대화의 첫 프롬프트라면(title이 아직 없으면) 제목 자동 생성
+        if (chat.getTitle() == null || chat.getTitle().isBlank()) {
+            String raw = req.finalPrompt();
+            String aiTitle = ai.summarizeTitle(raw);   // ai-service 호출 시도
+
+            String title;
+            if (aiTitle != null && !aiTitle.isBlank()) {
+                title = aiTitle;   // AI 요약 성공
+            } else {
+                // ai-service 호출 실패 시 안전장치: 기존 방식(앞부분 자르기)으로 대체
+                title = raw.length() > 20 ? raw.substring(0, 20) + "..." : raw;
             }
-            chat.touch();
-            chatSessionRepository.save(chat);
-        });
-    }
+            chat.setTitle(title);
+        }
+        chat.touch();
+        chatSessionRepository.save(chat);
+    });
+}
 
     return Map.of(
             "taskType", d.taskType(),
