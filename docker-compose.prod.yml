@@ -9,19 +9,14 @@ services:
       USE_REAL_MODELS: "${USE_REAL_MODELS:-false}"
       USE_REAL_DIAGNOSIS: "${USE_REAL_DIAGNOSIS:-false}"
       AI_DIAGNOSIS_MODEL_PATH: /app/models/prompt-diagnosis
-      AI_DIAGNOSIS_MAX_LENGTH: "128"
       AI_DIAGNOSIS_DEVICE: "cpu"
       USE_REAL_SPELLCHECK: "${USE_REAL_SPELLCHECK:-false}"
       BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
-      BAREUN_API_URL: "${BAREUN_API_URL:-https://api.bareun.ai}"
       USE_REAL_SUGGESTION: "${USE_REAL_SUGGESTION:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
-      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
-      HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
       HF_HOME: /root/.cache/huggingface
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
-      KAKAO_CLIENT_ID: "${KAKAO_CLIENT_ID:-}"
       - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
@@ -39,20 +34,14 @@ services:
       JWT_SECRET: "${JWT_SECRET}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      KAKAO_CLIENT_ID: "${KAKAO_CLIENT_ID:-}"
       KAKAO_CLIENT_SECRET: "${KAKAO_CLIENT_SECRET:-}"
       NAVER_CLIENT_ID: "${NAVER_CLIENT_ID:-}"
       NAVER_CLIENT_SECRET: "${NAVER_CLIENT_SECRET:-}"
-      MICROSOFT_CLIENT_ID: "${MICROSOFT_CLIENT_ID:-}"
-      MICROSOFT_CLIENT_SECRET: "${MICROSOFT_CLIENT_SECRET:-}"
-      MICROSOFT_TENANT: "${MICROSOFT_TENANT:-common}"
-      MICROSOFT_REDIRECT_URI: "${MICROSOFT_REDIRECT_URI:-}"
-      MICROSOFT_FRONTEND_URL: "${MICROSOFT_FRONTEND_URL:-}"
-      MICROSOFT_TOKEN_KEY: "${MICROSOFT_TOKEN_KEY:-}"
     ports:
       - "8080:8080"
     depends_on:
-      ai-service:
-        condition: service_started
+      - ai-service
     restart: unless-stopped
 
   frontend:
