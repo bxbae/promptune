@@ -3,3 +3,5 @@ uvicorn[standard]==0.30.6
 pydantic==2.9.2
 numpy
 transformers==5.14.1
+FlagEmbedding==1.4.0
+psycopg[binary]

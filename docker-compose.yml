@@ -30,10 +30,16 @@ services:
       BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
       BAREUN_API_URL: "${BAREUN_API_URL:-https://api.bareun.ai}"
       USE_REAL_SUGGESTION: "${USE_REAL_SUGGESTION:-false}"
+      USE_REAL_RETRIEVAL: "${USE_REAL_RETRIEVAL:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
       HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
       HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
       HF_HOME: /root/.cache/huggingface
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: promptune
+      DB_USER: promptune
+      DB_PASSWORD: promptune
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
       - hf_cache:/root/.cache/huggingface
