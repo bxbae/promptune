@@ -34,3 +34,21 @@ export function getToken(): string | null {
 export function logout() {
   if (typeof window !== "undefined") localStorage.removeItem("pt_token");
 }
+export interface CurrentUser {
+  email: string;
+  name: string;
+}
+export function getCurrentUser(): CurrentUser | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(
+      atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
+    const email = payload.sub || payload.email;
+    if (!email) return null;
+    return { email, name: payload.name || email.split("@")[0] };
+  } catch {
+    return null;
+  }
+}
