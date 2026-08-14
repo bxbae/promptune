@@ -105,3 +105,12 @@ class ValidateResponse(BaseModel):
     no_contradiction: bool
     facts_preserved: bool
     issues: list[str]
+
+# ---------- 대화 제목 요약 ----------
+
+class SummarizeTitleRequest(BaseModel):
+    text: str
+
+
+class SummarizeTitleResponse(BaseModel):
+    title: str
