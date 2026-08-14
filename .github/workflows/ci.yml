@@ -95,7 +95,7 @@ jobs:
     name: ECR 이미지 푸시
     runs-on: ubuntu-latest
     needs: [docker-build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.ENABLE_ECR_PUSH == 'true'
     permissions:
       id-token: write   # OIDC로 임시 자격증명 발급받기 위해 필요
       contents: read
