@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { listChatSessions, ChatSession } from "@/api/chatSessions";
 import { getCurrentUser, logout } from "@/lib/auth";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
@@ -33,8 +35,18 @@ export default function AppShell({
 }: AppShellProps) {
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [recentChats, setRecentChats] = useState<ChatSession[]>([]);
+  const router = useRouter();
+  const pathname = usePathname();
   // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  // 최근 채팅 목록 — 경로가 바뀔 때마다 다시 불러와서, 방금 만든 대화가 바로 보이게 함
+  useEffect(() => {
+    listChatSessions()
+      .then((chats) => setRecentChats(chats.slice(0, 8)))
+      .catch(() => setRecentChats([])); // 로그인 전이거나 실패하면 그냥 빈 목록
+  }, [pathname]);
 
   // 저장된 다크모드 · 사이드바 접힘 상태 복원
   useEffect(() => {
@@ -64,7 +76,7 @@ export default function AppShell({
   }, [accountMenuOpen]); */
 
 
-  // 프로필 사진 대신 이메일 첫 글자와 이름 표시 (임시)
+  // 프로필 사진 대신 이메일 첫 글자와 이름 표시
  const currentUser = getCurrentUser(); 
   const displayEmail = currentUser?.email || userEmail; 
  const initial = displayEmail.slice(0, 1).toUpperCase();
@@ -138,7 +150,21 @@ export default function AppShell({
           ))}
         </nav>
 
-        <div className="sidebar-spacer" />
+        {/* 최근 채팅 - 이 목록만 별도로 스크롤됨 */}
+
+        <div className="sidebar-spacer" style={{ borderTop: "1px solid var(--line)", margin: "3px 0" }} />
+        <div className="recent-chats">
+          {recentChats.map((c) => (
+            <button
+              key={c.id}
+              className={`recent-chat-item ${pathname === `/chat/${c.id}` ? "active" : ""}`}
+              onClick={() => router.push(`/chat/${c.id}`)}
+              title={c.title || `대화 #${c.id}`}
+            >
+              {c.title || `대화 #${c.id}`}
+            </button>
+          ))}
+        </div>
 
         {/* 하단: 다크모드 토글, 계정 정보, 로그아웃 */}
         <div className="sidebar-bottom">

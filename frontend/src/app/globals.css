@@ -153,10 +153,10 @@ textarea:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* ---- AppShell / 사이드바 ---- */
-.shell { display: flex; min-height: 100vh; background: var(--bg); }
+.shell { display: flex; height: 100vh; background: var(--bg); }
 
 .sidebar {
-  width: 240px; flex-shrink: 0; background: var(--panel);
+  width: 240px; flex-shrink: 0; min-height: 0; background: var(--panel);
   border-right: 1px solid var(--line); display: flex; flex-direction: column;
   padding: 20px 30px; transition: width 0.18s ease, padding 0.18s ease;
   /* overflow: hidden;  */
@@ -236,8 +236,6 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .nav-item.static { cursor: default; color: var(--muted); }
 .nav-item.static:hover { background: transparent; }
 
-.sidebar-spacer { flex: 1; }
-
 .sidebar-bottom {
   border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px;
   display: flex; flex-direction: column; gap: 12px;
@@ -297,8 +295,23 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .logout-link:hover { color: var(--ink); }
 
-.content { flex: 1; min-height: 100vh; overflow-y: auto; }
+.content { flex: 1; min-height: 100vh; overflow-y: auto; position: relative; }
 .content .page { padding: 48px 20px 80px; }
+
+/* ---- 사이드바 최근 채팅 목록 (최신순) ---- */
+.recent-chats {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px; margin: 4px 0; padding-right: 2px;
+}
+.recent-chat-item {
+  display: block; width: 100%; text-align: left; padding: 6px 12px;
+  border: none; background: transparent; border-radius: 8px; cursor: pointer;
+  font-size: 12.5px; color: var(--muted); font-family: inherit;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+}
+.recent-chat-item:hover { background: var(--accent-tint); color: var(--ink); }
+.recent-chat-item.active { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.sidebar.collapsed .recent-chats { display: none; }
 
 /* ---- 인증 폼 ---- */
 .auth {
@@ -467,3 +480,50 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   border-radius: 4px; display: flex; align-items: center; justify-content: center;
 }
 .preview-photo-icon { font-size: 28px; opacity: 0.5; }
+
+
+/* ---- 채팅 스레드 (/chat/[id]) ---- */
+.chat-page { max-width: 720px; margin: 0 auto; padding: 48px 20px 20px; min-height: calc(100vh - 68px);
+  display: flex; flex-direction: column; }
+
+/* 대화 스레드 모드: .content 영역 전체를 차지하고, 메시지 목록(.thread)만 스크롤.
+   컴포저는 flex-shrink:0로 항상 맨 아래 고정, 폭도 .thread와 동일하게 맞춤. */
+.chat-page.has-thread {
+  position: absolute; inset: 0; min-height: 0;
+  display: flex; flex-direction: column; padding: 0; margin: 0; max-width: none;
+}
+.chat-page.has-thread .thread {
+  flex: 1; overflow-y: auto; min-height: 0;
+  max-width: 720px; width: 100%; margin: 0 auto; padding: 40px 20px 20px;
+}
+.chat-page.has-thread .no-thread-box {
+  padding: 20px 0; color: var(--muted); font-size: 13px; flex-grow: 1;
+  position: relative;
+}
+.chat-page.has-thread .no-thread-box span {
+  position: absolute; top: 50%; transform: translateY(-50%);
+}
+.chat-page.has-thread .composer-wrap {
+  flex-shrink: 0; position: static; transform: none;
+  max-width: 720px; width: 100%; margin: 0 auto; padding: 0 20px 20px;
+}
+
+.thread { display: flex; flex-direction: column; gap: 24px; margin-bottom: 24px; flex: 1; }
+.msg-row.user { display: flex; justify-content: flex-end; }
+.msg-bubble.user {
+  background: var(--accent-tint); color: var(--ink); padding: 12px 16px;
+  border-radius: 14px 14px 2px 14px; max-width: 80%; white-space: pre-wrap; font-size: 15px;
+}
+.msg-assistant { max-width: 90%; }
+.msg-sender { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 6px; }
+.msg-bubble.assistant {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
+}
+
+.status-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.status-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.status-title .dots { color: var(--muted); }
+.status-step { font-size: 13px; color: var(--muted); padding: 3px 0; }
+.status-step.done { color: var(--accent); }
+.status-step.current { color: var(--ink); font-weight: 600; }
