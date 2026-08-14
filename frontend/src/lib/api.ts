@@ -28,11 +28,11 @@ export async function analyze(
 }
 
 // 11번: 실행
-export async function execute(finalPrompt: string) {
+export async function execute(finalPrompt: string, chatSessionId?: number) {
   const res = await fetch(`${API}/api/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ finalPrompt, userId: 1 }),
+    body: JSON.stringify({ finalPrompt, userId: 1, chatSessionId }),
   });
   return res.json();
 }

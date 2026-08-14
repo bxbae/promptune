@@ -48,7 +48,17 @@ const RULES: AmbiguityRule[] = [
   },
 ];
 
-export default function PromptEditor() {
+interface PromptEditorProps {
+  // 있으면: 전송 시 이 콜백만 호출하고 입력창 비움 (실행/결과 표시는 호출한 쪽 책임)
+  // 없으면: 기존처럼 이 컴포넌트가 직접 execute() 호출 + 결과를 자기 아래에 표시
+  onSubmit?: (text: string) => void;
+  // true: 큰 제목/힌트문구 없이 입력창만 (대화 스레드 하단용)
+  compact?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+export default function PromptEditor({ onSubmit, compact = false, disabled = false, placeholder }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const [optIdx, setOptIdx] = useState(0);
@@ -154,7 +164,15 @@ export default function PromptEditor() {
   }
 
   async function onExecute() {
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sending || disabled) return;
+    if (onSubmit) {
+      onSubmit(text.trim());
+      setText("");
+      setResolved(new Set());
+      setGate(null);
+      setCustomOpen(false);
+      return;
+    }
     setSending(true);
     try {
       const res = await execute(text);
@@ -176,7 +194,7 @@ export default function PromptEditor() {
 
   return (
     <div className="composer-wrap">
-      <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>
+      {!compact && <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>}
 
       <div className="composer-box">
         <div className="input-wrap">
@@ -186,8 +204,8 @@ export default function PromptEditor() {
             onChange={(e) => { setText(e.target.value); scheduleAnalyze(e.target.value); }}
             onScroll={syncScroll}
             onKeyDown={onKeyDown}
-            placeholder="보내기 전에 먼저 다듬어드려요"
-            rows={2}
+            placeholder={placeholder ?? "보내기 전에 먼저 다듬어드려요"}
+            rows={compact ? 1 : 2}
           />
           {/* 밑줄 오버레이: 실제 글자는 투명, 모호한 구간만 빨간 점선 밑줄 */}
           <div className="overlay" ref={overlayRef} aria-hidden>
@@ -248,7 +266,7 @@ export default function PromptEditor() {
             <span className="char-analyzing">{analyzing && "분석 중…"}</span>
             <button
               className="send-btn"
-              disabled={!text.trim() || sending}
+              disabled={!text.trim() || sending || disabled}
               onClick={onExecute}
               title="Enter로도 실행됩니다"
             >
@@ -258,9 +276,11 @@ export default function PromptEditor() {
         </div>
       </div>
 
-      <div className="hint">
+      {!compact && (
+        <div className="hint">
         <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
       </div>
+      )}
 
       {gateBlocked && <div className="gate-block">⚠ {gate!.reason}</div>}
 
