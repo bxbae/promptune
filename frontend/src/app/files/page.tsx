@@ -1,27 +1,14 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  listDocuments,
+  uploadDocument,
+  updateDocument,
+  deleteDocument,
+  DocumentItem,
+} from "@/api/documents";
 
 type Category = "전체" | "일반" | "업무";
-type FileType = "doc" | "pdf" | "slide" | "photo";
-
-interface FileItem {
-  id: string;
-  name: string;
-  category: "일반" | "업무";
-  type: FileType;
-}
-
-// TODO : mock 데이터 - 실제로는 백엔드 /api/files 목록 조회로 교체
-const FILES: FileItem[] = [
-  { id: "1", name: "이력서 양식3.docx", category: "일반", type: "doc" },
-  { id: "2", name: "제안서 양식.pptx", category: "업무", type: "slide" },
-  { id: "3", name: "브로슈어.pdf", category: "업무", type: "photo" },
-  { id: "4", name: "이력서 양식2.docx", category: "일반", type: "doc" },
-  { id: "5", name: "프로젝트 보고서.docx", category: "업무", type: "photo" },
-  { id: "6", name: "이력서 양식.docx", category: "일반", type: "doc" },
-  { id: "7", name: "온보딩 노트.docx", category: "일반", type: "doc" },
-];
-
 const TABS: Category[] = ["전체", "일반", "업무"];
 
 // 파일명이 길 때 확장자는 남기고 앞부분만 ...으로 줄이는 로직
@@ -34,15 +21,72 @@ function truncateFilename(name: string, maxChars = 16): string {
   const maxBase = maxChars - ext.length;
 
   if (base.length <= maxBase) return name; // 짧으면 그대로
-  
+
   return base.slice(0, Math.max(maxBase - 1, 1)) + "..." + ext;
+}
+
+// 썸네일
+function previewKind(fileType: string | null): "doc" | "slide" | "photo" {
+  const t = (fileType || "").toLowerCase();
+  if (["ppt", "pptx"].includes(t)) return "slide";
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(t)) return "photo";
+  return "doc"; // docx / pdf / txt / 기타
 }
 
 export default function FilesPage() {
   const [tab, setTab] = useState<Category>("전체");
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [files, setFiles] = useState<DocumentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const visible = tab === "전체" ? FILES : FILES.filter((f) => f.category === tab);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTag, setEditTag] = useState<"일반" | "업무">("일반");
+  const [showUpload, setShowUpload] = useState(false);
+
+  function refresh() {
+    setLoading(true);
+    listDocuments()
+      .then(setFiles)
+      .catch((e) => setError(e.message || "파일 목록을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  const visible = tab === "전체" ? files : files.filter((f) => f.tag === tab);
+
+  // 수정
+  function startEdit(f: DocumentItem) {
+    setOpenMenuId(null);
+    setEditingId(f.id);
+    setEditTitle(f.title);
+    setEditTag(f.tag === "업무" ? "업무" : "일반");
+  }
+
+  // 수정 완료
+  async function saveEdit(id: number) {
+    try {
+      const updated = await updateDocument(id, { title: editTitle, tag: editTag });
+      setFiles((prev) => prev.map((f) => (f.id === id ? updated : f)));
+      setEditingId(null);
+    } catch (e: any) {
+      alert(e.message || "수정에 실패했습니다.");
+    }
+  }
+
+  // 삭제
+  async function handleDelete(f: DocumentItem) {
+    setOpenMenuId(null);
+    if (!confirm(`"${f.title}" 파일을 삭제할까요?`)) return;
+    try {
+      await deleteDocument(f.id);
+      setFiles((prev) => prev.filter((x) => x.id !== f.id));
+    } catch (e: any) {
+      alert(e.message || "삭제에 실패했습니다.");
+    }
+  }
 
   return (
     <div>
@@ -61,65 +105,101 @@ export default function FilesPage() {
               </button>
             ))}
           </div>
-          
-          <button className="files-upload-btn" type="button">
+
+          <button
+            className="files-upload-btn"
+            type="button"
+            onClick={() => setShowUpload(true)}
+          >
             <img src="/icons/plus-white.png" />
             <span>파일 업로드</span>
           </button>
         </div>
-
       </div>
+
+      {loading && <div style={{ color: "var(--muted)" }}>불러오는 중...</div>}
+      {!loading && error && <div style={{ color: "var(--block)" }}>{error}</div>}
 
       {/* files-grid */}
-      <div className="files-grid">
-        {visible.map((file) => (
-          <div className="file-card" key={file.id}>
-            <div className="file-thumb">
-              <span className={`file-badge ${file.category === "업무" ? "work" : ""}`}>{file.category}</span>
-              <button
-                className="file-menu-btn"
-                onClick={() => setOpenMenuId(openMenuId === file.id ? null : file.id)}
-                aria-label="파일 옵션"
-              >
-                <img src="/icons/dots.png" />
-              </button>
+      {!loading && !error && (
+        <div className="files-grid">
+          {visible.map((file) => (
+            <div className="file-card" key={file.id}>
+              <div className="file-thumb">
+                <span className={`file-badge ${file.tag === "업무" ? "work" : ""}`}>{file.tag}</span>
+                <button
+                  className="file-menu-btn"
+                  onClick={() => setOpenMenuId(openMenuId === file.id ? null : file.id)}
+                  aria-label="파일 옵션"
+                >
+                  <img src="/icons/dots.png" />
+                </button>
 
-              <FilePreview type={file.type} />
+                <FilePreview kind={previewKind(file.fileType)} />
 
-              {openMenuId === file.id && (
-                <div className="file-menu">
-                  <button onClick={() => setOpenMenuId(null)}>수정</button>
-                  <button className="danger" onClick={() => setOpenMenuId(null)}>삭제</button>
+                {openMenuId === file.id && (
+                  <div className="file-menu">
+                    <button onClick={() => startEdit(file)}>수정</button>
+                    <button className="danger" onClick={() => handleDelete(file)}>삭제</button>
+                  </div>
+                )}
+              </div>
+
+              {editingId === file.id ? (
+                <div className="file-edit-row">
+                  <input
+                    className="file-edit-input"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    autoFocus
+                  />
+
+                  <select value={editTag} onChange={(e) => setEditTag(e.target.value as "일반" | "업무")}>
+                    <option value="일반">일반</option>
+                    <option value="업무">업무</option>
+                  </select>
+
+                  <button className="file-edit-save" onClick={() => saveEdit(file.id)}>저장</button>
+                  <button className="file-edit-cancel" onClick={() => setEditingId(null)}>취소</button>
                 </div>
+              ) : (
+                <div className="file-name" title={file.title}>{truncateFilename(file.title)}</div>
               )}
-
             </div>
-
-            <div className="file-name" title={file.name}>{truncateFilename(file.name)}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* 파일이 없을 때 */}
-      {visible.length === 0 && (
+      {!loading && !error && visible.length === 0 && (
         <div style={{ padding: "60px 0", textAlign: "center", color: "var(--muted)" }}>
           해당 분류의 파일이 없어요.
         </div>
+      )}
+
+      {showUpload && (
+        <UploadModal 
+          onClose={() => setShowUpload(false)}
+          onUploaded={(doc) => {
+            setFiles((prev) => [doc, ...prev]);
+            setShowUpload(false);
+          }}
+        />
       )}
     </div>
   );
 }
 
 // 파일 썸네일
-function FilePreview({ type }: { type: FileType }) {
-  if (type === "slide") {
+function FilePreview({ kind }: { kind: "doc" | "slide" | "photo" }) {
+  if (kind === "slide") {
     return (
       <div className="preview-slide">
         <span className="preview-slide-shape" />
       </div>
     );
   }
-  if (type === "photo") {
+  if (kind === "photo") {
     return (
       <div className="preview-photo">
         <span className="preview-photo-icon">🖼</span>
@@ -132,6 +212,85 @@ function FilePreview({ type }: { type: FileType }) {
       {[90, 70, 80, 60, 75, 50].map((w, i) => (
         <span key={i} className="preview-line" style={{ width: `${w}%` }} />
       ))}
+    </div>
+  );
+}
+
+// 업로드 모달창
+function UploadModal({
+  onClose,
+  onUploaded
+}: {
+  onClose: () => void,
+  onUploaded: (doc: DocumentItem) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [tag, setTag] = useState<"일반" | "업무">("일반");
+  const [fileType, setFileType] = useState("txt");
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit() {
+    if (!title.trim() || !content.trim()) {
+      setErr("제목과 내용을 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    setErr("");
+    try {
+      const doc = await uploadDocument({ title: title.trim(), tag, content, fileType });
+      onUploaded(doc);
+    } catch (e: any) {
+      setErr(e.message || "업로드에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <h2>파일 업로드</h2>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>
+          지금은 실제 파일 첨부 대신, 제목·태그·내용(텍스트)을 입력하는 방식이에요.
+        </p>
+
+        <label className="modal-label">제목</label>
+        <input className="modal-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 이력서 양식.docx" />
+
+        <label className="modal-label">분류</label>
+        <select className="modal-input" value={tag} onChange={(e) => setTag(e.target.value as "일반" | "업무")}>
+          <option value="일반">일반</option>
+          <option value="업무">업무</option>
+        </select>
+
+        <label className="modal-label">확장자 (표시용)</label>
+        <select className="modal-input" value={fileType} onChange={(e) => setFileType(e.target.value)}>
+          <option value="txt">txt</option>
+          <option value="docx">docx</option>
+          <option value="pdf">pdf</option>
+          <option value="pptx">pptx</option>
+        </select>
+
+        <label className="modal-label">내용</label>
+        <textarea
+          className="modal-textarea"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={6}
+          placeholder="문서 내용을 붙여넣어주세요"
+        />
+
+        {err && <div style={{ color: "var(--block)", fontSize: 12, marginTop: 8 }}>{err}</div>}
+
+        <div className="modal-actions">
+          <button className="modal-cancel" onClick={onClose}>취소</button>
+          <button className="modal-submit" onClick={submit} disabled={submitting}>
+            {submitting ? "업로드 중…" : "업로드"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
