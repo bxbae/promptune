@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { getCurrentUser, logout } from "@/lib/auth";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
 
@@ -64,8 +65,10 @@ export default function AppShell({
 
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시 (임시)
-  const initial = userEmail.slice(0, 1).toUpperCase();
-  const name = userEmail.split("@")[0].toUpperCase();
+ const currentUser = getCurrentUser(); 
+  const displayEmail = currentUser?.email || userEmail; 
+ const initial = displayEmail.slice(0, 1).toUpperCase();
+  const name = displayEmail.split("@")[0].toUpperCase();
 
   return (
     <div className="shell">
@@ -166,7 +169,7 @@ export default function AppShell({
               <span className="avatar">{initial}</span>
               <span className="user-meta label">
                 <span className="user-name">{name}</span>
-                <span className="user-email">{userEmail}</span>
+                <span className="user-email">{displayEmail}</span>
               </span>
             </button>
 
@@ -188,7 +191,7 @@ export default function AppShell({
           </div>
 
           {/* 로그아웃 버튼 */}
-          <button className="logout-link label" onClick={onLogout}>
+          <button className="logout-link label" onClick={() => { if (onLogout) onLogout(); else { logout(); window.location.href = "/"; } }}>
             <span className="label-icon"><img src="/icons/logout.png" /></span>
             로그아웃
           </button>
