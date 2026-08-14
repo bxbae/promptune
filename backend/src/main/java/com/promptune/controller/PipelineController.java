@@ -105,13 +105,26 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
             req.userId(), req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
     promptSessionRepository.save(session);
 
-    // 이 대화에 새 메시지가 쌓였으니 최근활동순 정렬을 위해 chat_sessions.updated_at 갱신
     if (req.chatSessionId() != null) {
-        chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
-            chat.touch();
-            chatSessionRepository.save(chat);
-        });
-    }
+    chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
+        // 이 대화의 첫 프롬프트라면(title이 아직 없으면) 제목 자동 생성
+        if (chat.getTitle() == null || chat.getTitle().isBlank()) {
+            String raw = req.finalPrompt();
+            String aiTitle = ai.summarizeTitle(raw);   // ai-service 호출 시도
+
+            String title;
+            if (aiTitle != null && !aiTitle.isBlank()) {
+                title = aiTitle;   // AI 요약 성공
+            } else {
+                // ai-service 호출 실패 시 안전장치: 기존 방식(앞부분 자르기)으로 대체
+                title = raw.length() > 20 ? raw.substring(0, 20) + "..." : raw;
+            }
+            chat.setTitle(title);
+        }
+        chat.touch();
+        chatSessionRepository.save(chat);
+    });
+}
 
     return Map.of(
             "taskType", d.taskType(),

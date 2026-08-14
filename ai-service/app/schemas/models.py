@@ -66,6 +66,7 @@ class SafetyResponse(BaseModel):
 # ---------- 13번: 내부문서 검색 (RAG) ----------
 class RetrieveRequest(BaseModel):
     query: str
+    owner_user_id: int
     top_k: int = 3
 
 

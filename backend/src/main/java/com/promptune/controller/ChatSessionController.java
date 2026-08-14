@@ -37,6 +37,22 @@ public class ChatSessionController {
         return chatSessionRepository.findByUserIdOrderByUpdatedAtDesc(user.getId());
     }
 
+    @PatchMapping("/{id}")
+    public ChatSession updateTitle(@PathVariable Long id,
+                                    @RequestBody com.promptune.dto.ChatSessionDtos.UpdateTitleRequest req,
+                                    Authentication authentication) {
+        User user = currentUser(authentication);
+        ChatSession chat = chatSessionRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대화를 찾을 수 없습니다."));
+
+        if (!chat.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인 대화만 수정할 수 있습니다.");
+        }
+
+        chat.setTitle(req.title());
+        return chatSessionRepository.save(chat);
+    }
+
     private User currentUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
