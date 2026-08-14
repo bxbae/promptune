@@ -53,6 +53,16 @@ export default function ChatThreadPage() {
       clearInterval(stepTimer);
       setStatusStep(null);
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: resultText }]);
+
+      // 새로 생성된 채팅 목록의 title을 불러옴
+      window.dispatchEvent(
+        new CustomEvent("chat-session-updated", {
+          detail: {
+            chatSessionId,
+          },
+        })
+      );
+
     } catch {
       clearInterval(stepTimer);
       setStatusStep(null);

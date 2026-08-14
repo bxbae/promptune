@@ -41,12 +41,46 @@ export default function AppShell({
   // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
-  // 최근 채팅 목록 — 경로가 바뀔 때마다 다시 불러와서, 방금 만든 대화가 바로 보이게 함
+  // 실제 백엔드에서 채팅 목록을 다시 조회
+  async function refreshChatSessions() {
+    try {
+      const chats = await listChatSessions();
+      setRecentChats(chats);
+    } catch {
+      setRecentChats([]);
+    }
+  }
+
+  // 페이지 이동 시 채팅 목록 갱신
+  useEffect(() => {
+    refreshChatSessions();
+  }, [pathname]);
+
+  // 첫 프롬프트 실행 후 ChatSesion.title이 백엔드에서 생성됐을 때 채팅 목록 갱신
+  useEffect(() => {
+    function handleChatSessionUpdated() {
+      refreshChatSessions();
+    }
+
+    window.addEventListener(
+      "chat-session-updated",
+      handleChatSessionUpdated
+    );
+
+    return () => {
+      window.removeEventListener(
+        "chat-session-updated",
+        handleChatSessionUpdated
+      );
+    };
+  }, []);
+
+  /* // 최근 채팅 목록 — 경로가 바뀔 때마다 다시 불러와서, 방금 만든 대화가 바로 보이게 함
   useEffect(() => {
     listChatSessions()
-      .then((chats) => setRecentChats(chats.slice(0, 8)))
+      .then((chats) => setRecentChats(chats))
       .catch(() => setRecentChats([])); // 로그인 전이거나 실패하면 그냥 빈 목록
-  }, [pathname]);
+  }, [pathname]); */
 
   // 저장된 다크모드 · 사이드바 접힘 상태 복원
   useEffect(() => {
@@ -77,9 +111,9 @@ export default function AppShell({
 
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시
- const currentUser = getCurrentUser(); 
-  const displayEmail = currentUser?.email || userEmail; 
- const initial = displayEmail.slice(0, 1).toUpperCase();
+  const currentUser = getCurrentUser();
+  const displayEmail = currentUser?.email || userEmail;
+  const initial = displayEmail.slice(0, 1).toUpperCase();
   const name = displayEmail.split("@")[0].toUpperCase();
 
   return (
@@ -165,6 +199,8 @@ export default function AppShell({
             </button>
           ))}
         </div>
+
+        {collapsed ? <div className="sidebar-spacer" style={{ flexGrow: 1 }} /> : <></>}
 
         {/* 하단: 다크모드 토글, 계정 정보, 로그아웃 */}
         <div className="sidebar-bottom">
