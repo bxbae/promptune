@@ -469,6 +469,50 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .file-menu button:hover { background: var(--panel-alt); }
 .file-menu button.danger { color: var(--block); }
 
+/* 파일명 인라인 수정 */
+.file-edit-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.file-edit-input {
+  flex: 1; min-width: 80px; font-size: 13px; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--accent); font-family: inherit; color: var(--ink); background: var(--panel);
+}
+.file-edit-row select {
+  font-size: 12px; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font-family: inherit;
+}
+.file-edit-save, .file-edit-cancel {
+  font-size: 12px; padding: 4px 8px; border-radius: 6px; border: none; cursor: pointer; font-family: inherit;
+}
+.file-edit-save { background: var(--accent); color: #fff; font-weight: 600; }
+.file-edit-cancel { background: var(--panel-alt); color: var(--muted); }
+
+/* 파일 업로드 모달 */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: var(--panel); border-radius: 16px; padding: 24px; width: 420px;
+  max-width: 90vw; max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+.modal-box h2 { font-size: 18px; margin-bottom: 4px; }
+.modal-label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 4px; }
+.modal-input, .modal-textarea {
+  width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); font-size: 14px; font-family: inherit;
+}
+.modal-textarea { resize: vertical; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.modal-cancel {
+  padding: 9px 16px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted); cursor: pointer; font-family: inherit;
+}
+.modal-submit {
+  padding: 9px 16px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.modal-submit:disabled { opacity: 0.6; cursor: default; }
+
 /* 문서형(doc/pdf) 미리보기 — 텍스트 줄 목업 */
 .preview-doc {
   width: 78%; height: 82%; background: #fff; border: 1px solid var(--line);
