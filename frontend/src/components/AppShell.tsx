@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { listChatSessions, ChatSession } from "@/api/chatSessions";
-import { getCurrentUser, logout } from "@/lib/auth";
+import { getCurrentUser, logout, CurrentUser } from "@/lib/auth";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
 
@@ -36,6 +36,7 @@ export default function AppShell({
   const [dark, setDark] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [recentChats, setRecentChats] = useState<ChatSession[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -88,6 +89,13 @@ export default function AppShell({
     if (localStorage.getItem("pt_sidebar_collapsed") === "1") setCollapsed(true);
   }, []);
 
+  // 로그인 사용자 정보는 localStorage(토큰) 기반이라 서버에서는 알 수 없음.
+  // 렌더링 중에 바로 읽으면 SSR 결과(null)와 클라이언트 첫 렌더 결과(실제 값)가
+  // 달라져 하이드레이션 에러(#418/#423/#425)가 발생하므로, 마운트 후 useEffect에서 설정한다.
+  useEffect(() => {
+    setCurrentUser(getCurrentUser());
+  }, []);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     localStorage.setItem("pt_theme", dark ? "dark" : "light");
@@ -111,7 +119,6 @@ export default function AppShell({
 
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시
-  const currentUser = getCurrentUser();
   const displayEmail = currentUser?.email || userEmail;
   const initial = displayEmail.slice(0, 1).toUpperCase();
   const name = displayEmail.split("@")[0].toUpperCase();
