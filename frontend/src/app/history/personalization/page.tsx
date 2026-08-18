@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getPreference, upsertPreference } from "@/api/userPreferences";
+import PersonalizationDataActions from "./PersonalizationDataActions";
 
 // TODO: onboarding/page.tsx의 QUESTIONS와 완전히 동일. 공용 상수 파일로 분리 고려
 type QKey = "speed" | "detail" | "preserve";
@@ -144,6 +145,8 @@ export default function PersonalizationPage() {
           {saved ? "저장했어요. 대시보드·홈 화면에 바로 반영돼요." : "대시보드·홈 화면에 바로 반영돼요"}
         </span>
       </div>
+
+      <PersonalizationDataActions />
     </div>
   )
 }
