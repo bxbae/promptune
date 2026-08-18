@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
+import { getChatMessages } from "@/api/chatSessions";
 import PromptEditor from "@/components/PromptEditor";
 
 interface Message {
@@ -21,10 +22,12 @@ export default function ChatThreadPage() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [statusStep, setStatusStep] = useState<number | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(!isFresh);
+  const [historyError, setHistoryError] = useState("");
   const threadEndRef = useRef<HTMLDivElement>(null);
   const ranRef = useRef(false);
 
-// randomUUID()는 https/로컬에서만 동작하는 secure context 전용이라
+  // randomUUID()는 https/로컬에서만 동작하는 secure context 전용이라
   // crypto.randomUUID() >> generateId()로 교체하여 사용
   const idCounter = useRef(0);
   function generateId() {
@@ -43,6 +46,34 @@ export default function ChatThreadPage() {
       router.replace(`/chat/${chatSessionId}`);
     }
   }, [chatSessionId]);
+
+  // 기존 대화(옛 채팅 클릭)로 들어온 경우, 지난 메시지 목록을 불러와서 대화형으로 표시
+  useEffect(() => {
+    if (isFresh) return;
+    let cancelled = false;
+    setLoadingHistory(true);
+    setHistoryError("");
+
+    getChatMessages(chatSessionId)
+      .then((history) => {
+        if (cancelled) return;
+        const loaded: Message[] = history.flatMap((m) => {
+          const pair: Message[] = [];
+          if (m.prompt) pair.push({ id: `hist-${m.id}-user`, role: "user", content: m.prompt });
+          if (m.aiResponse) pair.push({ id: `hist-${m.id}-assistant`, role: "assistant", content: m.aiResponse });
+          return pair;
+        });
+        setMessages(loaded);
+      })
+      .catch((e) => {
+        if (!cancelled) setHistoryError(e.message || "지난 메시지를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [chatSessionId, isFresh]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,11 +121,23 @@ export default function ChatThreadPage() {
 
   return (
     <div className="chat-page has-thread">
-      {!isFresh && !hasThread && (
+      {!isFresh && loadingHistory && (
+        <div className="no-thread-box">
+          <span>지난 대화를 불러오는 중...</span>
+        </div>
+      )}
+
+      {!isFresh && !loadingHistory && historyError && (
+        <div className="no-thread-box">
+          <span>{historyError}</span>
+        </div>
+      )}
+
+      {!isFresh && !loadingHistory && !historyError && !hasThread && (
         <div className="no-thread-box">
           <span>
-            이 대화의 지난 메시지를 불러오는 기능은 아직 없어요.<br />
-            아래에 새로 이어서 작성하시면 같은 대화(#{chatSessionId})로 계속 저장됩니다.
+            아직 이 대화에 메시지가 없어요.<br />
+            아래에 새로 작성하시면 같은 대화(#{chatSessionId})로 계속 저장됩니다.
           </span>
         </div>
       )}
@@ -132,9 +175,9 @@ export default function ChatThreadPage() {
         </div>
       )}
 
-      <PromptEditor 
+      <PromptEditor
         onSubmit={handleSubmit}
-        disabled={statusStep != null}
+        disabled={statusStep != null || loadingHistory}
         compact
         placeholder="다음 프롬프트를 입력하세요"
       />
