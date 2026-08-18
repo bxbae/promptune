@@ -1,6 +1,6 @@
 // DocumentController(/api/documents) 전용 API 클라이언트.
-// 현재 백엔드는 실제 파일 업로드가 아니라 title/tag/content를 JSON으로 받는 방식.
-// 실제 파일 첨부/파싱은 아직 X
+// 실제 파일을 multipart/form-data로 업로드하면 백엔드가 S3(promptune-document 버킷)에 저장하고
+// 메타데이터(title/tag/s3Key/fileType)를 DB에 저장한다.
 
 import { getToken } from "@/lib/auth";
 
@@ -21,19 +21,23 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
-export interface UploadDocumentInput {
-  title: string;
-  tag: "일반" | "업무";
-  content: string;
-  fileType?: string;
-}
+// Create - POST /api/documents (multipart/form-data)
+// 주의: FormData를 쓸 때는 Content-Type 헤더를 직접 지정하면 안 됨
+// (브라우저가 boundary를 포함해서 자동으로 설정해야 함)
+export async function uploadDocument(
+  file: File,
+  title: string,
+  tag: "일반" | "업무"
+): Promise<DocumentItem> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("title", title);
+  formData.append("tag", tag);
 
-// Create - POST /api/documents
-export async function uploadDocument(input: UploadDocumentInput): Promise<DocumentItem> {
   const res = await fetch(`${API}/api/documents`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(input),
+    headers: authHeaders(),
+    body: formData,
   });
   if (!res.ok) throw new Error(`업로드 실패: ${res.status}`);
   return res.json();
