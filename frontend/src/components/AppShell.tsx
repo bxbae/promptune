@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { listChatSessions, ChatSession } from "@/api/chatSessions";
+import { listChatSessions, updateChatTitle, deleteChatSession, ChatSession } from "@/api/chatSessions";
 import { getCurrentUser, logout, CurrentUser } from "@/lib/auth";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
@@ -37,6 +37,10 @@ export default function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [recentChats, setRecentChats] = useState<ChatSession[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
   const router = useRouter();
   const pathname = usePathname();
   // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -52,10 +56,64 @@ export default function AppShell({
     }
   }
 
-  // 페이지 이동 시 채팅 목록 갱신
+  // 페이지 이동 시 채팅 목록 갱신 + 열려있던 메뉴/수정상태 닫기
   useEffect(() => {
     refreshChatSessions();
+    setOpenMenuId(null);
+    setEditingId(null);
   }, [pathname]);
+
+  // 채팅 옵션(⋮) 메뉴 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (openMenuId === null) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest(".recent-chat-row")) {
+        setOpenMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuId]);
+
+  // 제목 수정 시작
+  function startEditTitle(c: ChatSession) {
+    setOpenMenuId(null);
+    setEditingId(c.id);
+    setEditTitle(c.title || `대화 #${c.id}`);
+  }
+
+  // 제목 수정 저장 (Enter)
+  async function saveEditTitle(id: number) {
+    const trimmed = editTitle.trim();
+    if (!trimmed) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      const updated = await updateChatTitle(id, trimmed);
+      setRecentChats((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    } catch (e: any) {
+      alert(e.message || "제목 수정에 실패했습니다.");
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  // 채팅 삭제
+  async function handleDeleteChat(c: ChatSession) {
+    setOpenMenuId(null);
+    if (!confirm(`"${c.title || `대화 #${c.id}`}" 대화를 삭제할까요?`)) return;
+    try {
+      await deleteChatSession(c.id);
+      setRecentChats((prev) => prev.filter((x) => x.id !== c.id));
+      // 지금 보고 있는 대화를 삭제한 경우 채팅 목록으로 이동
+      if (pathname === `/chat/${c.id}`) {
+        router.push("/chats");
+      }
+    } catch (e: any) {
+      alert(e.message || "삭제에 실패했습니다.");
+    }
+  }
 
   // 첫 프롬프트 실행 후 ChatSesion.title이 백엔드에서 생성됐을 때 채팅 목록 갱신
   useEffect(() => {
@@ -198,14 +256,50 @@ export default function AppShell({
         <div className="sidebar-spacer" style={{ borderTop: "1px solid var(--line)", margin: "3px 0" }} />
         <div className="recent-chats">
           {recentChats.map((c) => (
+            <div className="recent-chat-row" key={c.id}>
+              {editingId === c.id ? (
+                <input
+                  className="recent-chat-edit-input"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveEditTitle(c.id);
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  onBlur={() => saveEditTitle(c.id)}
+                  autoFocus
+                />
+              ) : (
+                <>
             <button
-              key={c.id}
               className={`recent-chat-item ${pathname === `/chat/${c.id}` ? "active" : ""}`}
               onClick={() => router.push(`/chat/${c.id}`)}
               title={c.title || `대화 #${c.id}`}
             >
               {c.title || `대화 #${c.id}`}
             </button>
+
+                  <button
+                    type="button"
+                    className="recent-chat-menu-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuId(openMenuId === c.id ? null : c.id);
+                    }}
+                    aria-label="채팅 옵션"
+                  >
+                    <img src="/icons/dots.png" alt="" />
+                  </button>
+
+                  {openMenuId === c.id && (
+                    <div className="recent-chat-menu">
+                      <button onClick={() => startEditTitle(c)}>수정</button>
+                      <button className="danger" onClick={() => handleDeleteChat(c)}>삭제</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           ))}
         </div>
 

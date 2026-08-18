@@ -37,5 +37,39 @@ export async function listChatSessions(): Promise<ChatSession[]> {
   return res.json();
 }
 
-// TODO (백엔드 확인/구현 필요)
-// GET /api/chat-sessions/{id}/messages 같은 "세션 하나의 메세지 목록 조회" 엔드포인트
+// PATCH /api/chat-sessions/{id} - 채팅 제목 수정
+export async function updateChatTitle(id: number, title: string): Promise<ChatSession> {
+  const res = await fetch(`${API}/api/chat-sessions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`제목 수정 실패: ${res.status}`);
+  return res.json();
+}
+
+// DELETE /api/chat-sessions/{id} - 채팅 삭제 (메시지도 CASCADE로 함께 삭제됨)
+export async function deleteChatSession(id: number): Promise<void> {
+  const res = await fetch(`${API}/api/chat-sessions/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`채팅 삭제 실패: ${res.status}`);
+}
+
+export interface ChatMessage {
+  id: number;
+  prompt: string;
+  aiResponse: string;
+  taskType: string | null;
+  createdAt: string;
+}
+
+// GET /api/chat-sessions/{id}/messages - 세션 하나의 지난 메시지 목록 (시간순)
+export async function getChatMessages(id: number): Promise<ChatMessage[]> {
+  const res = await fetch(`${API}/api/chat-sessions/${id}/messages`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`대화 기록 조회 실패: ${res.status}`);
+  return res.json();
+}
