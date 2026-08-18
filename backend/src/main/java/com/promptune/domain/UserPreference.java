@@ -1,0 +1,36 @@
+package com.promptune.domain;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "user_preferences")
+public class UserPreference {
+
+    @Id
+    @Column(name = "user_id")
+    private Long userId;
+
+    private String speed;      // '빠르게' / '정확하게'
+    private String detail;     // '간결하게' / '자세하게'
+    private String preserve;   // '원문유지' / '적극보완'
+
+    protected UserPreference() {}   // JPA 기본 생성자
+
+    public UserPreference(Long userId, String speed, String detail, String preserve) {
+        this.userId = userId;
+        this.speed = speed;
+        this.detail = detail;
+        this.preserve = preserve;
+    }
+
+    public Long getUserId() { return userId; }
+    public String getSpeed() { return speed; }
+    public String getDetail() { return detail; }
+    public String getPreserve() { return preserve; }
+
+    public void update(String speed, String detail, String preserve) {
+        this.speed = speed;
+        this.detail = detail;
+        this.preserve = preserve;
+    }
+}
