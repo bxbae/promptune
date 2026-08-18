@@ -76,7 +76,30 @@ public class AiServiceClient {
         }
     }
 
-    public Map generate(String prompt, String taskType, boolean useWebSearch) {
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> retrieve(String query, Long ownerUserId, int topK) {
+        long start = System.currentTimeMillis();
+        try {
+            Map result = client.post()
+                    .uri("/api/ai/retrieve")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "query", query,
+                            "owner_user_id", ownerUserId,
+                            "top_k", topK))
+                    .retrieve()
+                    .body(Map.class);
+
+            log("ai-service", "/api/ai/retrieve", start, "success");
+            Object documents = result != null ? result.get("documents") : null;
+            return documents instanceof List<?> ? (List<Map<String, Object>>) documents : List.of();
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/retrieve", start, "error");
+            throw e;
+        }
+    }
+
+    public Map generate(String prompt, String taskType, List<Map<String, Object>> documents, boolean useWebSearch) {
         long start = System.currentTimeMillis();
         try {
             Map result = client.post()
@@ -85,6 +108,7 @@ public class AiServiceClient {
                     .body(Map.of(
                             "prompt", prompt,
                             "task_type", taskType,
+                            "documents", documents,
                             "use_web_search", useWebSearch))
                     .retrieve()
                     .body(Map.class);
