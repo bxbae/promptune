@@ -6,4 +6,6 @@ import java.util.Optional;
 
 public interface ConsentRecordRepository extends JpaRepository<ConsentRecord, Long> {
     Optional<ConsentRecord> findTopByUserIdOrderByGrantedAtDesc(Long userId);
+    Optional<ConsentRecord> findTopByUserIdAndReceiverProfileIdOrderByGrantedAtDesc(Long userId, Long receiverProfileId);
+    Optional<ConsentRecord> findTopByUserIdAndReceiverProfileIdIsNullOrderByGrantedAtDesc(Long userId);
 }
