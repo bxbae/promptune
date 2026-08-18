@@ -5,6 +5,7 @@ import PromptEditor from "@/components/PromptEditor";
 import AuthForm from "@/components/AuthForm";
 import AppShell, { NavKey } from "@/components/AppShell";
 import { getToken, logout } from "@/lib/auth";
+import { getPreference } from "@/api/userPreferences";
 
 export default function Home() {
   const router = useRouter();
@@ -12,19 +13,18 @@ export default function Home() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // 토큰 있으면 로그인 상태로 (목업: 토큰 존재만 확인)
-    // TODO(예진): 실제 동작 시 getToken()으로 토큰 확인 후, 백엔드 /api/me 호출해 사용자 이름 받아오기
-    // 예진: 개발을 위해 토큰 확인 없이 바로 로그인 상태로 설정
-    if (getToken()) setUser("사용자");   // 실제 동작 시 이 코드 주석 해제
-    // setUser("사용자");   // 실제 동작 시 이 코드 주석처리
+    // 토큰 있으면 로그인 상태로
+    if (getToken()) setUser("사용자");
     setReady(true);
   }, []);
 
   // 로그인되면: 온보딩 안 했으면 /onboarding, 했으면 /chat으로
+  // (DB에 개인화 설정이 저장되어있는지로 판단)
   useEffect(() => {
     if (!ready || !user) return;
-    const onboarded = localStorage.getItem("pt_onboarded") === "1";
-    router.replace(onboarded ? "/chat" : "/onboarding");
+    getPreference()
+      .then((pref) => router.replace(pref ? "/chat" : "/onboarding"))
+      .catch(() => router.replace("/onboarding"));  // 조회 실패해도 온보딩부터 보여주는 것이 안전
   }, [ready, user, router]);
 
   if (!ready || user) return null;
