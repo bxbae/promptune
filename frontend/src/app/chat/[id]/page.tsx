@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
-import { generateId } from "@/lib/id";
 import PromptEditor from "@/components/PromptEditor";
 
 interface Message {
@@ -24,6 +23,13 @@ export default function ChatThreadPage() {
   const [statusStep, setStatusStep] = useState<number | null>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const ranRef = useRef(false);
+
+// randomUUID()는 https/로컬에서만 동작하는 secure context 전용이라
+  // crypto.randomUUID() >> generateId()로 교체하여 사용
+  const idCounter = useRef(0);
+  function generateId() {
+    return `msg-${Date.now()}-${idCounter.current++}`;
+  }
 
   useEffect(() => {
     if (isFresh && !ranRef.current) {
