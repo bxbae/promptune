@@ -8,4 +8,5 @@ import java.util.List;
 public interface PersonalizationScoreRepository extends JpaRepository<PersonalizationScore, Long> {
     Optional<PersonalizationScore> findByUserIdAndElement(Long userId, String element);
     List<PersonalizationScore> findByUserId(Long userId);
+    void deleteByUserId(Long userId);
 }

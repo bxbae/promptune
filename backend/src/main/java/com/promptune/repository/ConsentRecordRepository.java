@@ -8,4 +8,5 @@ public interface ConsentRecordRepository extends JpaRepository<ConsentRecord, Lo
     Optional<ConsentRecord> findTopByUserIdOrderByGrantedAtDesc(Long userId);
     Optional<ConsentRecord> findTopByUserIdAndReceiverProfileIdOrderByGrantedAtDesc(Long userId, Long receiverProfileId);
     Optional<ConsentRecord> findTopByUserIdAndReceiverProfileIdIsNullOrderByGrantedAtDesc(Long userId);
+    void deleteByUserIdAndReceiverProfileIdIsNull(Long userId);
 }

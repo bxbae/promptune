@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface ReceiverProfileRepository extends JpaRepository<ReceiverProfile, Long> {
     Optional<ReceiverProfile> findByUserIdAndReceiverName(Long userId, String receiverName);
     List<ReceiverProfile> findByUserId(Long userId);
+    void deleteByUserId(Long userId);
 }

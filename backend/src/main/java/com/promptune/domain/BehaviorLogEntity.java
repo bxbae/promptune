@@ -22,12 +22,22 @@ public class BehaviorLogEntity {
 
     protected BehaviorLogEntity() {}
 
+    @Column(name = "chat_session_id")
+    private Long chatSessionId;
+
     public BehaviorLogEntity(Long userId, String element, String action) {
         this.userId = userId;
         this.element = element;
         this.action = action;
     }
 
+    public BehaviorLogEntity(Long userId, String element, String action, Long chatSessionId) {
+        this(userId, element, action);
+        this.chatSessionId = chatSessionId;
+    }
+
+    public String getElement() { return element; }
     public String getAction() { return action; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+    public Long getChatSessionId() { return chatSessionId; }
 }

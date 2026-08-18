@@ -106,7 +106,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     // taskType 문자열과 섞이면 안 됨
     if (req.elementActions() != null) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
-            behaviorLog.recordAction(req.userId(), ea.element(), ea.action());
+            behaviorLog.recordAction(req.userId(), ea.element(), ea.action(), req.chatSessionId());
         }
     }
 
