@@ -135,7 +135,9 @@ export default function AppShell({
               onNewChat?.();
             }}
             style={{ width: "fit-content", background: "none", border: "none", cursor: "pointer" }}>
-            <span className="logo-icon">P</span>
+            <span className="logo-icon">
+              <img src="/icons/icon.svg" />
+            </span>
             <span>PrompTune</span>
           </button>
           <button
