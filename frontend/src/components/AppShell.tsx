@@ -106,6 +106,14 @@ export default function AppShell({
     try {
       await deleteChatSession(c.id);
       setRecentChats((prev) => prev.filter((x) => x.id !== c.id));
+
+      // /chats 목록 페이지가 열려있는 경우 그쪽 목록도 실시간으로 갱신되도록 알림
+      window.dispatchEvent(
+        new CustomEvent("chat-session-deleted", {
+          detail: { chatSessionId: c.id },
+        })
+      );
+      
       // 지금 보고 있는 대화를 삭제한 경우 채팅 목록으로 이동
       if (pathname === `/chat/${c.id}`) {
         router.push("/chats");

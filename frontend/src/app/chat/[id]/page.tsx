@@ -26,6 +26,10 @@ export default function ChatThreadPage() {
   const [historyError, setHistoryError] = useState("");
   const threadEndRef = useRef<HTMLDivElement>(null);
   const ranRef = useRef(false);
+  // isFresh : URL의 ?run=1 쿼리로 판단
+  // 첫 메시지 전송 후 router.replace로 쿼리를 지우면 isFresh=false로 바뀌며 방금 보낸 메시지를 덮어써버리는 문제 발생
+  // 페이지 진입시점에 fresh였는지를 1회성 값으로 고정해서 사용 >> isFreshRef
+  const isFreshRef = useRef(isFresh);
 
   // randomUUID()는 https/로컬에서만 동작하는 secure context 전용이라
   // crypto.randomUUID() >> generateId()로 교체하여 사용
@@ -49,7 +53,7 @@ export default function ChatThreadPage() {
 
   // 기존 대화(옛 채팅 클릭)로 들어온 경우, 지난 메시지 목록을 불러와서 대화형으로 표시
   useEffect(() => {
-    if (isFresh) return;
+    if (isFreshRef.current) return; // 새 채팅 첫 메시지일 시 재조회하지 않음
     let cancelled = false;
     setLoadingHistory(true);
     setHistoryError("");
@@ -73,7 +77,7 @@ export default function ChatThreadPage() {
       });
 
     return () => { cancelled = true; };
-  }, [chatSessionId, isFresh]);
+  }, [chatSessionId]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
