@@ -25,20 +25,13 @@ export default function ChatThreadPage() {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const ranRef = useRef(false);
 
-  // randomUUID()는 https/로컬에서만 동작하는 secure context 전용이라
-  // crypto.randomUUID() >> nextId()로 교체하여 사용
-  const idCounter = useRef(0);
-  function nextId() {
-    return `msg-${Date.now()}-${idCounter.current++}`;
-  }
-
   useEffect(() => {
     if (isFresh && !ranRef.current) {
       ranRef.current = true;
       const firstPrompt = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
       if (firstPrompt) {
-        setMessages([{ id: nextId(), role: "user", content: firstPrompt }]);
+        setMessages([{ id: generateId(), role: "user", content: firstPrompt }]);
         runAssistant(firstPrompt);
       }
       router.replace(`/chat/${chatSessionId}`);
@@ -60,7 +53,7 @@ export default function ChatThreadPage() {
       const resultText = res?.result?.result ?? JSON.stringify(res);
       clearInterval(stepTimer);
       setStatusStep(null);
-      setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: resultText }]);
+      setMessages((prev) => [...prev, { id: generateId(), role: "assistant", content: resultText }]);
 
       // 새로 생성된 채팅 목록의 title을 불러옴
       window.dispatchEvent(
@@ -76,14 +69,14 @@ export default function ChatThreadPage() {
       setStatusStep(null);
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
+        { id: generateId(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
       ]);
     }
   }
 
   function handleSubmit(text: string) {
     if (statusStep !== null) return;
-    setMessages((prev) => [...prev, { id: nextId(), role: "user", content: text }]);
+    setMessages((prev) => [...prev, { id: generateId(), role: "user", content: text }]);
     runAssistant(text);
   }
 
@@ -133,7 +126,7 @@ export default function ChatThreadPage() {
         </div>
       )}
 
-      <PromptEditor
+      <PromptEditor 
         onSubmit={handleSubmit}
         disabled={statusStep != null}
         compact
