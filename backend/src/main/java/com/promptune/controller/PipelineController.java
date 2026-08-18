@@ -103,6 +103,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     // prompt_sessions 저장 (지금까지 없던 로직, 이번에 신규 추가) + chat_session 연결
     com.promptune.domain.PromptSession session = new com.promptune.domain.PromptSession(
             req.userId(), req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
+    // AI 응답 원문도 같이 저장 (이제까지 저장 안 되고 있던 부분 — 메시지 목록에 필요해서 추가)
+    Object aiText = result != null ? result.get("result") : null;
+    session.setAiResponseText(aiText != null ? aiText.toString() : null);
     promptSessionRepository.save(session);
 
     if (req.chatSessionId() != null) {

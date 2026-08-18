@@ -31,6 +31,9 @@ public class PromptSession {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "ai_response_text", columnDefinition = "TEXT")
+    private String aiResponseText;
+
     protected PromptSession() {}
 
     public PromptSession(Long userId, String originalText, String finalText, String taskType, Long chatSessionId) {
@@ -48,4 +51,9 @@ public class PromptSession {
     public String getTaskType() { return taskType; }
     public String getSatisfaction() { return satisfaction; }
     public void setSatisfaction(String satisfaction) { this.satisfaction = satisfaction; }
+    public String getOriginalText() { return originalText; }
+    public String getFinalText() { return finalText; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public String getAiResponseText() { return aiResponseText; }
+    public void setAiResponseText(String aiResponseText) { this.aiResponseText = aiResponseText; }
 }
