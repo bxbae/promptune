@@ -27,4 +27,7 @@ public class BehaviorLogEntity {
         this.element = element;
         this.action = action;
     }
+
+    public String getAction() { return action; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
 }
