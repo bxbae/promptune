@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
+import { generateId } from "@/lib/id";
 import PromptEditor from "@/components/PromptEditor";
 
 interface Message {
