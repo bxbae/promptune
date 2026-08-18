@@ -59,6 +59,18 @@ USE_REAL_RETRIEVAL = (
     == "true"
 )
 
+USE_REAL_GENERATION = (
+    os.getenv(
+        "USE_REAL_GENERATION",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
+
+if USE_REAL_GENERATION:
+    from app.services import generate_hcx
+
+
 if USE_REAL_DIAGNOSIS:
     from app.services import diagnose_real
 
@@ -134,6 +146,13 @@ def generate(req: GenerateRequest):
             used_web_search = bool(web_results)
         except Exception as exc:
             print(f"[Tavily] web search failed: {exc}")
+
+    if USE_REAL_GENERATION:
+        return generate_hcx.generate(
+            req,
+            web_results=web_results,
+            used_web_search=used_web_search,
+        )
 
     return pipeline_mock.generate(
         req,
