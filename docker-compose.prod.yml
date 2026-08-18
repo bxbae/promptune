@@ -39,6 +39,8 @@ services:
       KAKAO_CLIENT_SECRET: "${KAKAO_CLIENT_SECRET:-}"
       NAVER_CLIENT_ID: "${NAVER_CLIENT_ID:-}"
       NAVER_CLIENT_SECRET: "${NAVER_CLIENT_SECRET:-}"
+      AWS_REGION: "${AWS_REGION:-ap-northeast-2}"
+      AWS_S3_DOCUMENTS_BUCKET: "${AWS_S3_DOCUMENTS_BUCKET:-promptune-document}"
     ports:
       - "8080:8080"
     depends_on:

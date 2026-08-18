@@ -1,48 +1,61 @@
 package com.promptune.controller;
 
 import com.promptune.domain.Document;
-import com.promptune.domain.DocumentChunk;
 import com.promptune.domain.User;
-import com.promptune.dto.DocumentDtos.UploadDocumentRequest;
 import com.promptune.dto.DocumentDtos.UpdateDocumentRequest;
 import com.promptune.repository.DocumentRepository;
-import com.promptune.repository.DocumentChunkRepository;
 import com.promptune.repository.UserRepository;
+import com.promptune.service.S3StorageService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentController {
 
     private final DocumentRepository documentRepository;
-    private final DocumentChunkRepository documentChunkRepository;
     private final UserRepository userRepository;
+    private final S3StorageService s3StorageService;
 
     public DocumentController(DocumentRepository documentRepository,
-                               DocumentChunkRepository documentChunkRepository,
-                               UserRepository userRepository) {
+                               UserRepository userRepository,
+                               S3StorageService s3StorageService) {
         this.documentRepository = documentRepository;
-        this.documentChunkRepository = documentChunkRepository;
         this.userRepository = userRepository;
+        this.s3StorageService = s3StorageService;
     }
 
-    @PostMapping
-    public Document upload(@RequestBody UploadDocumentRequest req, Authentication authentication) {
+    // 실제 파일을 받아 S3(promptune-document 버킷)에 업로드하고, 메타데이터를 DB에 저장한다.
+    // 내용(텍스트) 추출·청크 분할·임베딩 생성은 아직 이 단계의 범위가 아니라서
+    // document_chunks는 생성하지 않는다 (추후 파싱 파이프라인 연동 시 추가 예정).
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Document upload(@RequestParam("file") MultipartFile file,
+                            @RequestParam("title") String title,
+                            @RequestParam(value = "tag", required = false) String tag,
+                            Authentication authentication) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "파일이 비어있습니다.");
+        }
+
         User user = currentUser(authentication);
-        String tag = (req.tag() == null || req.tag().isBlank()) ? "일반" : req.tag();
+        String resolvedTag = (tag == null || tag.isBlank()) ? "일반" : tag;
+        String resolvedTitle = (title == null || title.isBlank())
+                ? file.getOriginalFilename()
+                : title;
+        String fileType = extractExtension(file.getOriginalFilename());
+
+        String s3Key = s3StorageService.uploadDocument(user.getId(), file);
 
         Document document = documentRepository.save(
-                new Document(user.getId(), req.title(), tag, null, req.fileType()));
-
-        // 임시: 청크 분할 없이 전체를 chunk 1개로 저장 (embedding은 비어있음)
-        // 실제 청크 분할·임베딩 생성 로직으로 교체 필요
-        documentChunkRepository.save(new DocumentChunk(document.getId(), 0, req.content()));
+                new Document(user.getId(), resolvedTitle, resolvedTag, s3Key, fileType));
 
         return document;
     }
@@ -67,13 +80,6 @@ public class DocumentController {
         if (req.title() != null) document.setTitle(req.title());
         if (req.tag() != null) document.setTag(req.tag());
 
-        // 참고: 이번 UpdateDocumentRequest는 title/tag만 받습니다.
-        // 내용(content) 수정은 별도 API로 분리 예정
-        // chunker.py 로직으로 다시 300~500자 단위로 쪼개서
-        // documentChunkRepository.deleteAll(documentChunkRepository.findByDocumentId(id));
-        // (재분할된 조각들을 chunk_index 0,1,2... 순서로 다시 저장)
-        // 실제 재분할·재임베딩 연동 방식 확정 필요
-
         return documentRepository.save(document);
     }
 
@@ -88,6 +94,7 @@ public class DocumentController {
         }
 
         documentRepository.deleteById(id);  // document_chunks는 ON DELETE CASCADE로 자동 같이 삭제됨
+        s3StorageService.delete(document.getS3Key());  // S3 객체도 같이 정리
         return ResponseEntity.ok().build();
     }
 
@@ -97,5 +104,12 @@ public class DocumentController {
         }
         return userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+    }
+
+    private String extractExtension(String filename) {
+        if (filename == null) return null;
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot == filename.length() - 1) return null;
+        return filename.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 }

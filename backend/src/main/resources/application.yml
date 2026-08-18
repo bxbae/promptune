@@ -53,6 +53,12 @@ ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
 
+app:
+  aws:
+    region: ${AWS_REGION:ap-northeast-2}
+    s3:
+      documents-bucket: ${AWS_S3_DOCUMENTS_BUCKET:promptune-document}
+
 jwt:
   secret: ${JWT_SECRET:promptune-dev-secret-key-change-in-production-please}
   expiration-ms: 86400000

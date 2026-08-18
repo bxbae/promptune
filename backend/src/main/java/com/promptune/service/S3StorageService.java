@@ -1,0 +1,57 @@
+package com.promptune.service;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.UUID;
+
+// 사용자 문서 파일을 promptune-document S3 버킷에 업로드/삭제하는 서비스.
+@Service
+public class S3StorageService {
+
+    private final S3Client s3Client;
+    private final String documentsBucket;
+
+    public S3StorageService(S3Client s3Client,
+                             @Value("${app.aws.s3.documents-bucket}") String documentsBucket) {
+        this.s3Client = s3Client;
+        this.documentsBucket = documentsBucket;
+    }
+
+    // documents/{userId}/{uuid}-{원본파일명} 형태의 key로 업로드하고, 그 key를 반환한다.
+    // (원본 파일명은 그대로 두면 경로에 못 쓰는 문자가 섞일 수 있어 영숫자/일부 기호 외엔 _로 치환)
+    public String uploadDocument(Long userId, MultipartFile file) {
+        String original = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
+        String safeName = original.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String key = "documents/" + userId + "/" + UUID.randomUUID() + "-" + safeName;
+
+        try {
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(documentsBucket)
+                            .key(key)
+                            .contentType(file.getContentType())
+                            .build(),
+                    RequestBody.fromInputStream(file.getInputStream(), file.getSize())
+            );
+        } catch (IOException e) {
+            throw new UncheckedIOException("S3 업로드 실패: " + e.getMessage(), e);
+        }
+        return key;
+    }
+
+    public void delete(String s3Key) {
+        if (s3Key == null || s3Key.isBlank()) return;
+        s3Client.deleteObject(DeleteObjectRequest.builder()
+                .bucket(documentsBucket)
+                .key(s3Key)
+                .build());
+    }
+}

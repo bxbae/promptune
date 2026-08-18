@@ -224,22 +224,34 @@ function UploadModal({
   onClose: () => void,
   onUploaded: (doc: DocumentItem) => void;
 }) {
+  const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [tag, setTag] = useState<"일반" | "업무">("일반");
-  const [fileType, setFileType] = useState("txt");
-  const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    // 제목을 아직 안 건드렸으면(비어있으면) 파일명으로 자동 채워줌
+    if (f && !title.trim()) {
+      setTitle(f.name);
+    }
+  }
+
   async function submit() {
-    if (!title.trim() || !content.trim()) {
-      setErr("제목과 내용을 입력해주세요.");
+    if (!file) {
+      setErr("파일을 선택해주세요.");
+      return;
+    }
+    if (!title.trim()) {
+      setErr("제목을 입력해주세요.");
       return;
     }
     setSubmitting(true);
     setErr("");
     try {
-      const doc = await uploadDocument({ title: title.trim(), tag, content, fileType });
+      const doc = await uploadDocument(file, title.trim(), tag);
       onUploaded(doc);
     } catch (e: any) {
       setErr(e.message || "업로드에 실패했습니다.");
@@ -252,9 +264,13 @@ function UploadModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <h2>파일 업로드</h2>
-        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>
-          지금은 실제 파일 첨부 대신, 제목·태그·내용(텍스트)을 입력하는 방식이에요.
-        </p>
+
+        <label className="modal-label">파일</label>
+        <input
+          className="modal-input"
+          type="file"
+          onChange={handleFileChange}
+        />
 
         <label className="modal-label">제목</label>
         <input className="modal-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 이력서 양식.docx" />
@@ -264,23 +280,6 @@ function UploadModal({
           <option value="일반">일반</option>
           <option value="업무">업무</option>
         </select>
-
-        <label className="modal-label">확장자 (표시용)</label>
-        <select className="modal-input" value={fileType} onChange={(e) => setFileType(e.target.value)}>
-          <option value="txt">txt</option>
-          <option value="docx">docx</option>
-          <option value="pdf">pdf</option>
-          <option value="pptx">pptx</option>
-        </select>
-
-        <label className="modal-label">내용</label>
-        <textarea
-          className="modal-textarea"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={6}
-          placeholder="문서 내용을 붙여넣어주세요"
-        />
 
         {err && <div style={{ color: "var(--block)", fontSize: 12, marginTop: 8 }}>{err}</div>}
 
