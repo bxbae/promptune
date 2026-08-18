@@ -19,8 +19,6 @@ public class User {
     private String passwordHash;      // BCrypt 해시 (로컬 로그인만)
 
     private String name;
-    private String department;
-    private String position;
 
     private String provider = "local";   // local / google / kakao / naver
 
@@ -37,13 +35,20 @@ public class User {
 
     protected User() {}   // JPA 기본 생성자
 
+    // 로컬 회원가입용 (AuthService에서 사용) — provider는 항상 "local"
     public User(String email, String passwordHash, String name, String companyId) {
-    this.email = email;
-    this.passwordHash = passwordHash;
-    this.name = name;
-    this.provider = "local";
-    this.companyId = (companyId == null || companyId.isBlank()) ? null : companyId;
-}
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.name = name;
+        this.provider = "local";
+        this.companyId = (companyId == null || companyId.isBlank()) ? null : companyId;
+    }
+
+    // 소셜 로그인용 (OAuth2UserService에서 사용) — provider를 실제 값으로 저장
+    public User(String email, String passwordHash, String name, String companyId, String provider) {
+        this(email, passwordHash, name, companyId);
+        this.provider = (provider == null || provider.isBlank()) ? "local" : provider;
+    }
 
     // getter
     public Long getId() { return id; }
