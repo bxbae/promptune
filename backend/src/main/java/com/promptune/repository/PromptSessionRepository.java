@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface PromptSessionRepository extends JpaRepository<PromptSession, Long> {
     List<PromptSession> findByChatSessionIdOrderByCreatedAtAsc(Long chatSessionId);
+    List<PromptSession> findByUserId(Long userId);
 }

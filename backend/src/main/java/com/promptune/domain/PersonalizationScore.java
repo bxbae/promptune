@@ -36,6 +36,7 @@ public class PersonalizationScore {
     public void incrementAccept() { this.acceptCount++; this.updatedAt = LocalDateTime.now(); }
     public void incrementDismiss() { this.dismissCount++; this.updatedAt = LocalDateTime.now(); }
 
+    public String getElement() { return element; }
     public int getAcceptCount() { return acceptCount; }
     public int getDismissCount() { return dismissCount; }
 }
