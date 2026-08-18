@@ -41,5 +41,13 @@ public class ReceiverProfile {
 
     public void setPreferredTone(String tone) { this.preferredTone = tone; this.updatedAt = LocalDateTime.now(); }
     public void setAvgLength(int length) { this.avgLength = length; }
+
+    public Long getId() { return id; }
+    public Long getUserId() { return userId; }
+    public String getReceiverName() { return receiverName; }
+    public String getRelationship() { return relationship; }
+    public String getPreferredTone() { return preferredTone; }
     public int getAvgLength() { return avgLength; }
+    public BigDecimal getApplyRate() { return applyRate; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
 }
