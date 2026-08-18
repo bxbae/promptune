@@ -50,7 +50,7 @@ public class PromptSessionController {
         if (edited) {
             responseEditRepository.save(new ResponseEdit(
                     id, user.getId(), req.generatedResult(), req.userFinalResult()));
-            behaviorLog.recordAction(user.getId(), session.getTaskType(), "edit");
+            behaviorLog.recordAction(user.getId(), session.getTaskType(), "edit", session.getChatSessionId());
         }
 
         if (req.satisfaction() != null) {

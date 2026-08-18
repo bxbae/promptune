@@ -16,7 +16,12 @@ public class BehaviorLogService {
 
     @Transactional
     public void recordAction(Long userId, String element, String action) {
-        logRepository.save(new BehaviorLogEntity(userId, element, action));
+        recordAction(userId, element, action, null);
+    }
+
+    @Transactional
+    public void recordAction(Long userId, String element, String action, Long chatSessionId) {
+        logRepository.save(new BehaviorLogEntity(userId, element, action, chatSessionId));
 
         PersonalizationScore score = scoreRepository.findByUserIdAndElement(userId, element)
                 .orElseGet(() -> new PersonalizationScore(userId, element));
