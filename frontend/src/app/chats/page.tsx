@@ -37,6 +37,24 @@ export default function ChatsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // AppShell(사이드바)에서 채팅 삭제 시, 이 페이지가 열려있으면 목록에서 실시간으로 제거
+  useEffect(() => {
+    function handleDeleted(e: Event) {
+      const { chatSessionId } = (e as CustomEvent).detail || {};
+      if (chatSessionId == null) return;
+      setChats((prev) => prev.filter((c) => c.id !== chatSessionId));
+    }
+    
+    window.addEventListener("chat-session-deleted", handleDeleted);
+    return () => window.removeEventListener("chat-session-deleted", handleDeleted);
+  }, []);
+
+  // 삭제로 인해 현재 페이지에 항목이 없어지면 이전 페이지로 자동 이동
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(chats.length / PAGE_SIZE));
+    if (page > maxPage) setPage(maxPage);
+  }, [chats, page]);
+
   return (
     <div>
       <h1>채팅</h1>
