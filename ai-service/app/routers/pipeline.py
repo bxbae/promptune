@@ -21,6 +21,7 @@ from app.schemas.models import (
     SummarizeTitleResponse,
 )
 from app.services import diagnose_mock, pipeline_mock
+from app.services.retrieval.tavily_search import search_web
 
 USE_REAL_TITLE_SUMMARY = (
     os.getenv(
@@ -124,7 +125,21 @@ def retrieve(req: RetrieveRequest):
     tags=["14.답변생성"],
 )
 def generate(req: GenerateRequest):
-    return pipeline_mock.generate(req)
+    web_results = []
+    used_web_search = False
+
+    if req.use_web_search:
+        try:
+            web_results = search_web(req.prompt, max_results=3)
+            used_web_search = bool(web_results)
+        except Exception as exc:
+            print(f"[Tavily] web search failed: {exc}")
+
+    return pipeline_mock.generate(
+        req,
+        web_results=web_results,
+        used_web_search=used_web_search,
+    )
 
 
 @router.post(

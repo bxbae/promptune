@@ -63,20 +63,48 @@ def retrieve(req: RetrieveRequest) -> RetrieveResponse:
 
 
 # ---------- 14번: 최종 답변 생성 ----------
-# TODO(승득): 템플릿 mock → HyperCLOVA X. use_web_search면 Tavily 결과 반영.
-def generate(req: GenerateRequest) -> GenerateResponse:
+# TODO(승득): 템플릿 mock → HyperCLOVA X.
+def generate(
+    req: GenerateRequest,
+    web_results=None,
+    used_web_search: bool = False,
+) -> GenerateResponse:
+    web_results = web_results or []
+
     doc_note = ""
     if req.documents:
         titles = ", ".join(d.title for d in req.documents)
         doc_note = f"\n\n[참고 문서: {titles}]"
-    web_note = "\n\n[최신 정보 반영됨]" if req.use_web_search else ""
+
+    web_note = ""
+    if web_results:
+        lines = []
+
+        for item in web_results:
+            title = item.get("title", "")
+            url = item.get("url", "")
+            content = item.get("content", "")[:300]
+
+            lines.append(
+                f"- {title}\n"
+                f"  URL: {url}\n"
+                f"  내용: {content}"
+            )
+
+        web_note = "\n\n[웹 검색 결과]\n" + "\n".join(lines)
+
     result = (
         f"[{req.task_type} 결과 (mock)]\n"
         f"요청: {req.prompt}\n"
-        f"→ 실제로는 HyperCLOVA X가 여기에 완성된 결과물을 생성합니다."
-        f"{doc_note}{web_note}"
+        f"→ 실제 HyperCLOVA X 연결 시 아래 검색 정보를 바탕으로 최종 답변을 생성합니다."
+        f"{doc_note}"
+        f"{web_note}"
     )
-    return GenerateResponse(result=result, used_web_search=req.use_web_search)
+
+    return GenerateResponse(
+        result=result,
+        used_web_search=used_web_search,
+    )
 
 
 # ---------- 15번: 최종 검증 ----------
