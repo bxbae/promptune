@@ -46,7 +46,12 @@ public class PipelineDtos {
                         SuggestResult suggest) {
         }
 
-        public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId) {
+        public record ElementAction(String element, String action) {
+                // action: "tab"(적용) 또는 "esc"(거절). 방향키(단순 탐색)는 기록 안 함.
+        }
+
+        public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId,
+                        List<ElementAction> elementActions) {
         }
 
         public record ClassifyResult(

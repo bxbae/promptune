@@ -94,11 +94,18 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
 
     String companyId = userRepository.findById(req.userId())
             .map(User::getCompanyId).orElse("default-company");
-    boolean needsInternalDocs = classification.needsInternalDocs(
-            d.needsInternalDocs(), req.finalPrompt(), companyId);
+    boolean needsInternalDocs = classification.needsInternalDocs(d.needsInternalDocs());
 
     Map result = ai.generate(req.finalPrompt(), d.taskType(), needsInternalDocs);
-    behaviorLog.recordAction(req.userId(), d.taskType(), "tab");
+
+    // 요소별 적용/거절 기록 (10번 사용자선택 → 16번 행동저장, 파이프라인 문서 기준)
+    // taskType 기반 단일 로그(예전 방식)는 제거 — 이제 진짜 8요소 데이터가 element 컬럼에 쌓여야 하므로
+    // taskType 문자열과 섞이면 안 됨
+    if (req.elementActions() != null) {
+        for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
+            behaviorLog.recordAction(req.userId(), ea.element(), ea.action());
+        }
+    }
 
     // prompt_sessions 저장 (지금까지 없던 로직, 이번에 신규 추가) + chat_session 연결
     com.promptune.domain.PromptSession session = new com.promptune.domain.PromptSession(
