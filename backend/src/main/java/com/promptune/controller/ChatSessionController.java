@@ -7,6 +7,7 @@ import com.promptune.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -87,6 +88,17 @@ public class ChatSessionController {
         }
 
         chatSessionRepository.delete(chat);
+        return ResponseEntity.noContent().build();
+    }
+
+    // 히스토리 > 개인화 설정 화면의 "작업 이력 전체 삭제" 버튼
+    // 채팅 세션 전체 삭제 (메시지·response_edits는 DB CASCADE로 같이 삭제됨) + 채팅에 안 묶인 프롬프트 기록까지 정리
+    @DeleteMapping
+    @Transactional
+    public ResponseEntity<Void> deleteAll(Authentication authentication) {
+        User user = currentUser(authentication);
+        chatSessionRepository.deleteByUserId(user.getId());
+        promptSessionRepository.deleteByUserId(user.getId());
         return ResponseEntity.noContent().build();
     }
 
