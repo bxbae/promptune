@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
+import { generateId } from "@/lib/id";
 import PromptEditor from "@/components/PromptEditor";
 
 interface Message {
@@ -30,7 +31,7 @@ export default function ChatThreadPage() {
       const firstPrompt = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
       if (firstPrompt) {
-        setMessages([{ id: crypto.randomUUID(), role: "user", content: firstPrompt }]);
+        setMessages([{ id: generateId(), role: "user", content: firstPrompt }]);
         runAssistant(firstPrompt);
       }
       router.replace(`/chat/${chatSessionId}`);
@@ -52,7 +53,7 @@ export default function ChatThreadPage() {
       const resultText = res?.result?.result ?? JSON.stringify(res);
       clearInterval(stepTimer);
       setStatusStep(null);
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: resultText }]);
+      setMessages((prev) => [...prev, { id: generateId(), role: "assistant", content: resultText }]);
 
       // 새로 생성된 채팅 목록의 title을 불러옴
       window.dispatchEvent(
@@ -68,14 +69,14 @@ export default function ChatThreadPage() {
       setStatusStep(null);
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
+        { id: generateId(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
       ]);
     }
   }
 
   function handleSubmit(text: string) {
     if (statusStep !== null) return;
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }]);
+    setMessages((prev) => [...prev, { id: generateId(), role: "user", content: text }]);
     runAssistant(text);
   }
 
