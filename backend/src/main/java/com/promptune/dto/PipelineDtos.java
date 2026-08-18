@@ -46,12 +46,13 @@ public class PipelineDtos {
                         SuggestResult suggest) {
         }
 
-        public record ElementAction(String element, String action) {
+       public record ElementAction(String element, String action) {
                 // action: "tab"(적용) 또는 "esc"(거절). 방향키(단순 탐색)는 기록 안 함.
         }
 
         public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId,
-                        List<ElementAction> elementActions) {
+                        List<ElementAction> elementActions, Boolean useWebSearch) {
+                // useWebSearch: 사용자가 "웹에서 확인" 버튼을 눌렀을 때만 true. 안 보내면(null) false로 처리.
         }
 
         public record ClassifyResult(
