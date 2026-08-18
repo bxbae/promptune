@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { upsertPreference } from "@/api/userPreferences";
 
-type QKey = "speed" | "detail" | "respect";
+type QKey = "speed" | "detail" | "preserve";
 const QUESTIONS: { key: QKey; title: string; options: { value: string; label: string; desc: string }[] }[] = [
   {
     key: "speed",
@@ -21,7 +22,7 @@ const QUESTIONS: { key: QKey; title: string; options: { value: string; label: st
     ],
   },
   {
-    key: "respect",
+    key: "preserve",
     title: "3. 원문 존중도",
     options: [
       { value: "keep", label: "최대한 유지", desc: "빠진 조건만 채우고 말투는 그대로" },
@@ -33,11 +34,24 @@ const QUESTIONS: { key: QKey; title: string; options: { value: string; label: st
 export default function OnboardingPage() {
   const router = useRouter();
   const [answers, setAnswers] = useState<Partial<Record<QKey, string>>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  function finish() {
-    localStorage.setItem("pt_onboarding", "1");
-    localStorage.setItem("pt_onboarding_answers", JSON.stringify(answers));
-    router.replace("/chat");
+  async function finish() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await upsertPreference({
+        speed: answers.speed ?? null,
+        detail: answers.detail ?? null,
+        preserve: answers.preserve ?? null,
+      });
+      router.replace("/chat");
+    } catch (e: any) {
+      setError(e.message || "설정 저장에 실패했습니다. 다시 시도해주세요.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -75,21 +89,24 @@ export default function OnboardingPage() {
       ))}
 
       {/* 하단 버튼 */}
+      {error && <div style={{ color: "var(--block)", marginTop: 16 }}>{error}</div>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32}}>
         <span>3개 중 {Object.keys(answers).length}개 선택함</span>
 
         <div style={{ display: "flex", gap: 12 }}>
           <button
             onClick={finish}
-            style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer" }}
+            disabled={saving}
+            style={{ background: "none", border: "none", color: "var(--muted)", cursor: saving ? "default" : "pointer" }}
           >
             나중에 설정할게요
           </button>
           <button
             onClick={finish}
-            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}
+            disabled={saving}
+            style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}
           >
-            시작하기
+            {saving ? "저장 중..." : "시작하기"}
           </button>
         </div>
       </div>
