@@ -5,6 +5,7 @@ import com.promptune.domain.User;
 import com.promptune.repository.ChatSessionRepository;
 import com.promptune.repository.UserRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,10 +18,13 @@ public class ChatSessionController {
 
     private final ChatSessionRepository chatSessionRepository;
     private final UserRepository userRepository;
+    private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
 
-    public ChatSessionController(ChatSessionRepository chatSessionRepository, UserRepository userRepository) {
+    public ChatSessionController(ChatSessionRepository chatSessionRepository, UserRepository userRepository,
+                                  com.promptune.repository.PromptSessionRepository promptSessionRepository) {
         this.chatSessionRepository = chatSessionRepository;
         this.userRepository = userRepository;
+        this.promptSessionRepository = promptSessionRepository;
     }
 
     @PostMapping
@@ -51,6 +55,39 @@ public class ChatSessionController {
 
         chat.setTitle(req.title());
         return chatSessionRepository.save(chat);
+    }
+
+    // 채팅 하나 열었을 때 지난 메시지 목록 조회
+    @GetMapping("/{id}/messages")
+    public java.util.List<com.promptune.dto.ChatSessionDtos.MessageResponse> messages(
+            @PathVariable Long id, Authentication authentication) {
+        User user = currentUser(authentication);
+        ChatSession chat = chatSessionRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대화를 찾을 수 없습니다."));
+
+        if (!chat.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인 대화만 조회할 수 있습니다.");
+        }
+
+        return promptSessionRepository.findByChatSessionIdOrderByCreatedAtAsc(id).stream()
+                .map(p -> new com.promptune.dto.ChatSessionDtos.MessageResponse(
+                        p.getId(), p.getOriginalText(), p.getAiResponseText(), p.getTaskType(), p.getCreatedAt()))
+                .toList();
+    }
+
+    // 채팅 삭제 (메시지·response_edits는 DB CASCADE로 같이 삭제됨)
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        User user = currentUser(authentication);
+        ChatSession chat = chatSessionRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "대화를 찾을 수 없습니다."));
+
+        if (!chat.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인 대화만 삭제할 수 있습니다.");
+        }
+
+        chatSessionRepository.delete(chat);
+        return ResponseEntity.noContent().build();
     }
 
     private User currentUser(Authentication authentication) {
