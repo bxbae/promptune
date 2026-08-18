@@ -98,8 +98,17 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
 
     // needsInternalDocs(내부문서 자동검색)와 useWebSearch(사용자가 버튼 누른 외부검색)는 서로 다른 개념 —
     // 지금까지 needsInternalDocs를 그대로 여기 넘기고 있던 버그 수정 (승연님 리포트)
+    java.util.List<java.util.Map<String, Object>> documents =
+            needsInternalDocs
+                    ? ai.retrieve(req.finalPrompt(), req.userId(), 3)
+                    : java.util.List.of();
+
     boolean useWebSearch = Boolean.TRUE.equals(req.useWebSearch());
-    Map result = ai.generate(req.finalPrompt(), d.taskType(), useWebSearch);
+    Map result = ai.generate(
+            req.finalPrompt(),
+            d.taskType(),
+            documents,
+            useWebSearch);
 
     // 요소별 적용/거절 기록 (10번 사용자선택 → 16번 행동저장, 파이프라인 문서 기준)
     // taskType 기반 단일 로그(예전 방식)는 제거 — 이제 진짜 8요소 데이터가 element 컬럼에 쌓여야 하므로
