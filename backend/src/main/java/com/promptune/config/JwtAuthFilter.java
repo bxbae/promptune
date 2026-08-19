@@ -21,16 +21,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     public JwtAuthFilter(JwtService jwt) { this.jwt = jwt; }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
         String auth = req.getHeader("Authorization");
+        System.out.println("[JWT DEBUG] " + req.getMethod() + " " + req.getRequestURI() + " / auth header 존재: " + (auth != null) + " / content-type: " + req.getContentType());
         if (auth != null && auth.startsWith("Bearer ")) {
             try {
                 String email = jwt.validateAndGetEmail(auth.substring(7));
                 var authentication = new UsernamePasswordAuthenticationToken(email, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+                System.out.println("[JWT DEBUG] 인증 성공: " + email);
             } catch (Exception e) {
-                // 토큰 무효 → 인증 없이 통과 (보호된 경로는 이후 차단됨)
+                System.out.println("[JWT DEBUG] 인증 실패! 원인: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                e.printStackTrace();
             }
         }
         chain.doFilter(req, res);

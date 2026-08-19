@@ -73,7 +73,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**", "/health", "/actuator/**").permitAll()
+                .requestMatchers("/api/auth/**", "/health", "/actuator/**", "/error").permitAll()
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                 .requestMatchers("/api/integrations/microsoft/callback").permitAll()
                 .requestMatchers("/api/analyze", "/api/execute", "/api/context/**").permitAll()
