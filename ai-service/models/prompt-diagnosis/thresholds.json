@@ -1,10 +1,10 @@
 {
-  "task": 0.46,
-  "audience": 0.33,
-  "context": 0.34,
-  "format": 0.56,
-  "tone": 0.44,
-  "length": 0.37,
-  "constraint": 0.2,
+  "task": 0.07,
+  "audience": 0.07,
+  "context": 0.31,
+  "format": 0.24,
+  "tone": 0.16,
+  "length": 0.2,
+  "constraint": 0.3,
   "example": 0.2
 }

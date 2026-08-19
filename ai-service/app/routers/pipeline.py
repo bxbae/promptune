@@ -19,8 +19,10 @@ from app.schemas.models import (
     ValidateResponse,
     SummarizeTitleRequest,
     SummarizeTitleResponse,
+    PromptRuleRequest,
+    PromptRuleResponse,
 )
-from app.services import diagnose_mock, pipeline_mock
+from app.services import diagnose_mock, pipeline_mock, prompt_rule
 from app.services.retrieval.tavily_search import search_web
 
 USE_REAL_TITLE_SUMMARY = (
@@ -97,6 +99,14 @@ def diagnose(req: DiagnoseRequest):
 
     return diagnose_mock.diagnose(req)
 
+@router.post(
+    "/prompt-rule",
+    response_model=PromptRuleResponse,
+    tags=["Prompt Rule"],
+)
+def apply_prompt_rule(req: PromptRuleRequest):
+    """V6 진단 결과와 사용자 Preference를 개선 전략으로 변환."""
+    return prompt_rule.apply_prompt_rule(req)
 
 @router.post(
     "/suggest",
