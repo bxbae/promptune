@@ -1,11 +1,31 @@
 package com.promptune.controller;
 
-import com.promptune.dto.PipelineDtos.*;
-import com.promptune.service.*;
-import com.promptune.domain.User; // 추가
-import com.promptune.repository.UserRepository; // 추가
-import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable; // 추가
+import org.springframework.web.bind.annotation.PostMapping; // 추가
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.promptune.domain.User;
+import com.promptune.dto.PipelineDtos.*;
+import com.promptune.dto.PipelineDtos.AnalyzeRequest;
+import com.promptune.dto.PipelineDtos.AnalyzeResponse;
+import com.promptune.dto.PipelineDtos.DiagnoseResult;
+import com.promptune.dto.PipelineDtos.ExecuteRequest;
+import com.promptune.dto.PipelineDtos.GateResult;
+import com.promptune.dto.PipelineDtos.RecommendResult;
+import com.promptune.dto.PipelineDtos.SuggestResult;
+import com.promptune.repository.UserRepository;
+import com.promptune.service.AiServiceClient;
+import com.promptune.service.BehaviorLogService;
+import com.promptune.service.GateService;
+import com.promptune.service.GraphMockService;
+import com.promptune.service.RecommendService;
+import com.promptune.service.RequestClassificationService;
+import com.promptune.service.ConsentService;
 
 /**
  * 파이프라인 오케스트레이터.
@@ -23,7 +43,9 @@ public class PipelineController {
     private final UserRepository userRepository; // 추가 (companyId 조회용)
     private final BehaviorLogService behaviorLog; // 필드 추가
     private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
-private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
+    private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
+
+    private final ConsentService consentService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -31,7 +53,8 @@ private final com.promptune.repository.ChatSessionRepository chatSessionReposito
         UserRepository userRepository,
         BehaviorLogService behaviorLog,
         com.promptune.repository.PromptSessionRepository promptSessionRepository,
-        com.promptune.repository.ChatSessionRepository chatSessionRepository) {
+        com.promptune.repository.ChatSessionRepository chatSessionRepository,
+        ConsentService consentService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -41,6 +64,7 @@ private final com.promptune.repository.ChatSessionRepository chatSessionReposito
         this.behaviorLog = behaviorLog;
         this.promptSessionRepository = promptSessionRepository;
         this.chatSessionRepository = chatSessionRepository;
+        this.consentService = consentService;
     }
 
     /**
@@ -113,7 +137,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     // 요소별 적용/거절 기록 (10번 사용자선택 → 16번 행동저장, 파이프라인 문서 기준)
     // taskType 기반 단일 로그(예전 방식)는 제거 — 이제 진짜 8요소 데이터가 element 컬럼에 쌓여야 하므로
     // taskType 문자열과 섞이면 안 됨
-    if (req.elementActions() != null) {
+    // 개인화 학습 동의를 받은 사용자만 행동 기록 저장 (요구사항정의서 P0)
+    if (req.elementActions() != null && consentService.canUsePersonalization(req.userId())) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
             behaviorLog.recordAction(req.userId(), ea.element(), ea.action(), req.chatSessionId());
         }
@@ -151,7 +176,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     return Map.of(
             "taskType", d.taskType(),
             "needsInternalDocs", needsInternalDocs,
-            "result", result);
+            "result", result,
+            "promptSessionId", session.getId());
 }
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) */

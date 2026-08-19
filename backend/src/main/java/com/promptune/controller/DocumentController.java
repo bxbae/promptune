@@ -39,14 +39,18 @@ public class DocumentController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Document upload(@RequestParam("file") MultipartFile file,
                             @RequestParam("title") String title,
-                            @RequestParam(value = "tag", required = false) String tag,
+                            @RequestParam(value = "description", required = false) String description,
+                            @RequestParam(value = "documentType", required = false) String documentType,
                             Authentication authentication) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "파일이 비어있습니다.");
         }
+        if (documentType != null && !documentType.isBlank() && !com.promptune.domain.DocumentType.isValid(documentType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "documentType은 POLICY/TEMPLATE/GUIDE/REPORT/OTHER 중 하나여야 합니다.");
+        }
 
         User user = currentUser(authentication);
-        String resolvedTag = (tag == null || tag.isBlank()) ? "일반" : tag;
         String resolvedTitle = (title == null || title.isBlank())
                 ? file.getOriginalFilename()
                 : title;
@@ -54,10 +58,14 @@ public class DocumentController {
 
         String s3Key = s3StorageService.uploadDocument(user.getId(), file);
 
-        Document document = documentRepository.save(
-                new Document(user.getId(), resolvedTitle, resolvedTag, s3Key, fileType));
+        Document document = new Document(user.getId(), resolvedTitle, s3Key, fileType);
+        document.setDescription(description);
+        if (documentType != null && !documentType.isBlank()) {
+            document.setDocumentType(documentType.toUpperCase());
+        }
+        // documentType 안 보내면 생성자 기본값 "OTHER" 그대로 유지
 
-        return document;
+        return documentRepository.save(document);
     }
 
     @GetMapping
@@ -76,9 +84,16 @@ public class DocumentController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인 문서만 수정할 수 있습니다.");
         }
 
-        // 제목·태그는 Document 자체를 그냥 고침 (조각 재분할 대상 아님)
+        // 제목·설명·문서유형은 Document 자체를 그냥 고침 (조각 재분할 대상 아님)
         if (req.title() != null) document.setTitle(req.title());
-        if (req.tag() != null) document.setTag(req.tag());
+        if (req.description() != null) document.setDescription(req.description());
+        if (req.documentType() != null) {
+            if (!com.promptune.domain.DocumentType.isValid(req.documentType())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "documentType은 POLICY/TEMPLATE/GUIDE/REPORT/OTHER 중 하나여야 합니다.");
+            }
+            document.setDocumentType(req.documentType().toUpperCase());
+        }
 
         return documentRepository.save(document);
     }

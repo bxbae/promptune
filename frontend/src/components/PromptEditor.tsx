@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { analyze, execute } from "@/lib/api";
+import { uploadDocument, DocumentItem } from "@/api/documents";
 
 /**
  * 모호성 규칙 (mock)
@@ -74,6 +75,15 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // + 버튼 파일 첨부: /api/documents로 실제 저장
+  // TODO: 아직 채팅 프롬프트 자체에 내용이 자동으로 반영되진 않음 (문서 텍스트 추출·RAG 연동은 아직 범위 밖).
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<
+    { key: string; name: string; status: "uploading" | "done" | "error"; doc?: DocumentItem }[]
+  >([]);
+  // onExecute() 중복 호출 방지
+  const submittingRef = useRef(false);
 
   // 지금 화면에 떠 있어야 할 모호성 규칙 (한 번에 하나만)
   const activeRule = RULES.find(
@@ -163,14 +173,48 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
     }
   }
 
+  // 파일 선택되면 즉시 업로드 시작 (여러 개 선택 가능)
+  async function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    for (const file of files) {
+      const key = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setAttachments((prev) => [...prev, { key, name: file.name, status: "uploading" }]);
+
+      try {
+        // 채팅에서 첨부한 파일은 기본 "기타"(OTHER) 분류로 저장 (파일관리 페이지에서 나중에 변경 가능)
+        const doc = await uploadDocument(file, file.name, "기타");
+        setAttachments((prev) =>
+          prev.map((a) => (a.key === key ? { ...a, status: "done", doc } : a))
+        );
+      } catch {
+        setAttachments((prev) =>
+          prev.map((a) => (a.key === key ? { ...a, status: "error" } : a))
+        );
+      }
+    }
+
+    // 같은 파일을 다시 선택해도 onChange가 발생하도록 초기화
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeAttachment(key: string) {
+    setAttachments((prev) => prev.filter((a) => a.key !== key));
+  }
+
   async function onExecute() {
     if (!text.trim() || sending || disabled) return;
     if (onSubmit) {
+      if (submittingRef.current) return;   // 중복 호출 차단 (동기적으로 즉시 막힘)
+      submittingRef.current = true;
       onSubmit(text.trim());
       setText("");
       setResolved(new Set());
       setGate(null);
       setCustomOpen(false);
+      setAttachments([]);   // 전송했으니 첨부 칩 목록 비움 (업로드된 파일 자체는 유지됨)
+      setTimeout(() => { submittingRef.current = false; }, 0);
       return;
     }
     setSending(true);
@@ -253,9 +297,41 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
           </div>
         </div>
 
+        {attachments.length > 0 && (
+          <div className="attach-chip-row">
+            {attachments.map((a) => (
+              <div key={a.key} className={`attach-chip ${a.status}`}>
+                <span className="attach-chip-name" title={a.name}>{a.name}</span>
+                {a.status === "uploading" && <span className="attach-chip-status">업로드 중…</span>}
+                {a.status === "error" && <span className="attach-chip-status">실패</span>}
+                <button
+                  type="button"
+                  className="attach-chip-remove"
+                  onClick={() => removeAttachment(a.key)}
+                  aria-label="첨부 제거"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="composer-actions">
           <div className="composer-icons">
-            <button className="icon-btn" type="button" title="첨부 (미구현)">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => handleFilesSelected(e.target.files)}
+            />
+            <button
+              className="icon-btn"
+              type="button"
+              title="파일 첨부"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <img src="/icons/plus-muted.png" alt="" />
             </button>
             <button className="icon-btn" type="button" title="링크 (미구현)">

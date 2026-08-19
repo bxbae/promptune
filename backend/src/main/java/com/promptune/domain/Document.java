@@ -15,30 +15,36 @@ public class Document {
 
     private String title;
 
-    private String tag;   // '일반' 또는 '업무'
-
     @Column(name = "s3_key")
     private String s3Key;
 
     @Column(name = "file_type")
     private String fileType;
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "document_type")
+    private String documentType;   // DocumentType enum 값 중 하나 (POLICY/TEMPLATE/GUIDE/REPORT/OTHER)
+
     protected Document() {}
 
-    public Document(Long ownerUserId, String title, String tag, String s3Key, String fileType) {
+    public Document(Long ownerUserId, String title, String s3Key, String fileType) {
         this.ownerUserId = ownerUserId;
         this.title = title;
-        this.tag = tag;
         this.s3Key = s3Key;
         this.fileType = fileType;
+        this.documentType = "OTHER";
     }
 
     public Long getId() { return id; }
     public Long getOwnerUserId() { return ownerUserId; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
-    public String getTag() { return tag; }
-    public void setTag(String tag) { this.tag = tag; }
     public String getS3Key() { return s3Key; }
     public String getFileType() { return fileType; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getDocumentType() { return documentType; }
+    public void setDocumentType(String documentType) { this.documentType = documentType; }
 }

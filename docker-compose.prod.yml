@@ -33,7 +33,7 @@ services:
       APP_FRONTEND_URL: "${APP_FRONTEND_URL}"
       APP_CORS_ORIGINS: "${APP_CORS_ORIGINS}"
       JWT_SECRET: "${JWT_SECRET}"
-      OAUTH_REDIRECT_BASE: "${OAUTH_REDIRECT_BASE:-http://54.180.115.193:8080}"
+      OAUTH_REDIRECT_BASE: "${OAUTH_REDIRECT_BASE}"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
       KAKAO_CLIENT_ID: "${KAKAO_CLIENT_ID:-}"
@@ -59,6 +59,34 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # Nginx 리버스 프록시 + HTTPS(Let's Encrypt) 종료. 최초 인증서 발급은
+  # scripts/init-letsencrypt.sh 로 한 번 해줘야 함 (docs/EC2_배포_가이드.md 5-2절 참고).
+  nginx:
+    image: nginx:1.27-alpine
+    environment:
+      DOMAIN: "${DOMAIN}"
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+  # 12시간마다 인증서 만료 임박 여부 체크 후 자동 갱신 (webroot 방식이라 nginx 무중단).
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: >
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;"
     restart: unless-stopped
 
 volumes:
