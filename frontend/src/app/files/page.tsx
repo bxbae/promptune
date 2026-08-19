@@ -6,10 +6,10 @@ import {
   updateDocument,
   deleteDocument,
   DocumentItem,
+  DocType,
 } from "@/api/documents";
 
-type Category = "전체" | "규정" | "양식" | "가이드" | "보고서" | "기타";
-type DocType = "규정" | "양식" | "가이드" | "보고서" | "기타";
+type Category = "전체" | DocType;
 const TABS: Category[] = ["전체", "규정", "양식", "가이드", "보고서", "기타"];
 const DOC_TYPES: DocType[] = ["규정", "양식", "가이드", "보고서", "기타"];
 
@@ -37,6 +37,7 @@ export default function FilesPage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editDocType, setEditDocType] = useState<DocType>("기타");
   const [showUpload, setShowUpload] = useState(false);
 
@@ -57,13 +58,18 @@ export default function FilesPage() {
     setOpenMenuId(null);
     setEditingId(f.id);
     setEditTitle(f.title);
-    setEditDocType((f.documentType as DocType) ?? "기타");
+    setEditDescription(f.description ?? "");
+    setEditDocType(f.documentType);
   }
 
   // 수정 완료
   async function saveEdit(id: number) {
     try {
-      const updated = await updateDocument(id, { title: editTitle, documentType: editDocType });
+      const updated = await updateDocument(id, {
+        title: editTitle,
+        description: editDescription,
+        documentType: editDocType,
+      });
       setFiles((prev) => prev.map((f) => (f.id === id ? updated : f)));
       setEditingId(null);
     } catch (e: any) {
@@ -147,7 +153,14 @@ export default function FilesPage() {
                     className="file-edit-input"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="제목"
                     autoFocus
+                  />
+                  <input
+                    className="file-edit-input"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="설명 (선택)"
                   />
 
                   <select value={editDocType} onChange={(e) => setEditDocType(e.target.value as DocType)}>
@@ -226,6 +239,7 @@ function UploadModal({
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [docType, setDocType] = useState<DocType>("기타");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
@@ -251,7 +265,7 @@ function UploadModal({
     setSubmitting(true);
     setErr("");
     try {
-      const doc = await uploadDocument(file, title.trim(), docType);
+      const doc = await uploadDocument(file, title.trim(), docType, description.trim() || undefined);
       onUploaded(doc);
     } catch (e: any) {
       setErr(e.message || "업로드에 실패했습니다.");
@@ -274,6 +288,14 @@ function UploadModal({
 
         <label className="modal-label">제목</label>
         <input className="modal-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 이력서 양식.docx" />
+
+        <label className="modal-label">설명 (선택)</label>
+        <input
+          className="modal-input"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="이 문서가 어떤 내용인지 간단히 적어주세요"
+        />
 
         <label className="modal-label">분류</label>
         <select className="modal-input" value={docType} onChange={(e) => setDocType(e.target.value as DocType)}>
