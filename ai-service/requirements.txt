@@ -10,3 +10,4 @@ tavily-python
 pypdf
 python-docx
 python-multipart
+PyMuPDF
