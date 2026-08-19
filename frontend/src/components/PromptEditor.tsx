@@ -177,6 +177,11 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
+    // 첨부 시점에 컴포저에 입력돼있던 텍스트를 description으로 사용.
+    // TODO: (임시) 진짜 파일 내용 요약이 아니라 사용자가 그 순간 입력한 텍스트일 뿐임.
+    // 나중에 문서 파싱·AI 요약 파이프라인(승연님 RAG 작업) 붙으면 이 부분 제거하고
+    // 백엔드/ai-service가 채운 description을 그대로 쓰도록 교체할 것.
+    const descriptionAtAttach = text.trim() || undefined;
 
     for (const file of files) {
       const key = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -184,7 +189,7 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
 
       try {
         // 채팅에서 첨부한 파일은 기본 "기타"(OTHER) 분류로 저장 (파일관리 페이지에서 나중에 변경 가능)
-        const doc = await uploadDocument(file, file.name, "기타");
+        const doc = await uploadDocument(file, file.name, "기타", descriptionAtAttach);
         setAttachments((prev) =>
           prev.map((a) => (a.key === key ? { ...a, status: "done", doc } : a))
         );
