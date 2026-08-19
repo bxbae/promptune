@@ -26,7 +26,7 @@ const QUESTIONS: { key: QKey; title: string; options: { value: string; label: st
     title: "3. 원문 존중도",
     options: [
       { value: "keep", label: "최대한 유지", desc: "빠진 조건만 채우고 말투는 그대로" },
-      { value: "imporve", label: "적극적으로 보완", desc: "더 매끄러운 쪽으로 바꿔도 OK" }, 
+      { value: "improve", label: "적극적으로 보완", desc: "더 매끄러운 쪽으로 바꿔도 OK" }, 
     ],
   },
 ];
