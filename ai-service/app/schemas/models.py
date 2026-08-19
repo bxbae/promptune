@@ -70,8 +70,24 @@ class RetrieveRequest(BaseModel):
     top_k: int = 3
 
 
+DocumentType = Literal[
+    "POLICY",
+    "TEMPLATE",
+    "GUIDE",
+    "REPORT",
+    "OTHER",
+]
+
+
 class Document(BaseModel):
+    document_id: int | None = None
+    chunk_id: int | None = None
+    chunk_index: int | None = None
+
     title: str
+    document_type: DocumentType = "OTHER"
+    description: str | None = None
+
     content: str
     score: float
 
@@ -84,7 +100,7 @@ class RetrieveResponse(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     task_type: TaskType
-    documents: list[Document] = []      # 13번 결과 (있으면)
+    documents: list[Document] = Field(default_factory=list)  # 13번 결과 (있으면)
     use_web_search: bool = False        # 흐름도: 최신정보 버튼 클릭 시
 
 

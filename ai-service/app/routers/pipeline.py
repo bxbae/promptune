@@ -2,7 +2,7 @@
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.schemas.models import (
     DiagnoseRequest,
@@ -22,6 +22,7 @@ from app.schemas.models import (
 )
 from app.services import diagnose_mock, pipeline_mock
 from app.services.retrieval.tavily_search import search_web
+from app.services.retrieval import document_indexer
 
 USE_REAL_TITLE_SUMMARY = (
     os.getenv(
@@ -183,3 +184,45 @@ def summarize_title(req: SummarizeTitleRequest):
     # mock: 앞부분 자르기 (모델 없이 빠르게 테스트할 때 사용)
     title = req.text[:15].strip()
     return SummarizeTitleResponse(title=title)
+
+@router.post(
+    "/index-document",
+    tags=["13.내부검색"],
+)
+async def index_document(
+    document_id: int = Form(...),
+    owner_user_id: int = Form(...),
+    file_type: str | None = Form(None),
+    file: UploadFile = File(...),
+):
+    try:
+        file_bytes = await file.read()
+
+        result = document_indexer.index_document(
+            document_id=document_id,
+            owner_user_id=owner_user_id,
+            file_bytes=file_bytes,
+            filename=file.filename,
+            file_type=file_type,
+        )
+
+        return result
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        print(f"[INDEX] document indexing failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="문서 인덱싱에 실패했습니다.",
+        ) from exc
