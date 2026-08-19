@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from docx import Document as DocxDocument
-from pypdf import PdfReader
+import pymupdf
 
 from app.services.retrieval.chunker import chunk_text
 from app.services.retrieval.rag_retriever import (
@@ -35,12 +35,20 @@ def resolve_file_type(filename: str | None, file_type: str | None) -> str:
 
 
 def extract_pdf_text(file_bytes: bytes) -> str:
-    reader = PdfReader(io.BytesIO(file_bytes))
-    return "\n".join(
-        (page.extract_text() or "").strip()
-        for page in reader.pages
-        if (page.extract_text() or "").strip()
-    )
+    """PDF에서 텍스트를 추출한다."""
+    try:
+        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+        pages = []
+
+        for page in doc:
+            page_text = page.get_text("text")
+            if page_text:
+                pages.append(page_text.strip())
+
+        return "\n".join(pages).strip()
+
+    except Exception as exc:
+        raise ValueError(f"PDF 텍스트 추출에 실패했습니다: {exc}") from exc
 
 
 def extract_docx_text(file_bytes: bytes) -> str:
