@@ -629,6 +629,66 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .msg-assistant { max-width: 90%; }
 .msg-sender { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 6px; }
+
+/* 만족도(👍/👎) */
+.satisfaction-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.satisfaction-label { font-size: 12px; color: var(--muted); }
+.satisfaction-btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+  width: 30px; height: 26px; font-size: 13px; cursor: pointer; line-height: 1;
+}
+.satisfaction-btn:hover { background: var(--panel-alt); }
+.satisfaction-thanks { font-size: 12px; color: var(--accent); font-weight: 600; }
+
+/* 히스토리 > 수신자별 스타일 관리 */
+.receiver-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.receiver-row {
+  display: grid; grid-template-columns: 1.2fr 1.3fr 1.3fr 0.9fr 0.8fr 1.3fr;
+  align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.receiver-row:last-child { border-bottom: none; }
+.receiver-row-head { background: var(--panel-alt); color: var(--muted); font-size: 12px; font-weight: 600; }
+.receiver-name { font-weight: 600; }
+.receiver-edit-input {
+  width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line);
+  font-size: 13px; font-family: inherit; color: var(--ink); background: var(--panel);
+}
+.receiver-actions { display: flex; gap: 6px; }
+.receiver-edit-btn, .receiver-save {
+  padding: 5px 10px; border-radius: 6px; border: none; background: var(--accent);
+  color: #fff; font-size: 12px; cursor: pointer;
+}
+.receiver-delete-btn, .receiver-cancel {
+  padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.receiver-delete-btn:hover { color: var(--block); border-color: var(--block); }
+
+/* 개인화 저장 동의 카드 (스토리보드 14p) */
+.consent-card {
+  margin-top: 8px; padding: 14px 16px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); max-width: 320px;
+}
+.consent-title {
+  font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 4px;
+}
+.consent-title::before { content: "●"; font-size: 8px; }
+.consent-name { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.consent-question { font-size: 13px; color: var(--ink); margin-bottom: 12px; }
+.consent-actions { display: flex; gap: 8px; }
+.consent-apply {
+  padding: 7px 14px; border-radius: 8px; border: none; background: var(--accent);
+  color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.consent-apply:disabled { opacity: 0.6; cursor: default; }
+.consent-dismiss {
+  padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-alt); color: var(--muted); font-size: 13px; cursor: pointer;
+}
+.consent-dismiss:disabled { opacity: 0.6; cursor: default; }
+.consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
 .msg-bubble.assistant {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
