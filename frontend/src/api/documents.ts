@@ -1,6 +1,6 @@
 // DocumentController(/api/documents) 전용 API 클라이언트.
 // 실제 파일을 multipart/form-data로 업로드하면 백엔드가 S3(promptune-document 버킷)에 저장하고
-// 메타데이터(title/tag/s3Key/fileType)를 DB에 저장한다.
+// 메타데이터(title/documentType/s3Key/fileType)를 DB에 저장한다.
 
 import { getToken } from "@/lib/auth";
 
@@ -10,7 +10,7 @@ export interface DocumentItem {
   id: number;
   ownerUserId: number;
   title: string;
-  tag: string; // "일반" | "업무"
+  documentType: string; // "규정" | "양식" | "가이드" | "보고서" | "기타"
   s3Key: string | null;
   fileType: string | null;
 }
@@ -27,12 +27,12 @@ function authHeaders(): HeadersInit {
 export async function uploadDocument(
   file: File,
   title: string,
-  tag: "일반" | "업무"
+  documentType: "규정" | "양식" | "가이드" | "보고서" | "기타"
 ): Promise<DocumentItem> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("title", title);
-  formData.append("tag", tag);
+  formData.append("documentType", documentType);
 
   const res = await fetch(`${API}/api/documents`, {
     method: "POST",
@@ -50,11 +50,11 @@ export async function listDocuments(): Promise<DocumentItem[]> {
   return res.json();
 }
 
-// Update - PATCH /api/documents/{id} - title, tag만 수정 가능
+// Update - PATCH /api/documents/{id} - title, documentType만 수정 가능
 // TODO : 파일 자체 Update (덮어쓰기) 기능 추가 필요
 export async function updateDocument(
   id: number,
-  patch: { title?: string; tag?: "일반" | "업무" }
+  patch: { title?: string; documentType?: "규정" | "양식" | "가이드" | "보고서" | "기타" }
 ): Promise<DocumentItem> {
   const res = await fetch(`${API}/api/documents/${id}`, {
     method: "PATCH",

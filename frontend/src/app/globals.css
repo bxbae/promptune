@@ -131,6 +131,23 @@ textarea:focus { outline: none; }
   width: 100%; height: 100%; object-fit: contain;
 }
 .icon-btn:hover { background: var(--panel-alt); }
+
+/* 채팅 컴포저 파일 첨부 칩 */
+.attach-chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.attach-chip {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 10px;
+  border-radius: 99px; border: 1px solid var(--line); background: var(--panel-alt);
+  font-size: 12px; max-width: 220px;
+}
+.attach-chip.error { border-color: var(--block); }
+.attach-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-chip-status { color: var(--muted); flex-shrink: 0; }
+.attach-chip.error .attach-chip-status { color: var(--block); }
+.attach-chip-remove {
+  border: none; background: none; cursor: pointer; color: var(--muted);
+  font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+}
+.attach-chip-remove:hover { color: var(--ink); }
 .icon-plus { display: block; width: 2px; height: 15px; background: var(--muted); position: absolute; opacity: 0.8; }
 .icon-plus:nth-child(2){ display: block; width: 15px; height: 2px; background: var(--muted); position: absolute; opacity: 0.8; }
 .composer-right { display: flex; align-items: center; gap: 8px; }
@@ -470,8 +487,12 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .file-name {
   font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; min-width: 0; max-width: 100%;
 }
+.file-name-base {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex-shrink: 1;
+}
+.file-name-ext { flex-shrink: 0; white-space: nowrap; }
 .file-name:hover { text-decoration: underline; }
 
 .file-badge {
