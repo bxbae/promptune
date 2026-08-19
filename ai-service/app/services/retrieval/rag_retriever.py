@@ -76,7 +76,12 @@ def retrieve(req: RetrieveRequest) -> RetrieveResponse:
 
     sql = """
 SELECT
+    d.id AS document_id,
+    dc.id AS chunk_id,
+    dc.chunk_index,
     d.title,
+    d.document_type,
+    d.description,
     dc.content,
     1 - (dc.embedding <=> %s::vector) AS score
 FROM document_chunks dc
@@ -104,11 +109,25 @@ LIMIT %s
 
     documents = [
         Document(
+            document_id=int(document_id),
+            chunk_id=int(chunk_id),
+            chunk_index=int(chunk_index),
             title=title,
+            document_type=document_type or "OTHER",
+            description=description,
             content=content,
             score=float(score),
         )
-        for title, content, score in rows
+        for (
+            document_id,
+            chunk_id,
+            chunk_index,
+            title,
+            document_type,
+            description,
+            content,
+            score,
+        ) in rows
     ]
 
     return RetrieveResponse(documents=documents)

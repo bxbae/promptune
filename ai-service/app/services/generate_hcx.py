@@ -6,31 +6,16 @@ import torch
 
 from app.schemas.models import GenerateRequest, GenerateResponse
 from app.services.hcx_runtime import HCX_MODEL_LOCK, load_hcx_runtime
+from app.services.retrieval.retrieval_context import build_internal_context
 
 
 logger = logging.getLogger(__name__)
 
 
-def _build_internal_context(req: GenerateRequest) -> str:
-    if not req.documents:
-        return "없음"
-
-    parts: list[str] = []
-
-    for index, doc in enumerate(req.documents, start=1):
-        content = doc.content.strip()
-
-        # MVP 단계에서 과도하게 긴 context가 들어가는 것을 방지
-        if len(content) > 1500:
-            content = content[:1500]
-
-        parts.append(
-            f"[내부 문서 {index}]\n"
-            f"제목: {doc.title}\n"
-            f"내용: {content}"
-        )
-
-    return "\n\n".join(parts)
+def _build_internal_context(
+    req: GenerateRequest,
+) -> str:
+    return build_internal_context(req.documents)
 
 
 def _build_web_context(web_results: list[dict]) -> str:
