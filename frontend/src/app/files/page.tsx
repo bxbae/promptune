@@ -8,21 +8,16 @@ import {
   DocumentItem,
 } from "@/api/documents";
 
-type Category = "전체" | "일반" | "업무";
-const TABS: Category[] = ["전체", "일반", "업무"];
+type Category = "전체" | "규정" | "양식" | "가이드" | "보고서" | "기타";
+type DocType = "규정" | "양식" | "가이드" | "보고서" | "기타";
+const TABS: Category[] = ["전체", "규정", "양식", "가이드", "보고서", "기타"];
+const DOC_TYPES: DocType[] = ["규정", "양식", "가이드", "보고서", "기타"];
 
-// 파일명이 길 때 확장자는 남기고 앞부분만 ...으로 줄이는 로직
-function truncateFilename(name: string, maxChars = 16): string {
+// 파일명을 이름부분/확장자로 분리 (CSS에서 이름부분만 ellipsis 처리, 확장자는 항상 온전히 표시)
+function splitFilename(name: string): { base: string; ext: string } {
   const dotIndex = name.lastIndexOf(".");
-  if (dotIndex <= 0) return name; // 확장자 없는 파일명
-
-  const base = name.slice(0, dotIndex);
-  const ext = name.slice(dotIndex);   // .확장자
-  const maxBase = maxChars - ext.length;
-
-  if (base.length <= maxBase) return name; // 짧으면 그대로
-
-  return base.slice(0, Math.max(maxBase - 1, 1)) + "..." + ext;
+  if (dotIndex <= 0) return { base: name, ext: "" }; // 확장자 없는 파일명
+  return { base: name.slice(0, dotIndex), ext: name.slice(dotIndex) };
 }
 
 // 썸네일
@@ -42,7 +37,7 @@ export default function FilesPage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editTag, setEditTag] = useState<"일반" | "업무">("일반");
+  const [editDocType, setEditDocType] = useState<DocType>("기타");
   const [showUpload, setShowUpload] = useState(false);
 
   function refresh() {
@@ -55,20 +50,20 @@ export default function FilesPage() {
 
   useEffect(() => { refresh(); }, []);
 
-  const visible = tab === "전체" ? files : files.filter((f) => f.tag === tab);
+  const visible = tab === "전체" ? files : files.filter((f) => f.documentType === tab);
 
   // 수정
   function startEdit(f: DocumentItem) {
     setOpenMenuId(null);
     setEditingId(f.id);
     setEditTitle(f.title);
-    setEditTag(f.tag === "업무" ? "업무" : "일반");
+    setEditDocType((f.documentType as DocType) ?? "기타");
   }
 
   // 수정 완료
   async function saveEdit(id: number) {
     try {
-      const updated = await updateDocument(id, { title: editTitle, tag: editTag });
+      const updated = await updateDocument(id, { title: editTitle, documentType: editDocType });
       setFiles((prev) => prev.map((f) => (f.id === id ? updated : f)));
       setEditingId(null);
     } catch (e: any) {
@@ -126,7 +121,8 @@ export default function FilesPage() {
           {visible.map((file) => (
             <div className="file-card" key={file.id}>
               <div className="file-thumb">
-                <span className={`file-badge ${file.tag === "업무" ? "work" : ""}`}>{file.tag}</span>
+                {/* TODO: 카테고리별 배지 색상 구분 원하면 documentType 기준으로 클래스 분기 추가 */}
+                <span className="file-badge">{file.documentType}</span>
                 <button
                   className="file-menu-btn"
                   onClick={() => setOpenMenuId(openMenuId === file.id ? null : file.id)}
@@ -154,16 +150,20 @@ export default function FilesPage() {
                     autoFocus
                   />
 
-                  <select value={editTag} onChange={(e) => setEditTag(e.target.value as "일반" | "업무")}>
-                    <option value="일반">일반</option>
-                    <option value="업무">업무</option>
+                  <select value={editDocType} onChange={(e) => setEditDocType(e.target.value as DocType)}>
+                    {DOC_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
                   </select>
 
                   <button className="file-edit-save" onClick={() => saveEdit(file.id)}>저장</button>
                   <button className="file-edit-cancel" onClick={() => setEditingId(null)}>취소</button>
                 </div>
               ) : (
-                <div className="file-name" title={file.title}>{truncateFilename(file.title)}</div>
+                <div className="file-name" title={file.title}>
+                  <span className="file-name-base">{splitFilename(file.title).base}</span>
+                  <span className="file-name-ext">{splitFilename(file.title).ext}</span>
+                </div>
               )}
             </div>
           ))}
@@ -226,7 +226,7 @@ function UploadModal({
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [tag, setTag] = useState<"일반" | "업무">("일반");
+  const [docType, setDocType] = useState<DocType>("기타");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState("");
 
@@ -251,7 +251,7 @@ function UploadModal({
     setSubmitting(true);
     setErr("");
     try {
-      const doc = await uploadDocument(file, title.trim(), tag);
+      const doc = await uploadDocument(file, title.trim(), docType);
       onUploaded(doc);
     } catch (e: any) {
       setErr(e.message || "업로드에 실패했습니다.");
@@ -276,9 +276,10 @@ function UploadModal({
         <input className="modal-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 이력서 양식.docx" />
 
         <label className="modal-label">분류</label>
-        <select className="modal-input" value={tag} onChange={(e) => setTag(e.target.value as "일반" | "업무")}>
-          <option value="일반">일반</option>
-          <option value="업무">업무</option>
+        <select className="modal-input" value={docType} onChange={(e) => setDocType(e.target.value as DocType)}>
+          {DOC_TYPES.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
         </select>
 
         {err && <div style={{ color: "var(--block)", fontSize: 12, marginTop: 8 }}>{err}</div>}
