@@ -1,11 +1,30 @@
 package com.promptune.controller;
 
-import com.promptune.dto.PipelineDtos.*;
-import com.promptune.service.*;
-import com.promptune.domain.User; // 추가
-import com.promptune.repository.UserRepository; // 추가
-import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable; // 추가
+import org.springframework.web.bind.annotation.PostMapping; // 추가
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.promptune.domain.User;
+import com.promptune.dto.PipelineDtos.*;
+import com.promptune.dto.PipelineDtos.AnalyzeRequest;
+import com.promptune.dto.PipelineDtos.AnalyzeResponse;
+import com.promptune.dto.PipelineDtos.DiagnoseResult;
+import com.promptune.dto.PipelineDtos.ExecuteRequest;
+import com.promptune.dto.PipelineDtos.GateResult;
+import com.promptune.dto.PipelineDtos.RecommendResult;
+import com.promptune.dto.PipelineDtos.SuggestResult;
+import com.promptune.repository.UserRepository;
+import com.promptune.service.AiServiceClient;
+import com.promptune.service.BehaviorLogService;
+import com.promptune.service.GateService;
+import com.promptune.service.GraphMockService;
+import com.promptune.service.RecommendService;
+import com.promptune.service.RequestClassificationService;
 
 /**
  * 파이프라인 오케스트레이터.
@@ -151,7 +170,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     return Map.of(
             "taskType", d.taskType(),
             "needsInternalDocs", needsInternalDocs,
-            "result", result);
+            "result", result,
+            "promptSessionId", session.getId());
 }
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) */
