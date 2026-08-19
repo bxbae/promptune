@@ -65,6 +65,11 @@ jwt:
 
 server:
   port: 8080
+  # Nginx가 앞단에서 TLS를 종료하고 내부(http)로 프록시하기 때문에, Spring이
+  # X-Forwarded-Proto/Host 헤더를 신뢰해서 https 기준으로 리다이렉트 URL을 만들도록 설정.
+  # 이게 없으면 구글 로그인(redirect-uri를 {baseUrl}로 자동 생성)이 http://로 잘못 만들어져서
+  # "redirect_uri_mismatch" 에러가 남.
+  forward-headers-strategy: framework
 
 
 microsoft:
