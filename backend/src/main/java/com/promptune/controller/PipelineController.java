@@ -25,6 +25,7 @@ import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
 import com.promptune.service.RecommendService;
 import com.promptune.service.RequestClassificationService;
+import com.promptune.service.ConsentService;
 
 /**
  * 파이프라인 오케스트레이터.
