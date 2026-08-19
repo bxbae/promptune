@@ -1,7 +1,10 @@
-{
-  "name": "PrompTune KcELECTRA 8-label diagnosis",
+﻿{
+  "version": "v6-seed42",
+  "status": "mvp-diagnosis-champion",
   "base_model": "beomi/KcELECTRA-base",
-  "version": "augv3-e3-seed42",
+  "source_run_id": "v6-e3-seed42-pc01-20260818-130235",
+  "training_commit": "df39508f8709fb9adede670a040d7a2bf16a887b",
+  "seed": 42,
   "num_labels": 8,
   "labels": [
     "task",
@@ -13,6 +16,11 @@
     "constraint",
     "example"
   ],
-  "max_length": 128,
-  "status": "prototype-champion"
+  "max_length": 256,
+  "threshold_version": "v1",
+  "model_sha256": "FEBF6AA2F86ABF00E624DE4D5CED6498D69C0149352BA34E0806390C19277886",
+  "threshold_sha256": "5EAA406E44F76F5C3A892BA9ECD8CC9E266A71FA261041F444BEBC17EF719FB1",
+  "tokenizer_sha256": "5CB072F3A4D6D20C2AB9408FADA03D3898EF3DEA680D8C68E8D9597A6572FBD2",
+  "config_sha256": "29132ACDA85225B0CEF05814EEA53972D15058EE20F815E48D92D2CE71A0A235",
+  "notes": "Official Promptune V6 Seed42 diagnosis model for MVP integration. Uses frozen V1 per-label thresholds."
 }
