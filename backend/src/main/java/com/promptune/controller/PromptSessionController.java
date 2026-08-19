@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import com.promptune.service.ConsentService;
 
 @RestController
 @RequestMapping("/api/prompt-sessions")
@@ -21,15 +22,18 @@ public class PromptSessionController {
     private final ResponseEditRepository responseEditRepository;
     private final UserRepository userRepository;
     private final BehaviorLogService behaviorLog;
+    private final ConsentService consentService;
 
     public PromptSessionController(PromptSessionRepository promptSessionRepository,
                                     ResponseEditRepository responseEditRepository,
                                     UserRepository userRepository,
-                                    BehaviorLogService behaviorLog) {
+                                    BehaviorLogService behaviorLog,
+                                    ConsentService consentService) {
         this.promptSessionRepository = promptSessionRepository;
         this.responseEditRepository = responseEditRepository;
         this.userRepository = userRepository;
         this.behaviorLog = behaviorLog;
+        this.consentService = consentService;
     }
 
     @PostMapping("/{id}/edits")
@@ -50,7 +54,9 @@ public class PromptSessionController {
         if (edited) {
             responseEditRepository.save(new ResponseEdit(
                     id, user.getId(), req.generatedResult(), req.userFinalResult()));
-            behaviorLog.recordAction(user.getId(), session.getTaskType(), "edit", session.getChatSessionId());
+            if (consentService.canUsePersonalization(user.getId())) {
+                behaviorLog.recordAction(user.getId(), session.getTaskType(), "edit", session.getChatSessionId());
+            }
         }
 
         if (req.satisfaction() != null) {

@@ -25,6 +25,7 @@ import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
 import com.promptune.service.RecommendService;
 import com.promptune.service.RequestClassificationService;
+import com.promptune.service.ConsentService;
 
 /**
  * 파이프라인 오케스트레이터.
@@ -42,7 +43,9 @@ public class PipelineController {
     private final UserRepository userRepository; // 추가 (companyId 조회용)
     private final BehaviorLogService behaviorLog; // 필드 추가
     private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
-private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
+    private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
+
+    private final ConsentService consentService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -50,7 +53,8 @@ private final com.promptune.repository.ChatSessionRepository chatSessionReposito
         UserRepository userRepository,
         BehaviorLogService behaviorLog,
         com.promptune.repository.PromptSessionRepository promptSessionRepository,
-        com.promptune.repository.ChatSessionRepository chatSessionRepository) {
+        com.promptune.repository.ChatSessionRepository chatSessionRepository,
+        ConsentService consentService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -60,6 +64,7 @@ private final com.promptune.repository.ChatSessionRepository chatSessionReposito
         this.behaviorLog = behaviorLog;
         this.promptSessionRepository = promptSessionRepository;
         this.chatSessionRepository = chatSessionRepository;
+        this.consentService = consentService;
     }
 
     /**
@@ -132,7 +137,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
     // 요소별 적용/거절 기록 (10번 사용자선택 → 16번 행동저장, 파이프라인 문서 기준)
     // taskType 기반 단일 로그(예전 방식)는 제거 — 이제 진짜 8요소 데이터가 element 컬럼에 쌓여야 하므로
     // taskType 문자열과 섞이면 안 됨
-    if (req.elementActions() != null) {
+    // 개인화 학습 동의를 받은 사용자만 행동 기록 저장 (요구사항정의서 P0)
+    if (req.elementActions() != null && consentService.canUsePersonalization(req.userId())) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
             behaviorLog.recordAction(req.userId(), ea.element(), ea.action(), req.chatSessionId());
         }
