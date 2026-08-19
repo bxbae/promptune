@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.PostMapping; // 추가
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.promptune.domain.User;
 import com.promptune.dto.PipelineDtos.*;
@@ -113,18 +116,19 @@ public class PipelineController {
      * 흐름: 12분류 → (13검색) → 14생성(AI) → 16저장
      */
     @PostMapping("/execute")
-public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
+public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springframework.security.core.Authentication authentication) {
+    User currentUser = userRepository.findByEmail(authentication.getName())
+            .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+    Long userId = currentUser.getId();
+
     DiagnoseResult d = ai.diagnose(req.finalPrompt());
 
-    String companyId = userRepository.findById(req.userId())
-            .map(User::getCompanyId).orElse("default-company");
     boolean needsInternalDocs = classification.needsInternalDocs(d.needsInternalDocs());
 
-    // needsInternalDocs(내부문서 자동검색)와 useWebSearch(사용자가 버튼 누른 외부검색)는 서로 다른 개념 —
-    // 지금까지 needsInternalDocs를 그대로 여기 넘기고 있던 버그 수정 (승연님 리포트)
     java.util.List<java.util.Map<String, Object>> documents =
             needsInternalDocs
-                    ? ai.retrieve(req.finalPrompt(), req.userId(), 3)
+                    ? ai.retrieve(req.finalPrompt(), userId, 3)
                     : java.util.List.of();
 
     boolean useWebSearch = Boolean.TRUE.equals(req.useWebSearch());
@@ -134,19 +138,14 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req) {
             documents,
             useWebSearch);
 
-    // 요소별 적용/거절 기록 (10번 사용자선택 → 16번 행동저장, 파이프라인 문서 기준)
-    // taskType 기반 단일 로그(예전 방식)는 제거 — 이제 진짜 8요소 데이터가 element 컬럼에 쌓여야 하므로
-    // taskType 문자열과 섞이면 안 됨
-    // 개인화 학습 동의를 받은 사용자만 행동 기록 저장 (요구사항정의서 P0)
-    if (req.elementActions() != null && consentService.canUsePersonalization(req.userId())) {
+    if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
-            behaviorLog.recordAction(req.userId(), ea.element(), ea.action(), req.chatSessionId());
+            behaviorLog.recordAction(userId, ea.element(), ea.action(), req.chatSessionId());
         }
     }
 
-    // prompt_sessions 저장 (지금까지 없던 로직, 이번에 신규 추가) + chat_session 연결
     com.promptune.domain.PromptSession session = new com.promptune.domain.PromptSession(
-            req.userId(), req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
+            userId, req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
     // AI 응답 원문도 같이 저장 (이제까지 저장 안 되고 있던 부분 — 메시지 목록에 필요해서 추가)
     Object aiText = result != null ? result.get("result") : null;
     session.setAiResponseText(aiText != null ? aiText.toString() : null);

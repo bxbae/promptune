@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.multipart.MultipartFile;
 import java.net.http.HttpClient;
 import java.util.Map;
 import java.util.List;
@@ -130,6 +133,30 @@ public class AiServiceClient {
             return documents instanceof List<?> ? (List<Map<String, Object>>) documents : List.of();
         } catch (Exception e) {
             log("ai-service", "/api/ai/retrieve", start, "error");
+            throw e;
+        }
+    }
+    // 문서 업로드 직후 ai-service에 청킹·임베딩 요청 (document_chunks 채우기)
+    public Map<String, Object> indexDocument(Long documentId, Long ownerUserId, String fileType, MultipartFile file) {
+        long start = System.currentTimeMillis();
+        try {
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("document_id", documentId);
+            body.add("owner_user_id", ownerUserId);
+            body.add("file_type", fileType);
+            body.add("file", file.getResource());   // 원본 파일을 그대로 전달 (S3 재조회 없음)
+
+            Map result = client.post()
+                    .uri("/api/ai/index-document")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            log("ai-service", "/api/ai/index-document", start, "success");
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/index-document", start, "error");
             throw e;
         }
     }

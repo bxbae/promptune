@@ -5,6 +5,7 @@ import com.promptune.domain.User;
 import com.promptune.dto.DocumentDtos.UpdateDocumentRequest;
 import com.promptune.repository.DocumentRepository;
 import com.promptune.repository.UserRepository;
+import com.promptune.service.AiServiceClient;
 import com.promptune.service.S3StorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,13 +25,16 @@ public class DocumentController {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final S3StorageService s3StorageService;
+    private final AiServiceClient aiServiceClient;
 
     public DocumentController(DocumentRepository documentRepository,
                                UserRepository userRepository,
-                               S3StorageService s3StorageService) {
+                               S3StorageService s3StorageService,
+                               AiServiceClient aiServiceClient) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.s3StorageService = s3StorageService;
+        this.aiServiceClient = aiServiceClient;
     }
 
     // 실제 파일을 받아 S3(promptune-document 버킷)에 업로드하고, 메타데이터를 DB에 저장한다.
@@ -63,9 +67,17 @@ public class DocumentController {
         if (documentType != null && !documentType.isBlank()) {
             document.setDocumentType(documentType.toUpperCase());
         }
-        // documentType 안 보내면 생성자 기본값 "OTHER" 그대로 유지
+        document = documentRepository.save(document);
 
-        return documentRepository.save(document);
+        // AI 인덱싱(청킹·임베딩) 요청 — 실패해도 업로드 자체는 성공으로 처리
+        // (문서는 이미 저장·검색가능 상태, 인덱싱만 나중에 재시도하면 되므로 업로드를 막을 이유 없음)
+        try {
+            aiServiceClient.indexDocument(document.getId(), user.getId(), fileType, file);
+        } catch (Exception e) {
+            System.err.println("[문서 인덱싱 실패] documentId=" + document.getId() + " / " + e.getMessage());
+        }
+
+        return document;
     }
 
     @GetMapping
