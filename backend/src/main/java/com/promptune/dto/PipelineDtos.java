@@ -46,7 +46,7 @@ public class PipelineDtos {
                         SuggestResult suggest) {
         }
 
-       public record ElementAction(String element, String action) {
+        public record ElementAction(String element, String action) {
                 // action: "tab"(적용) 또는 "esc"(거절). 방향키(단순 탐색)는 기록 안 함.
         }
 
@@ -61,5 +61,32 @@ public class PipelineDtos {
         }
 
         public record BehaviorLog(Long userId, String action, String element) {
+        }
+
+        // Phase 2-B: Preference + V6 진단 + Prompt Rule 통합
+        public record ImproveRequest(String text) {
+        }
+
+        public record PreferenceResult(
+                        String speed,
+                        String detail,
+                        String preserve,
+                        boolean fromLoggedInUser) {
+        }
+
+        // ai-service /prompt-rule 응답
+        public record PromptRuleResult(
+                        @JsonProperty("missing_elements") List<String> missingElements,
+                        @JsonProperty("use_role") boolean useRole,
+                        @JsonProperty("role_hint") String roleHint,
+                        @JsonProperty("decompose_task") boolean decomposeTask,
+                        @JsonProperty("use_positive_instruction") boolean usePositiveInstruction,
+                        @JsonProperty("use_few_shot") boolean useFewShot) {
+        }
+
+        public record ImproveResponse(
+                        PreferenceResult preference,
+                        DiagnoseResult diagnose,
+                        PromptRuleResult promptRule) {
         }
 }

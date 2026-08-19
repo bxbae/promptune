@@ -1,6 +1,7 @@
 package com.promptune.service;
 
 import com.promptune.dto.PipelineDtos.DiagnoseResult;
+import com.promptune.dto.PipelineDtos.PromptRuleResult;
 import com.promptune.dto.PipelineDtos.SuggestResult;
 import com.promptune.domain.ModelUsageLog;
 import com.promptune.repository.ModelUsageLogRepository;
@@ -76,6 +77,40 @@ public class AiServiceClient {
         }
     }
 
+    public PromptRuleResult promptRule(
+            String text,
+            Map<String, Integer> missing,
+            String taskType,
+            String speed,
+            String detail,
+            String preserve) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            PromptRuleResult result = client.post()
+                    .uri("/api/ai/prompt-rule")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "text", text,
+                            "missing", missing,
+                            "task_type", taskType,
+                            "preference", Map.of(
+                                    "speed", speed,
+                                    "detail", detail,
+                                    "preserve", preserve)))
+                    .retrieve()
+                    .body(PromptRuleResult.class);
+
+            log("ai-service", "/api/ai/prompt-rule", start, "success");
+
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/prompt-rule", start, "error");
+            throw e;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> retrieve(String query, Long ownerUserId, int topK) {
         long start = System.currentTimeMillis();
@@ -133,7 +168,7 @@ public class AiServiceClient {
             return (String) result.get("title");
         } catch (Exception e) {
             log("ai-service", "/api/ai/summarize-title", start, "error");
-            return null;   // 실패해도 전체 흐름은 안 끊기게, null 반환
+            return null; // 실패해도 전체 흐름은 안 끊기게, null 반환
         }
     }
 
