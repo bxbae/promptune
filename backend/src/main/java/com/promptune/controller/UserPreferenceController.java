@@ -6,6 +6,7 @@ import com.promptune.dto.UserPreferenceDtos.UpsertPreferenceRequest;
 import com.promptune.repository.UserPreferenceRepository;
 import com.promptune.repository.UserRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,11 +34,13 @@ public class UserPreferenceController {
     }
 
     // 온보딩 완료 여부 판단 + 설정 화면 표시용 조회
+    // 온보딩 전이면 본문이 null인 200을 돌려줌 (ResponseStatusException(404)를 던지면 Spring Security
+    // 설정과 맞물려 /login으로 302 리다이렉트되고, fetch가 그 리다이렉트를 따라가 HTML을 JSON으로 파싱하려다
+    // 프론트에서 "Unexpected token '<'" 에러가 나는 문제가 있었음 — 그래서 404 대신 이 방식으로 우회)
     @GetMapping
-    public UserPreference get(Authentication authentication) {
+    public ResponseEntity<UserPreference> get(Authentication authentication) {
         User user = currentUser(authentication);
-        return preferenceRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "온보딩이 아직 완료되지 않았습니다."));
+        return ResponseEntity.ok(preferenceRepository.findByUserId(user.getId()).orElse(null));
     }
 
     private User currentUser(Authentication authentication) {
