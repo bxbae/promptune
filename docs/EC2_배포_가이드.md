@@ -44,10 +44,16 @@ Flyway가 RDS에 마이그레이션 자동 실행.
 
 ## 5. 환경변수 설정
 
-    cp .env.production.example .env.production
+    ./scripts/setup-env.sh <도메인>
+    # 예: ./scripts/setup-env.sh 54-180-115-193.nip.io
     nano .env.production
 
-채울 것: RDS 사용자명, `DOMAIN`(5-2절 참고)과 그걸 쓰는 URL들, 소셜 클라이언트 ID(있으면).
+`setup-env.sh`가 `.env.production`을 (없으면 `.env.production.example`로부터) 만들고, 도메인 기반
+URL 7개(`DOMAIN`, `APP_FRONTEND_URL`, `APP_CORS_ORIGINS`, `NEXT_PUBLIC_API_URL`, `OAUTH_REDIRECT_BASE`,
+`MICROSOFT_REDIRECT_URI`, `MICROSOFT_FRONTEND_URL`)를 자동으로 채워준다 — 손으로 하나씩 고치다
+빠뜨리는 실수를 막기 위함. 재실행해도 안전(그때마다 최신 도메인 기준으로 덮어씀).
+
+이어서 `nano .env.production`으로 RDS 사용자명, 소셜 클라이언트 ID(있으면) 등 나머지 값만 채우면 된다.
 **DB 비밀번호·JWT_SECRET·소셜 클라이언트 시크릿 등 민감한 값은 여기 직접 채우지 않는다** — 5-1 참고.
 
 ## 5-1. 시크릿 값 (AWS SSM Parameter Store)
@@ -81,9 +87,7 @@ Nginx가 리버스 프록시로 앞단에 서서 80/443을 받고, `/api`·`/log
 **주의**: EC2 퍼블릭 IP가 바뀌면(인스턴스 stop/start 등) 도메인도 그 IP를 다시 반영해야 하고
 인증서도 새로 받아야 한다. Elastic IP를 붙여서 고정해두는 걸 권장하지만, 필수는 아니다.
 
-1. `.env.production`에 `DOMAIN`, `APP_FRONTEND_URL`, `APP_CORS_ORIGINS`, `NEXT_PUBLIC_API_URL`,
-   `OAUTH_REDIRECT_BASE`를 전부 `https://<도메인>` (포트 번호 없이) 형태로 채운다.
-   Microsoft 연동을 쓰면 `MICROSOFT_REDIRECT_URI`, `MICROSOFT_FRONTEND_URL`도 마찬가지.
+1. `./scripts/setup-env.sh <도메인>` 로 도메인 기반 URL 7개를 채운다 (5번 참고 — 이미 했다면 생략).
 2. 보안 그룹에 80, 443이 열려있는지 확인 (1번 참고).
 3. 최초 인증서 발급 (도메인당 딱 1번만):
 
@@ -125,7 +129,9 @@ HTTPS를 아직 설정 안 했다면(5-2절), 이 시점엔 `http://<EC2_PUBLIC_
 - 중지: docker compose -f docker-compose.prod.yml down
 - 업데이트: git pull 후 6번 재실행 (fetch-secrets.sh 포함)
 - 비용 절약: 안 쓸 때 EC2 인스턴스 중지(stop) — 단, Elastic IP를 안 붙였다면 재시작 시 IP가 바뀌어서
-  도메인·인증서를 다시 잡아야 할 수 있음
+  도메인·인증서를 다시 잡아야 할 수 있음. 그럴 땐 `./scripts/setup-env.sh <새-도메인>` 으로
+  `.env.production`을 새 도메인 기준으로 다시 채운 뒤, `./scripts/init-letsencrypt.sh <새-도메인>`으로
+  인증서를 새로 받으면 됨
 - 시크릿 값 변경(비밀번호 교체 등): SSM Parameter Store에서 값만 갱신 후 6번 재실행 — 코드나 .env.production을 직접 안 고쳐도 됨
 - 인증서 갱신: 자동(certbot 컨테이너, 12시간마다 체크). 수동 확인하고 싶으면
   `docker compose -f docker-compose.prod.yml logs certbot`
