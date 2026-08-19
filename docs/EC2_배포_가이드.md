@@ -46,10 +46,30 @@ Flyway가 RDS에 마이그레이션 자동 실행.
     cp .env.production.example .env.production
     nano .env.production
 
-채울 것: RDS 비밀번호, <배포주소>를 EC2 IP로, JWT_SECRET, 소셜키(있으면)
+채울 것: RDS 사용자명, <배포주소>를 EC2 IP로, 소셜 클라이언트 ID(있으면).
+**DB 비밀번호·JWT_SECRET·소셜 클라이언트 시크릿 등 민감한 값은 여기 직접 채우지 않는다** — 5-1 참고.
+
+## 5-1. 시크릿 값 (AWS SSM Parameter Store)
+
+민감한 값 7개(`SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`, `GOOGLE_CLIENT_SECRET`,
+`KAKAO_CLIENT_SECRET`, `NAVER_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TOKEN_KEY`)는
+`.env.production`에 평문으로 직접 적지 않고, AWS SSM Parameter Store(`/promptune/prod/<KEY>`, SecureString)에
+등록해두고 배포 때마다 스크립트로 가져온다.
+
+사전 조건 (최초 1회):
+- EC2에 붙어있는 IAM 역할(`promptune-ec2-s3-role`)에 `ssm:GetParameter`, `ssm:GetParametersByPath`,
+  `kms:Decrypt`(`kms:ViaService=ssm.<region>.amazonaws.com` 조건) 권한 추가
+- AWS 콘솔 → Systems Manager → Parameter Store에서 위 7개 값을 `/promptune/prod/<KEY>` 이름의
+  SecureString으로 등록
+
+배포 전에 아래 스크립트를 실행하면 `.env.production`의 시크릿 7개 라인만 SSM 최신값으로 덮어쓰고,
+나머지 라인(URL·클라이언트 ID·플래그 등)은 그대로 둔다. 재실행해도 중복 없이 안전하게 갱신된다.
+
+    ./scripts/fetch-secrets.sh
 
 ## 6. 실행
 
+    ./scripts/fetch-secrets.sh
     docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 
 주의: RDS 스키마가 비어 있어야 정식으로 밟음. 이미 테이블 있으면 병환에게 문의.
@@ -69,8 +89,9 @@ Flyway가 RDS에 마이그레이션 자동 실행.
 ## 운영 팁
 
 - 중지: docker compose -f docker-compose.prod.yml down
-- 업데이트: git pull 후 6번 재실행
+- 업데이트: git pull 후 6번 재실행 (fetch-secrets.sh 포함)
 - 비용 절약: 안 쓸 때 EC2 인스턴스 중지(stop)
+- 시크릿 값 변경(비밀번호 교체 등): SSM Parameter Store에서 값만 갱신 후 6번 재실행 — 코드나 .env.production을 직접 안 고쳐도 됨
 
 ## 나중에 개선
 
