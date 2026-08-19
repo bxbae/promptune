@@ -34,6 +34,28 @@ class DiagnoseResponse(BaseModel):
     typos: list[Typo]
     needs_internal_docs: bool   # 흐름도 분기: _internal 또는 application이면 True
 
+# ---------- Phase 2-B: Prompt Rule ----------
+class PreferenceInput(BaseModel):
+    speed: Literal["fast", "accurate"]
+    detail: Literal["brief", "detailed"]
+    preserve: Literal["keep", "improve"]
+
+
+class PromptRuleRequest(BaseModel):
+    text: str
+    missing: dict[str, int]
+    task_type: TaskType
+    preference: PreferenceInput
+
+
+class PromptRuleResponse(BaseModel):
+    missing_elements: list[str]
+    use_role: bool
+    role_hint: str | None = None
+    decompose_task: bool
+    use_positive_instruction: bool
+    use_few_shot: bool
+
 
 # ---------- 7번: 추천문구 생성 ----------
 class SuggestRequest(BaseModel):
