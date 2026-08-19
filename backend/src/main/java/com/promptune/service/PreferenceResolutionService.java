@@ -37,7 +37,7 @@ public class PreferenceResolutionService {
     private static final String ANONYMOUS_PRINCIPAL = "anonymousUser";
 
     // 온보딩 화면(frontend/src/app/onboarding/page.tsx)의 기존 오타.
-    // V20__normalize_preference_values.sql이 기존 DB row를 정규화하지만,
+    // V22__normalize_preference_values.sql이 기존 DB row를 정규화하지만,
     // 마이그레이션이 아직 적용되지 않은 환경(예: 로컬 DB)에서도 안전하도록
     // 코드 레벨에서도 방어적으로 보정한다.
     private static final String LEGACY_PRESERVE_TYPO = "imporve";
