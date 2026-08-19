@@ -34,13 +34,17 @@ public class UserPreferenceController {
     }
 
     // 온보딩 완료 여부 판단 + 설정 화면 표시용 조회
-    // 온보딩 전이면 본문이 null인 200을 돌려줌 (ResponseStatusException(404)를 던지면 Spring Security
+    // 온보딩 전이면 본문 없는 404를 돌려줌. ResponseStatusException(404)를 "던지면" Spring Security
     // 설정과 맞물려 /login으로 302 리다이렉트되고, fetch가 그 리다이렉트를 따라가 HTML을 JSON으로 파싱하려다
-    // 프론트에서 "Unexpected token '<'" 에러가 나는 문제가 있었음 — 그래서 404 대신 이 방식으로 우회)
+    // 프론트에서 "Unexpected token '<'" 에러가 났었음. ResponseEntity.ok(null)로 바꿨더니 이번엔 본문이
+    // 아예 비어서 "Unexpected end of JSON input" 에러가 남. 그래서 예외를 던지지 않고 ResponseEntity로
+    // 직접 404를 반환 — 프론트가 이미 res.status===404를 res.json() 호출 전에 먼저 걸러내므로 안전함.
     @GetMapping
     public ResponseEntity<UserPreference> get(Authentication authentication) {
         User user = currentUser(authentication);
-        return ResponseEntity.ok(preferenceRepository.findByUserId(user.getId()).orElse(null));
+        return preferenceRepository.findByUserId(user.getId())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     private User currentUser(Authentication authentication) {
