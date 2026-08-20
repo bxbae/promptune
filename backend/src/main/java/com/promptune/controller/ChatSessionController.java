@@ -72,7 +72,7 @@ public class ChatSessionController {
 
         return promptSessionRepository.findByChatSessionIdOrderByCreatedAtAsc(id).stream()
                 .map(p -> new com.promptune.dto.ChatSessionDtos.MessageResponse(
-                        p.getId(), p.getOriginalText(), p.getAiResponseText(), p.getTaskType(), p.getCreatedAt()))
+                        p.getId(), p.getOriginalText(), p.getAiResponseText(), p.getTaskType(), p.getCreatedAt(), p.getSatisfaction()))
                 .toList();
     }
 
