@@ -124,19 +124,21 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     DiagnoseResult d = ai.diagnose(req.finalPrompt());
 
-    boolean needsInternalDocs = classification.needsInternalDocs(d.needsInternalDocs());
-
+    // Retrieval Router/Orchestrator(승연님 PR #67)가 내부문서 검색·웹검색 여부까지
+    // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
+    // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
+    // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
+    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3);
     java.util.List<java.util.Map<String, Object>> documents =
-            needsInternalDocs
-                    ? ai.retrieve(req.finalPrompt(), userId, 3)
-                    : java.util.List.of();
+            (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
+    Object webResults = retrieval.get("web_results");
 
-    boolean useWebSearch = Boolean.TRUE.equals(req.useWebSearch());
+    // retrieval-execute가 이미 Tavily 호출을 끝냈으므로, generate()에서 또 검색하면 안 됨 (승연님 안내)
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
             documents,
-            useWebSearch);
+            false);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
@@ -174,7 +176,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     return Map.of(
             "taskType", d.taskType(),
-            "needsInternalDocs", needsInternalDocs,
+            "needsInternalDocs", "internal_rag".equals(retrieval.get("route")),
+            "retrievalRoute", retrieval.get("route"),
             "result", result,
             "promptSessionId", session.getId());
 }

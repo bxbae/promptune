@@ -161,6 +161,30 @@ public class AiServiceClient {
         }
     }
 
+    // Retrieval Router/Orchestrator 연동 (승연님 PR #67) — 내부문서/웹검색 여부까지 통째로 판단·실행
+    public Map<String, Object> retrievalExecute(String query, Long ownerUserId, int topK) {
+        long start = System.currentTimeMillis();
+        try {
+            Map<String, Object> body = Map.of(
+                    "query", query,
+                    "owner_user_id", ownerUserId,
+                    "top_k", topK
+            );
+            Map result = client.post()
+                    .uri("/api/ai/retrieval-execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            log("ai-service", "/api/ai/retrieval-execute", start, "success");
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/retrieval-execute", start, "error");
+            throw e;
+        }
+    }
+
     public Map generate(String prompt, String taskType, List<Map<String, Object>> documents, boolean useWebSearch) {
         long start = System.currentTimeMillis();
         try {
