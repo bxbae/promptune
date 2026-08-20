@@ -89,5 +89,19 @@ services:
       /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;"
     restart: unless-stopped
 
+  # 장애/다운 알림 + 상태 대시보드 (로그·상태 모니터링 P1). 팀 내부 운영용 도구라 nginx/HTTPS를
+  # 새로 안 붙이고, 포트(3001)를 보안그룹에서 우리 IP만 허용하는 방식으로 접근 제한한다
+  # (SSH 22번과 동일한 방식 — docs/EC2_배포_가이드.md 9절 참고).
+  # docker.sock을 읽기전용으로 마운트해서 컨테이너 자체가 죽었는지도 감지할 수 있게 함.
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    volumes:
+      - uptime_kuma_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
 volumes:
   hf_cache:
+  uptime_kuma_data:
