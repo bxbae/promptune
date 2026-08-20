@@ -32,7 +32,17 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
   if (pathname === "/") return <>{children}</>;
 
   const topSegment = "/" + (pathname.split("/")[1] ?? "");
-  const active = PATH_TO_KEY[topSegment] ?? "newChat";
+  // 채팅 스레드는 "채팅"으로 별도 매핑
+  const active: NavKey =
+    pathname === "/chat"
+      ? "newChat"
+      : pathname.startsWith("/chat/")
+        ? "chat"
+        : PATH_TO_KEY[topSegment] ?? "newChat";
+
+  // 파일관리/히스토리/대시보드는 표·카드가 많아 채팅보다 넓은 폭이 필요해서 .page-wide 적용
+  const WIDE_PAGES = ["/files", "/history", "/dashboard"];
+  const isWide = WIDE_PAGES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   return (
     <AppShell
@@ -44,7 +54,7 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
         router.push("/");
       }}
     >
-      <div className="page">{children}</div>
+      <div className={`page ${isWide ? "page-wide" : ""}`}>{children}</div>
     </AppShell>
   );
 }

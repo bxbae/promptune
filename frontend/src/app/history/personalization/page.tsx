@@ -77,7 +77,7 @@ export default function PersonalizationPage() {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div>
       <p style={{ color: "var(--muted)", marginTop: 0 }}>
         첫 이용 때 고른 3가지 설정이에요. 언제든 다시 바꿀 수 있어요.
       </p>
