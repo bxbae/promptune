@@ -13,21 +13,11 @@ export default function MicrosoftProfileView({ data }: Props) {
   ];
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <h3>Microsoft 프로필</h3>
-
+    <div className="ms-profile-view">
       {rows.map(([label, value]) => (
-        <div
-          key={label}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "180px 1fr",
-            padding: "10px 0",
-            borderBottom: "1px solid #eee",
-          }}
-        >
-          <strong>{label}</strong>
-          <span>{value || "-"}</span>
+        <div className="ms-profile-row" key={label}>
+          <span className="ms-profile-label">{label}</span>
+          <span className="ms-profile-value">{value || "-"}</span>
         </div>
       ))}
     </div>

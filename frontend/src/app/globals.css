@@ -835,3 +835,85 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 @media (max-width: 700px) {
   .dash-kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* 설정 페이지 */
+.settings-list { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+.settings-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px;
+}
+.settings-card-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+}
+.settings-card-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+.settings-card-desc { font-size: 12px; color: var(--muted); margin: -12px 0 14px; }
+
+.settings-btn {
+  height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.settings-btn:hover { background: var(--panel-alt); }
+.settings-btn-primary {
+  height: 36px; padding: 0 18px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.settings-btn-primary:disabled { opacity: 0.6; cursor: default; }
+.settings-btn-danger {
+  height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--block);
+  background: var(--panel); color: var(--block); font-size: 12px; font-weight: 600; cursor: pointer;
+  margin-top: 12px;
+}
+
+.settings-account-row { display: flex; align-items: center; gap: 12px; }
+.settings-avatar {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--accent-tint);
+  color: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 14px; flex-shrink: 0;
+}
+.settings-account-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.settings-account-email { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.settings-saved-msg { font-size: 12px; color: var(--accent); margin-top: 10px; }
+
+.settings-badge-connected {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-tint); padding: 3px 10px; border-radius: 999px;
+}
+.settings-ms-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 4px; }
+.settings-ms-action-btn {
+  height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg);
+  font-size: 12px; color: var(--ink); cursor: pointer;
+}
+.settings-ms-action-btn:hover { background: var(--panel-alt); }
+.settings-ms-result {
+  margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 8px;
+  font-size: 11px; overflow: auto; max-height: 240px; color: var(--muted);
+}
+
+.settings-ms-empty { text-align: center; padding: 12px 0; }
+.settings-ms-empty-icon {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--accent-tint);
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 20px;
+}
+.settings-ms-empty-icon img {
+  width: 28px; height: 28px; object-fit: contain;
+}
+
+.settings-ms-empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin: 0 0 6px; }
+.settings-ms-empty-desc { font-size: 12px; color: var(--muted); margin: 0 0 18px; line-height: 1.6; }
+
+.ms-profile-view { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 4px; }
+.ms-profile-row {
+  display: grid; grid-template-columns: 140px 1fr; padding: 10px 0;
+  border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.ms-profile-row:last-child { border-bottom: none; }
+.ms-profile-label { color: var(--muted); font-weight: 600; }
+.ms-profile-value { color: var(--ink); }
+
+/* TODO: 목업 토글 (추후 삭제) */
+.settings-mock-toggle {
+  display: block; margin-bottom: 12px; padding: 0; border: none; background: none;
+  font-size: 11px; color: var(--muted); text-decoration: underline; cursor: pointer;
+}
+.settings-mock-toggle:hover { color: var(--ink); }
+/* 여기까지 */
