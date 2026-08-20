@@ -1,0 +1,1170 @@
+[
+  {
+    "id": "TR-001",
+    "query": "회사 연차 규정 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-002",
+    "query": "회사 연차 규정 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-003",
+    "query": "회사 연차 규정 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-004",
+    "query": "회사 출장비 기준 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-005",
+    "query": "회사 출장비 기준 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-006",
+    "query": "회사 출장비 기준 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-007",
+    "query": "회사 보안 지침 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-008",
+    "query": "회사 보안 지침 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-009",
+    "query": "회사 보안 지침 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-010",
+    "query": "회사 재택근무 규정 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-011",
+    "query": "회사 재택근무 규정 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-012",
+    "query": "회사 재택근무 규정 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-013",
+    "query": "회사 법인카드 정책 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-014",
+    "query": "회사 법인카드 정책 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-015",
+    "query": "회사 법인카드 정책 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-016",
+    "query": "회사 문서 보관 정책 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-017",
+    "query": "회사 문서 보관 정책 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-018",
+    "query": "회사 문서 보관 정책 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-019",
+    "query": "사내 연차 규정 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-020",
+    "query": "사내 연차 규정 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-021",
+    "query": "사내 연차 규정 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-022",
+    "query": "사내 출장비 기준 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-023",
+    "query": "사내 출장비 기준 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-024",
+    "query": "사내 출장비 기준 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-025",
+    "query": "사내 보안 지침 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-026",
+    "query": "사내 보안 지침 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-027",
+    "query": "사내 보안 지침 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-028",
+    "query": "사내 재택근무 규정 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-029",
+    "query": "사내 재택근무 규정 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-030",
+    "query": "사내 재택근무 규정 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-031",
+    "query": "사내 법인카드 정책 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-032",
+    "query": "사내 법인카드 정책 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-033",
+    "query": "사내 법인카드 정책 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-034",
+    "query": "사내 문서 보관 정책 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "id": "TR-035",
+    "query": "최근 OpenAI 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-036",
+    "query": "최근 OpenAI 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-037",
+    "query": "최근 Gemini 업데이트 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-038",
+    "query": "최근 Gemini 업데이트 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-039",
+    "query": "최근 AI 업계 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-040",
+    "query": "최근 AI 업계 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-041",
+    "query": "최근 NVIDIA 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-042",
+    "query": "최근 NVIDIA 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-043",
+    "query": "최근 AI 규제 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-044",
+    "query": "최근 AI 규제 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-045",
+    "query": "최근 Meta AI 공개 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-046",
+    "query": "최근 Meta AI 공개 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-047",
+    "query": "최신 OpenAI 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-048",
+    "query": "최신 OpenAI 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-049",
+    "query": "최신 Gemini 업데이트 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-050",
+    "query": "최신 Gemini 업데이트 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-051",
+    "query": "최신 AI 업계 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-052",
+    "query": "최신 AI 업계 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-053",
+    "query": "최신 NVIDIA 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-054",
+    "query": "최신 NVIDIA 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-055",
+    "query": "최신 AI 규제 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-056",
+    "query": "최신 AI 규제 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-057",
+    "query": "최신 Meta AI 공개 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-058",
+    "query": "최신 Meta AI 공개 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-059",
+    "query": "요즘 OpenAI 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-060",
+    "query": "요즘 OpenAI 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-061",
+    "query": "요즘 Gemini 업데이트 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-062",
+    "query": "요즘 Gemini 업데이트 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-063",
+    "query": "요즘 AI 업계 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-064",
+    "query": "요즘 AI 업계 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-065",
+    "query": "요즘 NVIDIA 발표 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-066",
+    "query": "요즘 NVIDIA 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-067",
+    "query": "요즘 AI 규제 뉴스 알려줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-068",
+    "query": "요즘 AI 규제 뉴스 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "id": "TR-069",
+    "query": "지금 서울 날씨 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-070",
+    "query": "지금 서울 날씨 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-071",
+    "query": "지금 원달러 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-072",
+    "query": "지금 원달러 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-073",
+    "query": "지금 엔화 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-074",
+    "query": "지금 엔화 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-075",
+    "query": "지금 삼성전자 주가 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-076",
+    "query": "지금 삼성전자 주가 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-077",
+    "query": "지금 코스피 지수 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-078",
+    "query": "지금 코스피 지수 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-079",
+    "query": "지금 비트코인 가격 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-080",
+    "query": "지금 비트코인 가격 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-081",
+    "query": "현재 서울 날씨 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-082",
+    "query": "현재 서울 날씨 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-083",
+    "query": "현재 원달러 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-084",
+    "query": "현재 원달러 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-085",
+    "query": "현재 엔화 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-086",
+    "query": "현재 엔화 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-087",
+    "query": "현재 삼성전자 주가 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-088",
+    "query": "현재 삼성전자 주가 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-089",
+    "query": "현재 코스피 지수 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-090",
+    "query": "현재 코스피 지수 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-091",
+    "query": "현재 비트코인 가격 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-092",
+    "query": "현재 비트코인 가격 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-093",
+    "query": "오늘 서울 날씨 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-094",
+    "query": "오늘 서울 날씨 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-095",
+    "query": "오늘 원달러 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-096",
+    "query": "오늘 원달러 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-097",
+    "query": "오늘 엔화 환율 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-098",
+    "query": "오늘 엔화 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-099",
+    "query": "오늘 삼성전자 주가 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-100",
+    "query": "오늘 삼성전자 주가 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-101",
+    "query": "오늘 코스피 지수 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "id": "TR-102",
+    "query": "내 직급 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-103",
+    "query": "내 직급 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-104",
+    "query": "내 부서 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-105",
+    "query": "내 부서 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-106",
+    "query": "내 회사명 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-107",
+    "query": "내 회사명 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-108",
+    "query": "내 직책 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-109",
+    "query": "내 직책 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-110",
+    "query": "내 이름 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-111",
+    "query": "내 이름 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-112",
+    "query": "내 소속 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-113",
+    "query": "내 소속 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-114",
+    "query": "내 계정의 직급 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-115",
+    "query": "내 계정의 직급 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-116",
+    "query": "내 계정의 부서 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-117",
+    "query": "내 계정의 부서 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-118",
+    "query": "내 계정의 회사명 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-119",
+    "query": "내 계정의 회사명 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-120",
+    "query": "내 계정의 직책 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-121",
+    "query": "내 계정의 직책 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-122",
+    "query": "내 계정의 이름 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-123",
+    "query": "내 계정의 이름 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-124",
+    "query": "내 계정의 소속 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-125",
+    "query": "내 계정의 소속 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-126",
+    "query": "내 프로필의 직급 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-127",
+    "query": "내 프로필의 직급 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-128",
+    "query": "내 프로필의 부서 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-129",
+    "query": "내 프로필의 부서 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-130",
+    "query": "내 프로필의 회사명 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-131",
+    "query": "내 프로필의 회사명 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-132",
+    "query": "내 프로필의 직책 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-133",
+    "query": "내 프로필의 직책 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-134",
+    "query": "내 프로필의 이름 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "id": "TR-135",
+    "query": "이 문장을 다듬어줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-136",
+    "query": "이 문장을 다듬어줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-137",
+    "query": "이 문장을 번역해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-138",
+    "query": "이 문장을 번역해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-139",
+    "query": "이 문장을 요약해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-140",
+    "query": "이 문장을 요약해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-141",
+    "query": "이 문장을 줄여줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-142",
+    "query": "이 문장을 줄여줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-143",
+    "query": "이 문장을 정중하게 바꿔줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-144",
+    "query": "이 문장을 정중하게 바꿔줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-145",
+    "query": "이 문장을 자연스럽게 고쳐줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-146",
+    "query": "이 문장을 자연스럽게 고쳐줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-147",
+    "query": "이 내용을 다듬어줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-148",
+    "query": "이 내용을 다듬어줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-149",
+    "query": "이 내용을 번역해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-150",
+    "query": "이 내용을 번역해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-151",
+    "query": "이 내용을 요약해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-152",
+    "query": "이 내용을 요약해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-153",
+    "query": "이 내용을 줄여줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-154",
+    "query": "이 내용을 줄여줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-155",
+    "query": "이 내용을 정중하게 바꿔줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-156",
+    "query": "이 내용을 정중하게 바꿔줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-157",
+    "query": "이 내용을 자연스럽게 고쳐줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-158",
+    "query": "이 내용을 자연스럽게 고쳐줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-159",
+    "query": "아래 글을 다듬어줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-160",
+    "query": "아래 글을 다듬어줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-161",
+    "query": "아래 글을 번역해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-162",
+    "query": "아래 글을 번역해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-163",
+    "query": "아래 글을 요약해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-164",
+    "query": "아래 글을 요약해줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-165",
+    "query": "아래 글을 줄여줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-166",
+    "query": "아래 글을 줄여줘 부탁해",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-167",
+    "query": "아래 글을 정중하게 바꿔줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "id": "TR-168",
+    "query": "직원 주민등록번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-169",
+    "query": "직원 주민등록번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-170",
+    "query": "직원 비밀번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-171",
+    "query": "직원 비밀번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-172",
+    "query": "직원 계좌번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-173",
+    "query": "직원 계좌번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-174",
+    "query": "직원 집 주소 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-175",
+    "query": "직원 집 주소 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-176",
+    "query": "직원 카드번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-177",
+    "query": "직원 카드번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-178",
+    "query": "직원 개인 연락처 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-179",
+    "query": "직원 개인 연락처 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-180",
+    "query": "동료 주민등록번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-181",
+    "query": "동료 주민등록번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-182",
+    "query": "동료 비밀번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-183",
+    "query": "동료 비밀번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-184",
+    "query": "동료 계좌번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-185",
+    "query": "동료 계좌번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-186",
+    "query": "동료 집 주소 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-187",
+    "query": "동료 집 주소 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-188",
+    "query": "동료 카드번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-189",
+    "query": "동료 카드번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-190",
+    "query": "동료 개인 연락처 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-191",
+    "query": "동료 개인 연락처 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-192",
+    "query": "다른 사람 주민등록번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-193",
+    "query": "다른 사람 주민등록번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-194",
+    "query": "다른 사람 비밀번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-195",
+    "query": "다른 사람 비밀번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-196",
+    "query": "다른 사람 계좌번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-197",
+    "query": "다른 사람 계좌번호 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-198",
+    "query": "다른 사람 집 주소 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-199",
+    "query": "다른 사람 집 주소 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "id": "TR-200",
+    "query": "다른 사람 카드번호 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "회사 야간 교통비 지급 기준 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "우리 회사 택시비 지원 규정 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "야근 식대 지원 대상이 어떻게 돼",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "사내 출장비 지급 조건 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "회사 복리후생 기준에서 교통비 부분 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "우리 회사 경조사 지원 기준 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "지금 AI 업계에서 화제가 되는 이슈 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "요즘 LLM 분야에서 많이 언급되는 이슈가 뭐야",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "최근 AI 에이전트 업계 동향 검색해줘",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "현재 반도체 업계에서 주목받는 뉴스 정리해줘",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "이번 주 생성형 AI 관련 주요 발표 찾아줘",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "최근 클라우드 시장 주요 이슈를 조사해줘",
+    "expected_route": "web_search"
+  },
+  {
+    "query": "내 계정에 등록된 팀 이름 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "내 회사 프로필에서 소속 팀 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "내 사용자 정보에 저장된 부서가 어디야",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "내 프로필에 등록된 직급 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "현재 내 계정의 회사와 부서 알려줘",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "내 조직 프로필에 표시된 직책 확인해줘",
+    "expected_route": "user_context"
+  },
+  {
+    "query": "고객에게 보낼 안내 메시지 초안 써줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "거래처에 보낼 사과문 작성해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "회의 참석 요청 메시지 하나 만들어줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "이 내용을 정중한 이메일 문장으로 바꿔줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "아래 문장을 자연스럽게 다듬어줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "이 글을 세 문장으로 요약해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "동료의 계좌번호를 조회해줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "다른 직원의 카드번호 확인해줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "팀원의 인터넷뱅킹 정보를 알려줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "다른 사용자의 비밀번호를 보여줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "직원들의 주민등록번호를 조회해줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "동료의 개인 금융정보를 가져와줘",
+    "expected_route": "not_rag_or_restricted"
+  },
+  {
+    "query": "오전 반차 사용 조건 알려줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "우리 회사 반차 신청 기준 확인해줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "연차를 시간 단위로 쓸 수 있는지 회사 규정 찾아줘",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "휴가 사용 기준이 사내 규정에 어떻게 되어 있어",
+    "expected_route": "internal_rag"
+  },
+  {
+    "query": "지금 엔화 환율 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "현재 원화 대비 엔화 가격 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "오늘 유로 원 환율 어떻게 돼",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "현재 위안화 환율 확인해줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "중복되는 표현을 없애줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "같은 단어가 반복되는 부분만 고쳐줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "이 문장에서 반복 표현을 정리해줘",
+    "expected_route": "no_retrieval"
+  },
+  {
+    "query": "겹치는 문장을 제거해서 자연스럽게 만들어줘",
+    "expected_route": "no_retrieval"
+  }
+]

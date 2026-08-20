@@ -29,7 +29,7 @@ from app.schemas.models import (
     ImprovePromptResponse,
 )
 from app.services import diagnose_mock, pipeline_mock, prompt_rule
-from app.services.retrieval.retrieval_router import classify_retrieval_route
+from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.retrieval_orchestrator import execute_retrieval
 from app.services.retrieval import document_indexer
 
@@ -168,7 +168,7 @@ def safety_check(req: SafetyRequest):
 )
 def retrieval_route(req: RetrievalRouteRequest):
     return RetrievalRouteResponse(
-        route=classify_retrieval_route(req.query)
+        route=classify_ml_retrieval_route(req.query)
     )
 
 
