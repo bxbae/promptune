@@ -766,6 +766,10 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .dash-receiver-relationship { font-size: 11px; color: var(--muted); }
 .dash-receiver-rate { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 
+.dash-tasktype-stackbar {
+  display: flex; height: 14px; border-radius: 999px; overflow: hidden; margin-bottom: 14px;
+}
+.dash-tasktype-stackbar-seg { height: 100%; }
 .dash-tasktype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
 .dash-tasktype-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; }
 .dash-tasktype-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
