@@ -176,8 +176,9 @@ class ValidateRequest(BaseModel):
 
 class ValidateResponse(BaseModel):
     passed: bool
-    tone_ok: bool
-    no_contradiction: bool
+    rule_ok: bool
+    semantic_ok: bool
+    semantic_score: float
     facts_preserved: bool
     issues: list[str]
 
