@@ -137,11 +137,18 @@ class RetrieveResponse(BaseModel):
     documents: list[Document]
 
 
+class WebSearchResult(BaseModel):
+    title: str = ""
+    url: str = ""
+    content: str = ""
+
+
 # ---------- 14번: 최종 답변 생성 ----------
 class GenerateRequest(BaseModel):
     prompt: str
     task_type: TaskType
     documents: list[Document] = Field(default_factory=list)  # 13번 결과 (있으면)
+    web_results: list[WebSearchResult] = Field(default_factory=list)
     use_web_search: bool = False        # 흐름도: 최신정보 버튼 클릭 시
 
 
@@ -173,11 +180,6 @@ class SummarizeTitleResponse(BaseModel):
     title: str
 
 # ---------- 12-1번: Retrieval 실행 ----------
-class WebSearchResult(BaseModel):
-    title: str = ""
-    url: str = ""
-    content: str = ""
-
 
 class RetrievalExecuteRequest(BaseModel):
     query: str

@@ -185,10 +185,10 @@ def retrieve(req: RetrieveRequest):
     tags=["14.답변생성"],
 )
 def generate(req: GenerateRequest):
-    web_results = []
-    used_web_search = False
+    web_results = [item.model_dump() for item in req.web_results]
+    used_web_search = bool(web_results)
 
-    if req.use_web_search:
+    if req.use_web_search and not used_web_search:
         try:
             web_results = search_web(req.prompt, max_results=3)
             used_web_search = bool(web_results)

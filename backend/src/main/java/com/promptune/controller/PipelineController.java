@@ -128,13 +128,15 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3, useWebSearch);
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
-    Object webResults = retrieval.get("web_results");
+    java.util.List<java.util.Map<String, Object>> webResults =
+            (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("web_results", java.util.List.of());
 
     // retrieval-execute가 이미 Tavily 호출을 끝냈으므로, generate()에서 또 검색하면 안 됨 (승연님 안내)
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
             documents,
+            webResults,
             false);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
