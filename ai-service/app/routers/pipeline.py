@@ -3,7 +3,7 @@
 import os
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-
+from app.services.validation.validator import validate_response
 from app.schemas.models import (
     DiagnoseRequest,
     DiagnoseResponse,
@@ -228,10 +228,22 @@ def generate(req: GenerateRequest):
 @router.post(
     "/validate",
     response_model=ValidateResponse,
-    tags=["15.최종검증"],
+    tags=["15.최종 검증"],
 )
 def validate(req: ValidateRequest):
-    return pipeline_mock.validate(req)
+    result = validate_response(
+        original=req.original,
+        generated=req.generated,
+    )
+
+    return ValidateResponse(
+        passed=result.passed,
+        rule_ok=result.rule_ok,
+        semantic_ok=result.semantic_ok,
+        semantic_score=result.semantic_score,
+        facts_preserved=result.facts_preserved,
+        issues=result.issues,
+    )
 
 
 @router.post(
