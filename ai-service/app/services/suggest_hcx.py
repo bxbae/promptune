@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
-import threading
-from functools import lru_cache
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from app.schemas.models import (
     SuggestRequest,
@@ -18,11 +14,14 @@ from app.services.candidate_bank import (
     ELEMENTS,
     get_candidates,
 )
+from app.services.diagnose_real import predict_missing
+from app.services.hcx_runtime import (
+    HCX_MODEL_LOCK,
+    load_hcx_runtime,
+)
 
 
 logger = logging.getLogger(__name__)
-
-_MODEL_LOCK = threading.Lock()
 
 
 ELEMENT_DESCRIPTIONS: dict[str, str] = {
@@ -37,46 +36,89 @@ ELEMENT_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-@lru_cache(maxsize=1)
 def _load_runtime():
-    model_name = os.getenv(
-        "HF_HCX_MODEL",
-        "naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B",
-    )
+    """
+    하위 호환용 래퍼.
 
-    token = os.getenv("HF_TOKEN")
-    device = os.getenv("HF_HCX_DEVICE", "cpu").strip().lower()
+    Promptune의 HCX 기능들이 같은 모델 인스턴스와 락을 공유하도록
+    실제 로딩은 hcx_runtime.load_hcx_runtime()에 위임한다.
+    """
+    return load_hcx_runtime()
 
-    if not token:
-        raise RuntimeError(
-            "HF_TOKEN is required when real suggestion mode is enabled"
+
+def _finish_sentence(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return text
+    if text[-1] in ".!?。！？":
+        return text
+    return f"{text}."
+
+
+def _make_apply_ready_candidate(
+    element: str,
+    candidate: str,
+) -> str:
+    """
+    candidate_bank의 짧은 조각을 사용자가 클릭했을 때 바로 원문 뒤에
+    붙여도 의미가 완결되는 문장으로 바꾼다.
+
+    특히 CONTEXT 후보의 기존 ``...라는 배경을 반영해서`` 표현은
+    '배경을 넣으라'는 메타 지시에 가까워 KcELECTRA 재진단에서
+    CONTEXT를 실제로 채운 것으로 인식하지 못할 수 있다.
+    사용자가 후보를 직접 선택한 시점에는 그 선택을 사용자의 명시적
+    확인으로 보고, 실제 배경/목적을 진술하는 형태로 바꾼다.
+    """
+    text = candidate.strip()
+    if not text:
+        return text
+
+    if element == "CONTEXT":
+        suffix = "라는 배경을 반영해서"
+        if text.endswith(suffix):
+            subject = text[: -len(suffix)].strip()
+            if subject.endswith("자료"):
+                return _finish_sentence(f"{subject}로 사용할 예정이야")
+            return _finish_sentence(f"업무 배경은 {subject}이야")
+
+    if element == "AUDIENCE" and text.endswith("대상으로"):
+        return _finish_sentence(f"{text} 작성해줘")
+
+    if element == "CONSTRAINT":
+        if text.endswith("하지 말고"):
+            return _finish_sentence(f"{text[:-1]}아줘")
+        if text.endswith("제외하고"):
+            return _finish_sentence(f"{text[:-2]}해줘")
+
+    # FORMAT/TONE/LENGTH/EXAMPLE/일부 CONSTRAINT 후보는
+    # "...해서" 형태이므로 클릭 후 바로 적용 가능한 지시문으로 바꾼다.
+    if text.endswith("해서"):
+        return _finish_sentence(f"{text[:-2]}해줘")
+
+    return _finish_sentence(text)
+
+
+def _prepare_candidates(
+    element: str,
+    candidates: list[str],
+) -> list[str]:
+    prepared: list[str] = []
+
+    for candidate in candidates:
+        normalized = _make_apply_ready_candidate(
+            element=element,
+            candidate=candidate,
+        )
+        if normalized and normalized not in prepared:
+            prepared.append(normalized)
+
+    if len(prepared) != 3:
+        raise ValueError(
+            "HCX reranker requires exactly 3 unique candidates "
+            f"after normalization; element={element} count={len(prepared)}"
         )
 
-    if device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError(
-            "HF_HCX_DEVICE=cuda but CUDA is not available"
-        )
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        token=token,
-    )
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        token=token,
-    )
-
-    model.to(device)
-    model.eval()
-
-    logger.info(
-        "Loaded HCX reranker model=%s device=%s",
-        model_name,
-        device,
-    )
-
-    return tokenizer, model, device
+    return prepared
 
 
 def _build_prompt(
@@ -93,19 +135,23 @@ def _build_prompt(
     description = ELEMENT_DESCRIPTIONS[element]
 
     context_text = (
-    context.strip()
-    if context and context.strip()
-    else "별도 업무 맥락 없음"
-)
+        context.strip()
+        if context and context.strip()
+        else "별도 업무 맥락 없음"
+    )
 
     return (
         f"사용자 원문: {text}\n"
         f"업무 맥락: {context_text}\n"
         f"보완할 요소: {element}\n"
         f"요소 의미: {description}\n\n"
-        f"아래 후보는 모두 {element} 요소를 보완하는 문구다.\n"
-        "사용자 원문과 업무 문맥에 가장 자연스럽고 유용한 "
-        "후보 하나를 선택해.\n\n"
+        "아래 후보는 사용자가 직접 클릭해 원문 뒤에 추가할 선택지다.\n"
+        f"각 후보는 {element} 요소를 실제로 보완할 수 있는 완결된 문장이다.\n"
+        "사용자 원문과 제공된 업무 맥락에 가장 자연스럽고 유용한 "
+        "후보 하나를 선택해.\n"
+        "원문이나 업무 맥락에 근거가 없는 사람, 날짜, 숫자, 회사 정보 등 "
+        "새로운 사실을 추측해서 우선하지 마.\n"
+        "별도 업무 맥락이 없다면 가장 일반적이고 부담이 적은 후보를 선택해.\n\n"
         f"A. {candidates[0]}\n"
         f"B. {candidates[1]}\n"
         f"C. {candidates[2]}\n\n"
@@ -172,7 +218,7 @@ def _rerank(
 
     inputs = inputs.to(device)
 
-    with _MODEL_LOCK:
+    with HCX_MODEL_LOCK:
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
@@ -235,6 +281,78 @@ def _normalize_target_elements(
     return normalized
 
 
+
+def _merge_prompt_with_candidate(text: str, candidate: str) -> str:
+    return f"{text.strip()} {candidate.strip()}".strip()
+
+
+def _candidate_is_diagnosis_safe(
+    *,
+    element: str,
+    baseline: dict[str, int],
+    after: dict[str, int],
+) -> bool:
+    if baseline.get(element) != 1:
+        return False
+    if after.get(element) != 0:
+        return False
+
+    for other in ELEMENTS:
+        if baseline.get(other) == 0 and after.get(other) == 1:
+            return False
+
+    return True
+
+
+def _validated_candidates_in_hcx_order(
+    *,
+    text: str,
+    element: str,
+    candidates: list[str],
+    selected_index: int,
+    baseline: dict[str, int],
+) -> list[str]:
+    order = [
+        selected_index,
+        *[i for i in range(len(candidates)) if i != selected_index],
+    ]
+
+    valid: list[str] = []
+
+    for index in order:
+        candidate = candidates[index]
+        merged = _merge_prompt_with_candidate(text, candidate)
+
+        try:
+            after = predict_missing(merged)
+        except Exception:
+            logger.exception(
+                "KcELECTRA suggestion validation failed "
+                "element=%s candidate=%r",
+                element,
+                candidate,
+            )
+            continue
+
+        if _candidate_is_diagnosis_safe(
+            element=element,
+            baseline=baseline,
+            after=after,
+        ):
+            valid.append(candidate)
+        else:
+            logger.info(
+                "Suggestion candidate rejected by diagnosis guard "
+                "element=%s candidate=%r baseline=%s after=%s",
+                element,
+                candidate,
+                baseline,
+                after,
+            )
+
+    return valid
+
+
 def suggest(
     req: SuggestRequest,
 ) -> SuggestResponse:
@@ -244,6 +362,8 @@ def suggest(
 
     suggestions: list[Suggestion] = []
 
+    baseline_missing = predict_missing(req.text)
+
     context = (
         req.context.strip()
         if req.context and req.context.strip()
@@ -251,33 +371,60 @@ def suggest(
     )
 
     for element in target_elements:
-        candidates = get_candidates(
+        raw_candidates = get_candidates(
             element=element,
             text=req.text,
             context=context,
             limit=3,
         )
 
-        selected_index = _rerank(
-            text=req.text,
-            context=context,
+        candidates = _prepare_candidates(
             element=element,
-            candidates=candidates,
+            candidates=raw_candidates,
         )
 
-        primary = candidates[selected_index]
+        try:
+            selected_index = _rerank(
+                text=req.text,
+                context=context,
+                element=element,
+                candidates=candidates,
+            )
+        except Exception:
+            # 추천 기능 하나의 HCX rerank 실패가 /api/analyze 전체를 500으로
+            # 만들지 않도록 deterministic fallback으로 첫 후보를 사용한다.
+            logger.exception(
+                "HCX suggestion rerank failed; using first candidate "
+                "element=%s",
+                element,
+            )
+            selected_index = 0
 
-        alternatives = [
-            candidate
-            for index, candidate in enumerate(candidates)
-            if index != selected_index
-        ]
+        valid_candidates = _validated_candidates_in_hcx_order(
+            text=req.text,
+            element=element,
+            candidates=candidates,
+            selected_index=selected_index,
+            baseline=baseline_missing,
+        )
+
+        if not valid_candidates:
+            logger.warning(
+                "No diagnosis-safe suggestion candidate "
+                "element=%s text=%r",
+                element,
+                req.text,
+            )
+            continue
+
+        primary = valid_candidates[0]
+        alternatives = valid_candidates[1:3]
 
         suggestions.append(
             Suggestion(
                 element=element,
                 primary=primary,
-                alternatives=alternatives[:2],
+                alternatives=alternatives,
             )
         )
 

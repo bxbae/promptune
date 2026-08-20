@@ -10,6 +10,34 @@ from app.services.suggest_hcx import (
 )
 
 
+
+ELEMENTS = [
+    "TASK",
+    "AUDIENCE",
+    "CONTEXT",
+    "FORMAT",
+    "TONE",
+    "LENGTH",
+    "CONSTRAINT",
+    "EXAMPLE",
+]
+
+
+def _predict_missing_with_valid_candidates(original_text: str):
+    """
+    suggest() 단위 테스트에서는 실제 KcELECTRA 모델을 로드하지 않는다.
+    원문은 보완 필요(1), 후보 적용 후 문장은 충분(0)으로 가정해
+    diagnosis guard와 기존 suggest 동작을 함께 검증한다.
+    """
+    def fake_predict_missing(text: str) -> dict[str, int]:
+        if text == original_text:
+            return {element: 1 for element in ELEMENTS}
+
+        return {element: 0 for element in ELEMENTS}
+
+    return fake_predict_missing
+
+
 class CandidateBankTest(unittest.TestCase):
     def test_format_context_prefers_comparison_table(self):
         candidates = get_candidates(
@@ -83,7 +111,11 @@ class HcxSuggestionTest(unittest.TestCase):
             context="팀원들이 결정사항을 빠르게 확인해야 한다.",
         )
 
-        result = suggest(req)
+        with patch(
+            "app.services.suggest_hcx.predict_missing",
+            side_effect=_predict_missing_with_valid_candidates(req.text),
+        ):
+            result = suggest(req)
 
         self.assertEqual(
             len(result.suggestions),
@@ -125,7 +157,11 @@ class HcxSuggestionTest(unittest.TestCase):
             context=None,
         )
 
-        result = suggest(req)
+        with patch(
+            "app.services.suggest_hcx.predict_missing",
+            side_effect=_predict_missing_with_valid_candidates(req.text),
+        ):
+            result = suggest(req)
 
         self.assertEqual(len(result.suggestions), 3)
 

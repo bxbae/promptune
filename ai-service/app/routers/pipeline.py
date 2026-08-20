@@ -25,6 +25,8 @@ from app.schemas.models import (
     SummarizeTitleResponse,
     PromptRuleRequest,
     PromptRuleResponse,
+    ImprovePromptRequest,
+    ImprovePromptResponse,
 )
 from app.services import diagnose_mock, pipeline_mock, prompt_rule
 from app.services.retrieval.retrieval_router import classify_retrieval_route
@@ -75,6 +77,14 @@ USE_REAL_GENERATION = (
     == "true"
 )
 
+USE_REAL_IMPROVEMENT = (
+    os.getenv(
+        "USE_REAL_IMPROVEMENT",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
+
 if USE_REAL_GENERATION:
     from app.services import generate_hcx
 
@@ -87,6 +97,9 @@ if USE_REAL_SUGGESTION:
 
 if USE_REAL_RETRIEVAL:
     from app.services.retrieval import rag_retriever
+
+if USE_REAL_IMPROVEMENT:
+    from app.services import improve_hcx
 
 
 router = APIRouter()
@@ -113,6 +126,18 @@ def diagnose(req: DiagnoseRequest):
 def apply_prompt_rule(req: PromptRuleRequest):
     """V6 진단 결과와 사용자 Preference를 개선 전략으로 변환."""
     return prompt_rule.apply_prompt_rule(req)
+
+@router.post(
+    "/improve-prompt",
+    response_model=ImprovePromptResponse,
+    tags=["Prompt Improvement"],
+)
+def improve_prompt(req: ImprovePromptRequest):
+    """Phase 2-C: Prompt Rule을 반영해 개선 프롬프트를 생성."""
+    if USE_REAL_IMPROVEMENT:
+        return improve_hcx.improve(req)
+
+    return pipeline_mock.improve_prompt(req)
 
 @router.post(
     "/suggest",
@@ -176,7 +201,6 @@ def retrieve(req: RetrieveRequest):
         return rag_retriever.retrieve(req)
 
     return pipeline_mock.retrieve(req)
-
 
 @router.post(
     "/generate",

@@ -56,6 +56,18 @@ class PromptRuleResponse(BaseModel):
     use_positive_instruction: bool
     use_few_shot: bool
 
+# ---------- Phase 2-C: 개선 프롬프트 생성 ----------
+class ImprovePromptRequest(BaseModel):
+    text: str
+    task_type: TaskType
+    preference: PreferenceInput
+    prompt_rule: PromptRuleResponse
+
+
+class ImprovePromptResponse(BaseModel):
+    improved_prompt: str
+    used_fallback: bool = False
+
 
 # ---------- 7번: 추천문구 생성 ----------
 class SuggestRequest(BaseModel):
