@@ -8,6 +8,7 @@ from app.schemas.models import (
     SafetyRequest, SafetyResponse,
     RetrieveRequest, RetrieveResponse, Document,
     GenerateRequest, GenerateResponse,
+    ImprovePromptRequest, ImprovePromptResponse,
     ValidateRequest, ValidateResponse,
 )
 
@@ -106,6 +107,43 @@ def generate(
         used_web_search=used_web_search,
     )
 
+# ---------- Phase 2-C: 개선 프롬프트 생성 mock ----------
+_IMPROVE_PLACEHOLDERS = {
+    "TASK": "[해야 할 작업]",
+    "AUDIENCE": "[대상/수신자]",
+    "CONTEXT": "[배경/상황 정보]",
+    "FORMAT": "[원하는 출력 형식]",
+    "TONE": "[원하는 어조]",
+    "LENGTH": "[원하는 길이]",
+    "CONSTRAINT": "[제약 조건]",
+    "EXAMPLE": "[참고 예시]",
+}
+
+def improve_prompt(req: ImprovePromptRequest) -> ImprovePromptResponse:
+    """HCX 없이 API 연동을 확인하기 위한 deterministic mock."""
+
+    parts: list[str] = []
+
+    if req.prompt_rule.use_role and req.prompt_rule.role_hint:
+        parts.append(f"역할: {req.prompt_rule.role_hint}")
+
+    parts.append(req.text.strip())
+
+    placeholders = [
+        _IMPROVE_PLACEHOLDERS[element]
+        for element in req.prompt_rule.missing_elements
+        if element in _IMPROVE_PLACEHOLDERS
+    ]
+
+    if placeholders:
+        parts.append(
+            "추가로 필요한 정보: " + ", ".join(placeholders)
+        )
+
+    return ImprovePromptResponse(
+        improved_prompt="\n".join(parts),
+        used_fallback=False,
+    )
 
 # ---------- 15번: 최종 검증 ----------
 # TODO(승득): 규칙 mock → KcELECTRA NLI(모순검출) + HyperCLOVA 자기검증 추가.
