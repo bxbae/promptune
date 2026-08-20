@@ -186,7 +186,7 @@ public class AiServiceClient {
         }
     }
 
-    public Map generate(String prompt, String taskType, List<Map<String, Object>> documents, boolean useWebSearch) {
+    public Map generate(String prompt, String taskType, List<Map<String, Object>> documents, List<Map<String, Object>> webResults, boolean useWebSearch) {
         long start = System.currentTimeMillis();
         try {
             Map result = client.post()
@@ -196,6 +196,7 @@ public class AiServiceClient {
                             "prompt", prompt,
                             "task_type", taskType,
                             "documents", documents,
+                            "web_results", webResults,
                             "use_web_search", useWebSearch))
                     .retrieve()
                     .body(Map.class);
