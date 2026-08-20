@@ -443,6 +443,89 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .chat-list-pager button:disabled { color: var(--muted); cursor: default; opacity: 0.5; }
 .chat-list-pager-status { font-size: 13px; color: var(--muted); font-family: var(--mono); }
 
+/* ---- 채팅 스레드 (/chat/[id]) ---- */
+.chat-page { max-width: 720px; margin: 0 auto; padding: 48px 20px 20px; min-height: calc(100vh - 68px);
+  display: flex; flex-direction: column; }
+
+/* 대화 스레드 모드: .content 영역 전체를 차지하고, 메시지 목록(.thread)만 스크롤.
+   컴포저는 flex-shrink:0로 항상 맨 아래 고정, 폭도 .thread와 동일하게 맞춤. */
+.chat-page.has-thread {
+  position: absolute; inset: 0; min-height: 0;
+  display: flex; flex-direction: column; padding: 0; margin: 0; max-width: none;
+}
+.chat-page.has-thread .thread {
+  flex: 1; overflow-y: auto; min-height: 0;
+  max-width: 720px; width: 100%; margin: 0 auto; padding: 40px 20px 20px;
+}
+.chat-page.has-thread .no-thread-box {
+  padding: 20px; color: var(--muted); font-size: 13px; flex-grow: 1;
+  position: relative;
+}
+.chat-page.has-thread .no-thread-box span {
+  position: absolute; top: 50%; transform: translateY(-50%);
+}
+.chat-page.has-thread .composer-wrap {
+  flex-shrink: 0; position: static; transform: none;
+  max-width: 720px; width: 100%; margin: 0 auto; padding: 0 20px 20px;
+}
+
+.thread { display: flex; flex-direction: column; gap: 24px; margin-bottom: 24px; flex: 1; }
+.msg-row.user { display: flex; justify-content: flex-end; }
+.msg-bubble.user {
+  background: var(--accent-tint); color: var(--ink); padding: 12px 16px;
+  border-radius: 14px 14px 2px 14px; max-width: 80%; white-space: pre-wrap; font-size: 15px;
+}
+.msg-assistant { max-width: 90%; }
+.msg-sender { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 6px; }
+
+/* 만족도(👍/👎) */
+.satisfaction-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.satisfaction-label { font-size: 12px; color: var(--muted); }
+.satisfaction-btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+  width: 30px; height: 26px; font-size: 13px; cursor: pointer; line-height: 1;
+}
+.satisfaction-btn:hover { background: var(--panel-alt); }
+.satisfaction-thanks { font-size: 12px; color: var(--accent); font-weight: 600; }
+
+
+/* 개인화 저장 동의 카드 (스토리보드 14p) */
+.consent-card {
+  margin-top: 8px; padding: 14px 16px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); max-width: 320px;
+}
+.consent-title {
+  font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 4px;
+}
+.consent-title::before { content: "●"; font-size: 8px; }
+.consent-name { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.consent-question { font-size: 13px; color: var(--ink); margin-bottom: 12px; }
+.consent-actions { display: flex; gap: 8px; }
+.consent-apply {
+  padding: 7px 14px; border-radius: 8px; border: none; background: var(--accent);
+  color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.consent-apply:disabled { opacity: 0.6; cursor: default; }
+.consent-dismiss {
+  padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-alt); color: var(--muted); font-size: 13px; cursor: pointer;
+}
+.consent-dismiss:disabled { opacity: 0.6; cursor: default; }
+.consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
+.msg-bubble.assistant {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
+}
+
+.status-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.status-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.status-title .dots { color: var(--muted); }
+.status-step { font-size: 13px; color: var(--muted); padding: 3px 0; }
+.status-step.done { color: var(--accent); }
+.status-step.current { color: var(--ink); font-weight: 600; }
+
+
 
 /* ---- 파일관리 (/files) ---- */
 .files-header { margin-bottom: 20px; }
@@ -595,52 +678,6 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .preview-photo-icon { font-size: 28px; opacity: 0.5; }
 
-
-/* ---- 채팅 스레드 (/chat/[id]) ---- */
-.chat-page { max-width: 720px; margin: 0 auto; padding: 48px 20px 20px; min-height: calc(100vh - 68px);
-  display: flex; flex-direction: column; }
-
-/* 대화 스레드 모드: .content 영역 전체를 차지하고, 메시지 목록(.thread)만 스크롤.
-   컴포저는 flex-shrink:0로 항상 맨 아래 고정, 폭도 .thread와 동일하게 맞춤. */
-.chat-page.has-thread {
-  position: absolute; inset: 0; min-height: 0;
-  display: flex; flex-direction: column; padding: 0; margin: 0; max-width: none;
-}
-.chat-page.has-thread .thread {
-  flex: 1; overflow-y: auto; min-height: 0;
-  max-width: 720px; width: 100%; margin: 0 auto; padding: 40px 20px 20px;
-}
-.chat-page.has-thread .no-thread-box {
-  padding: 20px; color: var(--muted); font-size: 13px; flex-grow: 1;
-  position: relative;
-}
-.chat-page.has-thread .no-thread-box span {
-  position: absolute; top: 50%; transform: translateY(-50%);
-}
-.chat-page.has-thread .composer-wrap {
-  flex-shrink: 0; position: static; transform: none;
-  max-width: 720px; width: 100%; margin: 0 auto; padding: 0 20px 20px;
-}
-
-.thread { display: flex; flex-direction: column; gap: 24px; margin-bottom: 24px; flex: 1; }
-.msg-row.user { display: flex; justify-content: flex-end; }
-.msg-bubble.user {
-  background: var(--accent-tint); color: var(--ink); padding: 12px 16px;
-  border-radius: 14px 14px 2px 14px; max-width: 80%; white-space: pre-wrap; font-size: 15px;
-}
-.msg-assistant { max-width: 90%; }
-.msg-sender { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 6px; }
-
-/* 만족도(👍/👎) */
-.satisfaction-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.satisfaction-label { font-size: 12px; color: var(--muted); }
-.satisfaction-btn {
-  border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
-  width: 30px; height: 26px; font-size: 13px; cursor: pointer; line-height: 1;
-}
-.satisfaction-btn:hover { background: var(--panel-alt); }
-.satisfaction-thanks { font-size: 12px; color: var(--accent); font-weight: 600; }
-
 /* 히스토리 > 수신자별 스타일 관리 */
 .receiver-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .receiver-row {
@@ -666,41 +703,51 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .receiver-delete-btn:hover { color: var(--block); border-color: var(--block); }
 
-/* 개인화 저장 동의 카드 (스토리보드 14p) */
-.consent-card {
-  margin-top: 8px; padding: 14px 16px; border-radius: 12px;
-  background: var(--panel); border: 1px solid var(--line); max-width: 320px;
+/* 히스토리 > 수정이력 */
+.activity-filter-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.activity-filter-chip {
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted); font-size: 13px; cursor: pointer;
 }
-.consent-title {
-  font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 4px;
-  display: flex; align-items: center; gap: 4px;
+.activity-filter-chip.active {
+  border-color: var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600;
 }
-.consent-title::before { content: "●"; font-size: 8px; }
-.consent-name { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
-.consent-question { font-size: 13px; color: var(--ink); margin-bottom: 12px; }
-.consent-actions { display: flex; gap: 8px; }
-.consent-apply {
-  padding: 7px 14px; border-radius: 8px; border: none; background: var(--accent);
-  color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+.activity-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.activity-row {
+  display: flex; align-items: center; gap: 16px; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); font-size: 13px;
 }
-.consent-apply:disabled { opacity: 0.6; cursor: default; }
-.consent-dismiss {
-  padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--panel-alt); color: var(--muted); font-size: 13px; cursor: pointer;
+.activity-row:last-child { border-bottom: none; }
+.activity-row.clickable { cursor: pointer; }
+.activity-row.clickable:hover { background: var(--panel-alt); }
+.activity-time { color: var(--muted); font-size: 12px; width: 70px; flex-shrink: 0; }
+.activity-label { flex: 1; color: var(--ink); }
+.activity-badge {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; flex-shrink: 0;
 }
-.consent-dismiss:disabled { opacity: 0.6; cursor: default; }
-.consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
-.msg-bubble.assistant {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  padding: 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
-}
+.activity-badge.applied { background: var(--accent-tint); color: var(--accent); }
+.activity-badge.rejected { background: var(--panel-alt); color: var(--muted); }
+.activity-badge.edited { background: var(--miss-tint); color: var(--block); }
 
-.status-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-.status-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
-.status-title .dots { color: var(--muted); }
-.status-step { font-size: 13px; color: var(--muted); padding: 3px 0; }
-.status-step.done { color: var(--accent); }
-.status-step.current { color: var(--ink); font-weight: 600; }
+/* 히스토리 > 개인화 설정 - 데이터 관리 박스 (스토리보드 16p) */
+.pref-data-box {
+  margin-top: 32px; padding: 18px 20px; border: 1px solid var(--line);
+  background: var(--panel); border-radius: 12px;
+}
+.pref-data-title { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+.pref-data-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 0; border-top: 1px solid var(--line);
+}
+.pref-data-row-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-right: 10px; }
+.pref-data-row-desc { font-size: 10px; color: var(--muted); line-height: 10px; }
+
+/* 박스 밖으로 뺀 "전체 개인화 데이터 초기화" - 파급 범위가 커서 시각적으로 분리 */
+.pref-data-danger-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-top: 12px; padding: 14px 20px; border: 1px solid var(--block);
+  background: var(--miss-tint); border-radius: 12px;
+}
 
 /* 대시보드 (스토리보드 15p 레이아웃) */
 .dash-pref-bar {
