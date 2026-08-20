@@ -11,6 +11,10 @@ from app.schemas.models import (
     SuggestResponse,
     SafetyRequest,
     SafetyResponse,
+    RetrievalRouteRequest,
+    RetrievalRouteResponse,
+    RetrievalExecuteRequest,
+    RetrievalExecuteResponse,
     RetrieveRequest,
     RetrieveResponse,
     GenerateRequest,
@@ -24,6 +28,8 @@ from app.schemas.models import (
 )
 from app.services import diagnose_mock, pipeline_mock, prompt_rule
 from app.services.retrieval.tavily_search import search_web
+from app.services.retrieval.retrieval_router import classify_retrieval_route
+from app.services.retrieval.retrieval_orchestrator import execute_retrieval
 from app.services.retrieval import document_indexer
 
 USE_REAL_TITLE_SUMMARY = (
@@ -128,6 +134,37 @@ def suggest(req: SuggestRequest):
 )
 def safety_check(req: SafetyRequest):
     return pipeline_mock.safety_check(req)
+
+
+
+@router.post(
+    "/retrieval-route",
+    response_model=RetrievalRouteResponse,
+    tags=["12.Retrieval Route"],
+)
+def retrieval_route(req: RetrievalRouteRequest):
+    return RetrievalRouteResponse(
+        route=classify_retrieval_route(req.query)
+    )
+
+
+
+@router.post(
+    "/retrieval-execute",
+    response_model=RetrievalExecuteResponse,
+    tags=["12.Retrieval Execute"],
+)
+def retrieval_execute(req: RetrievalExecuteRequest):
+    try:
+        return execute_retrieval(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        print(f"[Retrieval] execute failed: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Retrieval 실행 중 오류가 발생했습니다.",
+        ) from exc
 
 
 @router.post(
