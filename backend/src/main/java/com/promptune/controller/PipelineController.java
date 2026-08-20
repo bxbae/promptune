@@ -128,7 +128,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
     // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
     // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3);
+    boolean useWebSearch = Boolean.TRUE.equals(req.useWebSearch());
+    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3, useWebSearch);
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
     Object webResults = retrieval.get("web_results");
@@ -178,6 +179,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             "taskType", d.taskType(),
             "needsInternalDocs", "internal_rag".equals(retrieval.get("route")),
             "retrievalRoute", retrieval.get("route"),
+            "usedInternalRag", retrieval.getOrDefault("used_internal_rag", false),
+            "usedWebSearch", retrieval.getOrDefault("used_web_search", false),
             "result", result,
             "promptSessionId", session.getId());
 }
