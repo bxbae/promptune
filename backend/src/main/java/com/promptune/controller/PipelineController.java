@@ -27,7 +27,6 @@ import com.promptune.service.BehaviorLogService;
 import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
 import com.promptune.service.RecommendService;
-import com.promptune.service.RequestClassificationService;
 import com.promptune.service.ConsentService;
 
 /**
@@ -42,7 +41,6 @@ public class PipelineController {
     private final AiServiceClient ai;
     private final RecommendService recommend;
     private final GraphMockService graph;
-    private final RequestClassificationService classification; // 추가
     private final UserRepository userRepository; // 추가 (companyId 조회용)
     private final BehaviorLogService behaviorLog; // 필드 추가
     private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
@@ -52,7 +50,6 @@ public class PipelineController {
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
-        RequestClassificationService classification,
         UserRepository userRepository,
         BehaviorLogService behaviorLog,
         com.promptune.repository.PromptSessionRepository promptSessionRepository,
@@ -62,7 +59,6 @@ public class PipelineController {
         this.ai = ai;
         this.recommend = recommend;
         this.graph = graph;
-        this.classification = classification;
         this.userRepository = userRepository;
         this.behaviorLog = behaviorLog;
         this.promptSessionRepository = promptSessionRepository;
