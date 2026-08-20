@@ -8,6 +8,7 @@ import psycopg
 from FlagEmbedding import BGEM3FlagModel
 
 from app.schemas.models import Document, RetrieveRequest, RetrieveResponse
+from app.services.retrieval.retrieval_rule import apply_retrieval_rule
 
 
 MODEL_NAME = os.getenv("BGE_M3_MODEL", "BAAI/bge-m3")
@@ -71,6 +72,9 @@ def get_connection():
 def retrieve(req: RetrieveRequest) -> RetrieveResponse:
     top_k = max(1, min(int(req.top_k), 10))
 
+    # Retrieval Rule 적용 전에 후보를 넉넉히 가져온다.
+    candidate_k = min(top_k * 3, 30)
+
     embedding = encode_query(req.query)
     vector = vector_literal(embedding)
 
@@ -101,7 +105,7 @@ LIMIT %s
                     vector,
                     req.owner_user_id,
                     vector,
-                    top_k,
+                    candidate_k,
                 ),
             )
 
@@ -129,5 +133,12 @@ LIMIT %s
             score,
         ) in rows
     ]
+
+    documents = apply_retrieval_rule(
+        documents,
+        top_k=top_k,
+        min_score=0.50,
+        max_chunks_per_document=2,
+    )
 
     return RetrieveResponse(documents=documents)

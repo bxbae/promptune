@@ -85,6 +85,25 @@ class SafetyResponse(BaseModel):
     reason: str                  # 안전하지 않으면 이유
 
 
+# ---------- 12번: Retrieval Route 판단 ----------
+RetrievalRoute = Literal[
+    "internal_rag",
+    "web_search",
+    "external_or_realtime",
+    "user_context",
+    "no_retrieval",
+    "not_rag_or_restricted",
+]
+
+
+class RetrievalRouteRequest(BaseModel):
+    query: str
+
+
+class RetrievalRouteResponse(BaseModel):
+    route: RetrievalRoute
+
+
 # ---------- 13번: 내부문서 검색 (RAG) ----------
 class RetrieveRequest(BaseModel):
     query: str
@@ -152,3 +171,23 @@ class SummarizeTitleRequest(BaseModel):
 
 class SummarizeTitleResponse(BaseModel):
     title: str
+
+# ---------- 12-1번: Retrieval 실행 ----------
+class WebSearchResult(BaseModel):
+    title: str = ""
+    url: str = ""
+    content: str = ""
+
+
+class RetrievalExecuteRequest(BaseModel):
+    query: str
+    owner_user_id: int | None = None
+    top_k: int = 3
+
+
+class RetrievalExecuteResponse(BaseModel):
+    route: RetrievalRoute
+    documents: list[Document] = Field(default_factory=list)
+    web_results: list[WebSearchResult] = Field(default_factory=list)
+    used_internal_rag: bool = False
+    used_web_search: bool = False
