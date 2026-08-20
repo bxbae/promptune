@@ -145,6 +145,15 @@ export default function ChatThreadPage() {
           return pair;
         });
         setMessages(loaded);
+
+        // 이미 만족도를 남긴 메시지는 새로고침해도 버튼이 다시 안 뜨도록 서버 값으로 초기화
+        const initialSatisfaction: Record<string, "good" | "bad"> = {};
+        for (const m of history) {
+          if (m.satisfaction === "good" || m.satisfaction === "bad") {
+            initialSatisfaction[`hist-${m.id}-assistant`] = m.satisfaction;
+          }
+        }
+        setSatisfaction(initialSatisfaction);
       })
       .catch((e) => {
         if (!cancelled) setHistoryError(e.message || "지난 메시지를 불러오지 못했습니다.");

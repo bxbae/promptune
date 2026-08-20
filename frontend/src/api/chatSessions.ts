@@ -63,6 +63,7 @@ export interface ChatMessage {
   aiResponse: string;
   taskType: string | null;
   createdAt: string;
+  satisfaction: "good" | "bad" | null;
 }
 
 // GET /api/chat-sessions/{id}/messages - 세션 하나의 지난 메시지 목록 (시간순)

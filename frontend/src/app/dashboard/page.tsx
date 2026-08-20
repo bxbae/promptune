@@ -220,6 +220,17 @@ export default function DashboardPage() {
           <div className="dash-section-title">업무유형 분포</div>
           {/* TODO(목업): task_type 집계 API 없음 - MOCK_TASK_TYPE_DIST 참고 */}
           <div className="dash-mock-note">※ 예시 데이터입니다. 실제 집계 API는 아직 없어요.</div>
+          <div className="dash-tasktype-stackbar">
+            {MOCK_TASK_TYPE_DIST.map((t) => (
+              <div
+                key={t.label}
+                className="dash-tasktype-stackbar-seg"
+                style={{ width: `${t.pct}%`, background: t.color }}
+                title={`${t.label} ${t.pct}%`}
+              />
+            ))}
+          </div>
+
           <div className="dash-tasktype-grid">
             {MOCK_TASK_TYPE_DIST.map((t) => (
               <div className="dash-tasktype-item" key={t.label}>
