@@ -185,7 +185,6 @@ class RetrievalExecuteRequest(BaseModel):
     query: str
     owner_user_id: int | None = None
     top_k: int = 3
-    use_web_search: bool = False  # 사용자가 웹검색 토글을 켰는지
 
 
 class RetrievalExecuteResponse(BaseModel):
