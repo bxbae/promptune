@@ -58,6 +58,25 @@ def execute_retrieval(
 
         used_web_search = bool(web_results)
 
+    # 3. 웹검색 토글이 켜져 있는데 아직 웹검색을 안 했다면(= internal_rag 등으로 판단된 경우),
+    #    "복합 요청"으로 보고 웹검색도 추가로 실행 (route 값 자체는 그대로 두어 원래 분류 정보 보존)
+    if req.use_web_search and not used_web_search:
+        results = search_web(
+            req.query,
+            max_results=req.top_k,
+        )
+
+        web_results = [
+            WebSearchResult(
+                title=item.get("title", ""),
+                url=item.get("url", ""),
+                content=item.get("content", ""),
+            )
+            for item in results
+        ]
+
+        used_web_search = bool(web_results)
+
     # user_context:
     #   현재 여기서는 MS Graph를 직접 호출하지 않고 route만 반환한다.
     #
