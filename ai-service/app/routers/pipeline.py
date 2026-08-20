@@ -27,7 +27,6 @@ from app.schemas.models import (
     PromptRuleResponse,
 )
 from app.services import diagnose_mock, pipeline_mock, prompt_rule
-from app.services.retrieval.tavily_search import search_web
 from app.services.retrieval.retrieval_router import classify_retrieval_route
 from app.services.retrieval.retrieval_orchestrator import execute_retrieval
 from app.services.retrieval import document_indexer
@@ -187,13 +186,6 @@ def retrieve(req: RetrieveRequest):
 def generate(req: GenerateRequest):
     web_results = [item.model_dump() for item in req.web_results]
     used_web_search = bool(web_results)
-
-    if req.use_web_search and not used_web_search:
-        try:
-            web_results = search_web(req.prompt, max_results=3)
-            used_web_search = bool(web_results)
-        except Exception as exc:
-            print(f"[Tavily] web search failed: {exc}")
 
     if USE_REAL_GENERATION:
         return generate_hcx.generate(
