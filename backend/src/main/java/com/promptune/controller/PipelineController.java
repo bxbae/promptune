@@ -71,9 +71,11 @@ public class PipelineController {
      * 흐름: 3게이트 → 5진단(AI) → 6수정요소선정 → 7추천문구선정(AI)
      */
     @PostMapping("/analyze")
-    public AnalyzeResponse analyze(@RequestBody AnalyzeRequest req) {
-        System.out.println("========== /api/analyze 호출됨 ==========");
-        System.out.println("받은 text 값: " + (req != null ? req.text() : "req가 null입니다"));
+    public AnalyzeResponse analyze(@RequestBody AnalyzeRequest req, org.springframework.security.core.Authentication authentication) {
+        User currentUser = userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
         // 3번 게이트
         GateResult g = gate.check(req.text());
         if (!g.passed()) {
@@ -87,7 +89,7 @@ public class PipelineController {
         DiagnoseResult d = ai.diagnose(req.text());
 
         // 6번 수정요소 선정
-        RecommendResult r = recommend.select(d, req.userId());
+        RecommendResult r = recommend.select(d, currentUser.getId());
 
         // 7번 문맥 기반 추천문구 선정
         SuggestResult s;
