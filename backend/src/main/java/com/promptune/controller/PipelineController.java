@@ -124,14 +124,13 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
     // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
     // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    boolean useWebSearch = Boolean.TRUE.equals(req.useWebSearch());
-    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3, useWebSearch);
+    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3);
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
     java.util.List<java.util.Map<String, Object>> webResults =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("web_results", java.util.List.of());
 
-    // retrieval-execute가 이미 Tavily 호출을 끝냈으므로, generate()에서 또 검색하면 안 됨 (승연님 안내)
+    // retrieval-execute가 라우터 판단에 따라 자동으로 Tavily까지 호출 완료 (상시 사용 방식, 토글 제거)
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
