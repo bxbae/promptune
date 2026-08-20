@@ -11,3 +11,4 @@ pypdf
 python-docx
 python-multipart
 PyMuPDF
+scikit-learn==1.7.2

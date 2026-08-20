@@ -7,14 +7,14 @@ from app.schemas.models import (
     WebSearchResult,
 )
 from app.services.retrieval.rag_retriever import retrieve
-from app.services.retrieval.retrieval_router import classify_retrieval_route
+from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import search_web
 
 
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
-    route = classify_retrieval_route(req.query)
+    route = classify_ml_retrieval_route(req.query)
 
     documents = []
     web_results: list[WebSearchResult] = []
