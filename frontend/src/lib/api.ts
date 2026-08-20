@@ -29,8 +29,8 @@ export async function analyze(
 ): Promise<AnalyzeResponse> {
   const res = await fetch(`${API}/api/analyze`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, userId: 1 }),
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
     signal,
   });
   if (!res.ok) throw new Error(`분석 실패: ${res.status}`);
