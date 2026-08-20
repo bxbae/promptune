@@ -149,7 +149,6 @@ class GenerateRequest(BaseModel):
     task_type: TaskType
     documents: list[Document] = Field(default_factory=list)  # 13번 결과 (있으면)
     web_results: list[WebSearchResult] = Field(default_factory=list)
-    use_web_search: bool = False        # 흐름도: 최신정보 버튼 클릭 시
 
 
 class GenerateResponse(BaseModel):
