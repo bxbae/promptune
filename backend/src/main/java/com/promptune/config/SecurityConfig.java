@@ -76,7 +76,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**", "/health", "/actuator/**", "/error").permitAll()
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                 .requestMatchers("/api/integrations/microsoft/callback").permitAll()
-                .requestMatchers("/api/analyze", "/api/context/**").permitAll()
+                .requestMatchers("/api/analyze").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth -> oauth

@@ -179,11 +179,14 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             "promptSessionId", session.getId());
 }
 
-    /** 0번: 사용자 맥락 (로그인 후 사전 조회) */
-    @GetMapping("/context/{userId}")
-    public Map<String, Object> context(@PathVariable Long userId) {
+    /** 0번: 사용자 맥락 (로그인 후 사전 조회) — /api/execute와 동일한 이유로 경로변수 대신 인증 기반으로 전환 */
+    @GetMapping("/context")
+    public Map<String, Object> context(org.springframework.security.core.Authentication authentication) {
+        User currentUser = userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
         return Map.of(
-                "firstVisit", graph.isFirstVisit(userId),
-                "workContext", graph.getUserContext(userId));
+                "firstVisit", graph.isFirstVisit(currentUser.getId()),
+                "workContext", graph.getUserContext(currentUser.getId()));
     }
 }
