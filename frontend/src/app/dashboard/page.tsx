@@ -17,6 +17,7 @@ import {
 } from "@/api/dashboard";
 import { listReceiverProfiles, ReceiverProfile } from "@/api/receiverProfiles";
 import { getPreference, UserPreference } from "@/api/userPreferences";
+import { listActivityLogs } from "@/api/activityLogs";
 
 // 최근 7일 배열, 오래된 순
 function last7Days(): string[] {
@@ -43,17 +44,13 @@ const PREF_LABEL: Record<string, string> = {
   keep: "최대한 유지", improve: "적극적으로 보완",
 };
 
-// TODO: (mock) KPI 값 계산 엔드포인트 추가되면 상수 지우고 실제 API 응답으로 교체.
-// "말투 적용률", "결과 만족도"는 실제 값.
-const MOCK_TOP_KPIS = [
-  { label: "출력 형식 누락", value: "5", unit: "건 / 총 7건" },
-  { label: "마감일 직접 수정", value: "4", unit: "회" },
-];
-
 // 업무유형 라벨별 색상 팔레트 (실데이터 키 개수가 가변이라 순서대로 배정)
 const TASK_TYPE_COLORS = ["#55806A", "#7FA391", "#B7AFB2", "#E64B3C", "#F2A99A", "#D8D3D0", "#EFEBE9", "#A9C4B8"];
 
 const KNOWN_TASK_TYPES = ["email", "report", "notice", "application", "support", "report_internal", "notice_internal"];
+
+// AI 진단이 사용하는 고정 8요소. 데이터가 없어도 0%로 8개 다 표시하기 위한 고정 목록.
+const KNOWN_ELEMENTS = ["Task", "Context", "Format", "Audience", "Constraint", "Length", "Tone", "Example"];
 
 // 대시보드 페이지
 export default function DashboardPage() {
@@ -65,6 +62,7 @@ export default function DashboardPage() {
   const [toneApplyRate, setToneApplyRate] = useState<ToneApplyRate | null>(null);
   const [satisfactionRate, setSatisfactionRate] = useState<SatisfactionRate | null>(null);
   const [taskTypeDist, setTaskTypeDist] = useState<TaskTypeDistribution>({});
+  const [weeklyEditCount, setWeeklyEditCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -78,8 +76,9 @@ export default function DashboardPage() {
       getToneApplyRate(),
       getSatisfactionRate(),
       getTaskTypeDistribution(),
+      listActivityLogs(),
     ])
-      .then(([c, a, w, r, p, tone, sat, taskDist]) => {
+      .then(([c, a, w, r, p, tone, sat, taskDist, logs]) => {
         setCoverage(c);
         setApplyRate(a);
         setWeekly(w);
@@ -88,6 +87,15 @@ export default function DashboardPage() {
         setToneApplyRate(tone);
         setSatisfactionRate(sat);
         setTaskTypeDist(taskDist);
+
+        // 최근 일주일(오늘 포함 7일) 안에 일어난 프롬프트 수정 카운트 (거절은 제외)
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 6);
+        weekAgo.setHours(0, 0, 0, 0);
+        const count = logs.filter(
+          (e) => e.type !== "rejected" && new Date(e.occurredAt) >= weekAgo
+        ).length;
+        setWeeklyEditCount(count);
       })
       .catch((e) => setError(e.message || "대시보드 데이터를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -99,6 +107,8 @@ export default function DashboardPage() {
   const days = last7Days();
   const weeklyValues = days.map((d) => weekly[d] ?? 0);
   const weeklyMax = Math.max(1, ...weeklyValues);
+  // 0 나눗셈 방지용 weeklyMax(최소 1)와 별개로, "진짜 최고 건수"를 따로 계산 (그래야 전부 0건일 때 강조 안 함)
+  const weeklyRealMax = Math.max(0, ...weeklyValues);
   const weeklyTotal = weeklyValues.reduce((a, b) => a + b, 0);
 
   const topReceivers = [...receivers]
@@ -109,6 +119,15 @@ export default function DashboardPage() {
   function findCoverage(element: string) {
     return coverage.find((c) => c.element === element)?.coverageRate ?? 0;
   }
+
+  // 0건인 요소도 항상 보이도록 KNOWN_ELEMENTS 기준으로 채움 (업무유형 분포와 같은 방식)
+  const coverageItems = KNOWN_ELEMENTS.map((element) => ({
+    element,
+    coverageRate: findCoverage(element),
+  }));
+
+  // 요소 포함률이 가장 낮은(=가장 많이 놓친) 요소 하나
+  const mostMissedElement = [...coverageItems].sort((a, b) => a.coverageRate - b.coverageRate)[0];
 
   // 0건인 카테고리도 항상 보이도록 KNOWN_TASK_TYPES 기준으로 채움
   const taskTypeTotal = Object.values(taskTypeDist).reduce((sum, count) => sum + count, 0);
@@ -141,14 +160,19 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* 상단 KPI 4개: 앞 2개 목업, 뒤 2개 실데이터 */}
+      {/* 상단 KPI 4개: 전부 실데이터 */}
       <div className="dash-kpi-row">
-        {MOCK_TOP_KPIS.map((k) => (
-          <div className="dash-kpi-card" key={k.label}>
-            <div className="dash-kpi-label">{k.label}<span>(mock)</span></div>
-            <div className="dash-kpi-value">{k.value} <span className="dash-kpi-unit">{k.unit}</span></div>
+        <div className="dash-kpi-card">
+          <div className="dash-kpi-label">최근 일주일 수정횟수</div>
+          <div className="dash-kpi-value">{weeklyEditCount} <span className="dash-kpi-unit">회</span></div>
+        </div>
+        <div className="dash-kpi-card">
+          <div className="dash-kpi-label">가장 많이 누락된 요소</div>
+          <div className="dash-kpi-value dash-kpi-value-text">
+            {mostMissedElement.element}
+              <span className="dash-kpi-unit dash-kpi-unit-small"> ({Math.round(mostMissedElement.coverageRate * 100)}%)</span>
           </div>
-        ))}
+        </div>
         <div className="dash-kpi-card">
           <div className="dash-kpi-label">말투 적용률</div>
           <div className="dash-kpi-value">
@@ -163,16 +187,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 3열: 요소 포함률 | 수신자별 스타일 | 추천 적용률 */}
-      <div className="dash-grid-3">
+      {/* 1행: 요소 포함률(2fr) | 업무유형 분포(4fr) */}
+      <div className="dash-grid-featured">
         {/* 요소 포함률 */}
         <div className="dash-panel">
           <div className="dash-section-title">요소 포함률</div>
-          {coverage.length === 0 ? (
-            <div className="dash-empty">아직 쌓인 데이터가 없어요.</div>
-          ) : (
             <div className="dash-coverage-list">
-              {coverage.map((c) => {
+            {coverageItems.map((c) => {
                 const pct = Math.round(c.coverageRate * 100);
                 const good = c.coverageRate >= 0.5;
                 return (
@@ -186,9 +207,42 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-          )}
         </div>
 
+        {/* 업무유형 분포 */}
+        <div className="dash-panel">
+          <div className="dash-section-title">업무유형 분포</div>
+          {taskTypeTotal === 0 ? (
+            <div className="dash-empty">아직 쌓인 데이터가 없어요.</div>
+          ) : (
+            <>
+              <div className="dash-tasktype-stackbar">
+                {taskTypeItems.map((t) => (
+                  <div
+                    key={t.label}
+                    className="dash-tasktype-stackbar-seg"
+                    style={{ width: `${t.pct}%`, background: t.color }}
+                    title={`${t.label} ${t.pct}%`}
+                  />
+                ))}
+              </div>
+
+              <div className="dash-tasktype-grid">
+                {taskTypeItems.map((t) => (
+                  <div className="dash-tasktype-item" key={t.label}>
+                    <span className="dash-tasktype-dot" style={{ background: t.color }} />
+                    <span className="dash-tasktype-label">{t.label}</span>
+                    <span className="dash-tasktype-pct">{t.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 2행: 수신자별 스타일(2fr) | 추천 적용률(2fr) | 주간 활동 추이(2fr) */}
+      <div className="dash-grid-3">
         {/* 수신자별 스타일 */}
         <div className="dash-panel">
           <div className="dash-section-title-row">
@@ -239,53 +293,23 @@ export default function DashboardPage() {
               </div>
               );
             })}
-          </div>
         </div>
       </div>
 
-      {/* 2열: 업무유형 분포 | 주간 활동 추이 */}
-      <div className="dash-grid-2">
-        <div className="dash-panel">
-          <div className="dash-section-title">업무유형 분포</div>
-          {taskTypeTotal === 0 ? (
-            <div className="dash-empty">아직 쌓인 데이터가 없어요.</div>
-          ) : (
-            <>
-          <div className="dash-tasktype-stackbar">
-                {taskTypeItems.map((t) => (
-              <div
-                key={t.label}
-                className="dash-tasktype-stackbar-seg"
-                style={{ width: `${t.pct}%`, background: t.color }}
-                title={`${t.label} ${t.pct}%`}
-              />
-            ))}
-          </div>
-
-          <div className="dash-tasktype-grid">
-                {taskTypeItems.map((t) => (
-              <div className="dash-tasktype-item" key={t.label}>
-                <span className="dash-tasktype-dot" style={{ background: t.color }} />
-                <span className="dash-tasktype-label">{t.label}</span>
-                <span className="dash-tasktype-pct">{t.pct}%</span>
-              </div>
-            ))}
-          </div>
-            </>
-          )}
-        </div>
-
+        {/* 주간 활동 추이 */}
         <div className="dash-panel">
           <div className="dash-section-title-row">
             <div className="dash-section-title">주간 활동 추이</div>
             <span className="dash-panel-sub">이번 주 총 {weeklyTotal}건</span>
           </div>
           <div className="dash-weekly-chart">
-            {days.map((d, i) => (
+            {days.map((d, i) => {
+              const isMax = weeklyRealMax > 0 && weeklyValues[i] === weeklyRealMax;
+              return (
               <div className="dash-weekly-col" key={d}>
                 <div className="dash-weekly-bar-track">
                   <div
-                    className="dash-weekly-bar-fill"
+                      className={`dash-weekly-bar-fill ${isMax ? "dash-weekly-bar-fill-max" : ""}`}
                     style={{ height: `${(weeklyValues[i] / weeklyMax) * 100}%` }}
                     title={`${d}: ${weeklyValues[i]}건`}
                   />
@@ -293,7 +317,8 @@ export default function DashboardPage() {
                 <span className="dash-weekly-count">{weeklyValues[i]}</span>
                 <span className="dash-weekly-day">{weekdayLabel(d)}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
