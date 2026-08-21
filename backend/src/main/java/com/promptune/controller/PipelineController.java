@@ -48,6 +48,7 @@ public class PipelineController {
 
     private final ConsentService consentService;
     private final com.promptune.service.MicrosoftGraphService microsoftGraphService;
+    private final com.promptune.service.PreferenceResolutionService preferenceResolutionService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -56,7 +57,8 @@ public class PipelineController {
         com.promptune.repository.PromptSessionRepository promptSessionRepository,
         com.promptune.repository.ChatSessionRepository chatSessionRepository,
         ConsentService consentService,
-        com.promptune.service.MicrosoftGraphService microsoftGraphService) {
+        com.promptune.service.MicrosoftGraphService microsoftGraphService,
+        com.promptune.service.PreferenceResolutionService preferenceResolutionService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -67,6 +69,7 @@ public class PipelineController {
         this.chatSessionRepository = chatSessionRepository;
         this.consentService = consentService;
         this.microsoftGraphService = microsoftGraphService;
+        this.preferenceResolutionService = preferenceResolutionService;
     }
 
     /**
@@ -155,12 +158,19 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         if (!mail.isBlank()) userContext.put("mail", mail);
     }
 
+    var preference = preferenceResolutionService.resolve(authentication);
+    Map<String, String> preferenceMap = Map.of(
+            "speed", preference.speed(),
+            "detail", preference.detail(),
+            "preserve", preference.preserve());
+
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
             documents,
             webResults,
-            userContext);
+            userContext,
+            preferenceMap);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
