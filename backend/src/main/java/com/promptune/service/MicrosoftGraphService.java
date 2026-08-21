@@ -111,9 +111,14 @@ public class MicrosoftGraphService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Microsoft 인증 코드 교환에 실패했습니다.");
         }
 
-        JsonNode profile = fetchGraph("/v1.0/me", authResult.accessToken());
+        // department/jobTitle까지 받으려면 $select에 명시해야 함 (getProfile()과 동일 패턴)
+        JsonNode profile = fetchGraph(
+                "/v1.0/me?$select=id,displayName,userPrincipalName,mail,companyName,department,jobTitle",
+                authResult.accessToken());
         String microsoftUserId = profile.path("id").asText(null);
         String displayName = profile.path("displayName").asText(null);
+        String department = profile.path("department").asText(null);
+        String jobTitle = profile.path("jobTitle").asText(null);
         String email = resolveEmail(profile);
 
         String serializedCache = app.tokenCache().serialize();
@@ -124,6 +129,8 @@ public class MicrosoftGraphService {
         connection.setMicrosoftUserId(microsoftUserId);
         connection.setMicrosoftEmail(email);
         connection.setDisplayName(displayName);
+        connection.setDepartment(department);
+        connection.setJobTitle(jobTitle);
         connection.setTokenCacheEncrypted(encryptedCache);
         connectionRepository.save(connection);
     }

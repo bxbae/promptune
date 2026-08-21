@@ -236,7 +236,6 @@ public class AiServiceClient {
                             "prompt", prompt,
                             "task_type", taskType,
                             "documents", documents,
-                            "documents", documents,
                             "web_results", webResults,
                             "user_context", userContext))
                     .retrieve()
