@@ -21,6 +21,12 @@ public class MicrosoftConnection {
     @Column(name = "display_name")
     private String displayName;
 
+    @Column(name = "department")
+    private String department;
+
+    @Column(name = "job_title")
+    private String jobTitle;
+
     @Column(
         name = "token_cache_encrypted",
         nullable = false,
@@ -50,6 +56,22 @@ public class MicrosoftConnection {
         }
 
         updatedAt = now;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
+    }
+
+    public String getJobTitle() {
+        return jobTitle;
+    }
+
+    public void setJobTitle(String jobTitle) {
+        this.jobTitle = jobTitle;
     }
 
     @PreUpdate
