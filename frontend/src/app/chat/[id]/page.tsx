@@ -6,7 +6,7 @@ import { getChatMessages } from "@/api/chatSessions";
 import { listReceiverProfiles, upsertReceiverProfile, ReceiverProfile } from "@/api/receiverProfiles";
 import { grantConsent, getConsentStatus } from "@/api/consents";
 import { submitPromptSessionEdit } from "@/api/promptSessions";
-import PromptEditor from "@/components/PromptEditor";
+import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
 
 interface Message {
   id: string;
@@ -118,11 +118,13 @@ export default function ChatThreadPage() {
   useEffect(() => {
     if (isFresh && !ranRef.current) {
       ranRef.current = true;
-      const firstPrompt = sessionStorage.getItem(`chat-first-${chatSessionId}`);
+      const stored = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
-      if (firstPrompt) {
+      if (stored) {
+        // /chat/page.tsx가 { text, directEdits } JSON으로 저장
+        const { text: firstPrompt, directEdits } = JSON.parse(stored) as { text: string; directEdits: DirectEdit[] };
         setMessages([{ id: generateId(), role: "user", content: firstPrompt }]);
-        runAssistant(firstPrompt);
+        runAssistant(firstPrompt, directEdits);
       }
       router.replace(`/chat/${chatSessionId}`);
     }
@@ -169,7 +171,7 @@ export default function ChatThreadPage() {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusStep]);
 
-  async function runAssistant(prompt: string) {
+  async function runAssistant(prompt: string, directEdits: DirectEdit[] = []) {
     setStatusStep(0);
     const stepTimer = setInterval(() => {
       setStatusStep((s) => (s === null ? null : Math.min(s + 1, STATUS_STEPS.length - 1)));
@@ -185,6 +187,18 @@ export default function ChatThreadPage() {
         ...prev,
         { id: assistantId, role: "assistant", content: resultText, promptSessionId: res?.promptSessionId },
       ]);
+
+      // "직접 입력"으로 해결한 요소 = 직접수정. response_edits에 기록.
+      // prompt_session DB컬럼 1개라 요소가 여러 개면 리스트를 못 넣음
+      // >> 요소명 태그 붙여서 줄바꿈으로 다 합쳐 저장
+      if (directEdits.length > 0 && res?.promptSessionId) {
+        const generatedResult = directEdits.map((d) => `[${d.element}] ${d.generated}`).join("\n");
+        const userFinalResult = directEdits.map((d) => `[${d.element}] ${d.userFinal}`).join("\n");
+        submitPromptSessionEdit(res.promptSessionId, { generatedResult, userFinalResult }).catch(() => {
+          // 직접수정 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시, 콘솔에만 남김)
+          console.error("직접수정 기록 저장 실패");
+        });
+      }
 
       // 수신자 이름이 감지됐고, 이미 저장 동의를 한 상태가 아니면 동의 카드 노출
       // (프로필이 없으면 당연히 미동의 상태, 있으면 실제 동의 기록을 조회해서 판단)
@@ -221,11 +235,11 @@ export default function ChatThreadPage() {
     }
   }
 
-  function handleSubmit(text: string) {
+  function handleSubmit(text: string, directEdits: DirectEdit[]) {
     if (statusStep !== null) return;
     setPendingConsent(null); // 새 메시지 보내면 이전 턴의 동의 카드는 정리
     setMessages((prev) => [...prev, { id: generateId(), role: "user", content: text }]);
-    runAssistant(text);
+    runAssistant(text, directEdits);
   }
 
   const hasThread = messages.length > 0;
