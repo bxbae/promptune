@@ -27,8 +27,7 @@ export default function AppShell({
   active,
   onNavigate,
   onNewChat,
-  // userEmail은 로그인 후 사용자 이메일로 표시되도록 추후 구현 예정
-  userEmail = "demo@promptune.dev",
+  userEmail,
   onLogout,
   // onSwitchAccount,
   children,
@@ -185,7 +184,7 @@ export default function AppShell({
 
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시
-  const displayEmail = currentUser?.email || userEmail;
+  const displayEmail = currentUser?.email || userEmail || "guest@promptune.dev";
   const initial = displayEmail.slice(0, 1).toUpperCase();
   const name = displayEmail.split("@")[0].toUpperCase();
 
@@ -337,7 +336,7 @@ export default function AppShell({
               // onClick={() => setAccountMenuOpen((v) => !v)}
               aria-haspopup="menu"
               // aria-expanded={accountMenuOpen}
-              title={userEmail}
+              title={displayEmail}
             >
               <span className="avatar">{initial}</span>
               <span className="user-meta label">
