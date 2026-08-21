@@ -5,9 +5,15 @@ import {
   getElementCoverage,
   getApplyRate,
   getWeeklyActivity,
+  getToneApplyRate,
+  getSatisfactionRate,
+  getTaskTypeDistribution,
   ElementCoverage,
   ApplyRate,
   WeeklyActivity,
+  ToneApplyRate,
+  SatisfactionRate,
+  TaskTypeDistribution,
 } from "@/api/dashboard";
 import { listReceiverProfiles, ReceiverProfile } from "@/api/receiverProfiles";
 import { getPreference, UserPreference } from "@/api/userPreferences";
@@ -38,33 +44,16 @@ const PREF_LABEL: Record<string, string> = {
 };
 
 // TODO: (mock) KPI 값 계산 엔드포인트 추가되면 상수 지우고 실제 API 응답으로 교체.
+// "말투 적용률", "결과 만족도"는 실제 값.
 const MOCK_TOP_KPIS = [
   { label: "출력 형식 누락", value: "5", unit: "건 / 총 7건" },
   { label: "마감일 직접 수정", value: "4", unit: "회" },
-  { label: "정중한 말투 적용률", value: "82", unit: "%" },
-  { label: "결과 만족도", value: "84", unit: "%" },
 ];
 
-// TODO: (mock) "추천 적용률"을 항목별로 나누어서 보여주는 API 필요.
-// 지금 real data로 있는 건 전체 합산(getApplyRate)뿐이라, 항목별 분해는 mock으로 채움.
-const MOCK_APPLY_RATE_BREAKDOWN = [
-  { label: "마감일", pct: 86 },
-  { label: "말투", pct: 91 },
-  { label: "형식", pct: 67 },
-  { label: "예시", pct: 13 },
-];
+// 업무유형 라벨별 색상 팔레트 (실데이터 키 개수가 가변이라 순서대로 배정)
+const TASK_TYPE_COLORS = ["#55806A", "#7FA391", "#B7AFB2", "#E64B3C", "#F2A99A", "#D8D3D0", "#EFEBE9", "#A9C4B8"];
 
-// TODO: (mock) task_type별 분포 집계 API 없음. 저장은 있음. 집계하는 백엔드 필요.
-// 색상은 카테고리 구분용 (스토리보드 15p 범례 스타일)
-const MOCK_TASK_TYPE_DIST = [
-  { label: "email", pct: 32, color: "#55806A" },
-  { label: "report", pct: 24, color: "#7FA391" },
-  { label: "notice", pct: 18, color: "#B7AFB2" },
-  { label: "report_internal", pct: 12, color: "#E64B3C" },
-  { label: "application", pct: 8, color: "#F2A99A" },
-  { label: "support", pct: 4, color: "#D8D3D0" },
-  { label: "notice_internal", pct: 2, color: "#EFEBE9" },
-];
+const KNOWN_TASK_TYPES = ["email", "report", "notice", "application", "support", "report_internal", "notice_internal"];
 
 // 대시보드 페이지
 export default function DashboardPage() {
@@ -73,6 +62,9 @@ export default function DashboardPage() {
   const [weekly, setWeekly] = useState<WeeklyActivity>({});
   const [receivers, setReceivers] = useState<ReceiverProfile[]>([]);
   const [preference, setPreference] = useState<UserPreference | null>(null);
+  const [toneApplyRate, setToneApplyRate] = useState<ToneApplyRate | null>(null);
+  const [satisfactionRate, setSatisfactionRate] = useState<SatisfactionRate | null>(null);
+  const [taskTypeDist, setTaskTypeDist] = useState<TaskTypeDistribution>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -83,13 +75,19 @@ export default function DashboardPage() {
       getWeeklyActivity(),
       listReceiverProfiles(),
       getPreference(),
+      getToneApplyRate(),
+      getSatisfactionRate(),
+      getTaskTypeDistribution(),
     ])
-      .then(([c, a, w, r, p]) => {
+      .then(([c, a, w, r, p, tone, sat, taskDist]) => {
         setCoverage(c);
         setApplyRate(a);
         setWeekly(w);
         setReceivers(r);
         setPreference(p);
+        setToneApplyRate(tone);
+        setSatisfactionRate(sat);
+        setTaskTypeDist(taskDist);
       })
       .catch((e) => setError(e.message || "대시보드 데이터를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -106,6 +104,22 @@ export default function DashboardPage() {
   const topReceivers = [...receivers]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 3);
+
+  // element-coverage 배열에서 특정 요소만 찾기 (없으면 0%로 표시)
+  function findCoverage(element: string) {
+    return coverage.find((c) => c.element === element)?.coverageRate ?? 0;
+  }
+
+  // 0건인 카테고리도 항상 보이도록 KNOWN_TASK_TYPES 기준으로 채움
+  const taskTypeTotal = Object.values(taskTypeDist).reduce((sum, count) => sum + count, 0);
+  const taskTypeItems = KNOWN_TASK_TYPES
+    .map((label, i) => ({
+      label,
+      count: taskTypeDist[label] ?? 0,
+      pct: taskTypeTotal === 0 ? 0 : Math.round(((taskTypeDist[label] ?? 0) / taskTypeTotal) * 100),
+      color: TASK_TYPE_COLORS[i % TASK_TYPE_COLORS.length],
+    }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div>
@@ -127,7 +141,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* 상단 KPI 4개 (목업) */}
+      {/* 상단 KPI 4개: 앞 2개 목업, 뒤 2개 실데이터 */}
       <div className="dash-kpi-row">
         {MOCK_TOP_KPIS.map((k) => (
           <div className="dash-kpi-card" key={k.label}>
@@ -135,6 +149,18 @@ export default function DashboardPage() {
             <div className="dash-kpi-value">{k.value} <span className="dash-kpi-unit">{k.unit}</span></div>
           </div>
         ))}
+        <div className="dash-kpi-card">
+          <div className="dash-kpi-label">말투 적용률</div>
+          <div className="dash-kpi-value">
+            {toneApplyRate ? Math.round(toneApplyRate.coverageRate * 100) : 0} <span className="dash-kpi-unit">%</span>
+          </div>
+        </div>
+        <div className="dash-kpi-card">
+          <div className="dash-kpi-label">결과 만족도</div>
+          <div className="dash-kpi-value">
+            {satisfactionRate ? Math.round(satisfactionRate.satisfactionRate * 100) : 0} <span className="dash-kpi-unit">%</span>
+          </div>
+        </div>
       </div>
 
       {/* 3열: 요소 포함률 | 수신자별 스타일 | 추천 적용률 */}
@@ -192,21 +218,24 @@ export default function DashboardPage() {
         {/* 추천 적용률 */}
         <div className="dash-panel">
           <div className="dash-section-title">추천 적용률</div>
-          {/* TODO(목업): 항목별 분해 API 없음 - MOCK_APPLY_RATE_BREAKDOWN 참고 */}
           <div className="dash-mock-note">
-            ※ 항목별 분해는 예시입니다. 전체 적용률(실제):{" "}
+            전체 적용률(실제):{" "}
             {applyRate ? `${Math.round(applyRate.applyRate * 100)}%` : "-"}
           </div>
           <div className="dash-coverage-list">
-            {MOCK_APPLY_RATE_BREAKDOWN.map((m) => {
+            {[
+              { label: "말투", pct: Math.round(findCoverage("Tone") * 100) },
+              { label: "형식", pct: Math.round(findCoverage("Format") * 100) },
+              { label: "예시", pct: Math.round(findCoverage("Example") * 100) },
+            ].map((m) => {
               const good = m.pct >= 50;
               return (
                 <div className="dash-coverage-row" key={m.label}>
-                <span className="dash-coverage-label">{m.label}</span>
+                  <span className="dash-coverage-label">{m.label}</span>
                 <div className="dash-coverage-bar-track">
                   <div className={`dash-coverage-bar-fill ${good ? "good" : "bad"}`} style={{ width: `${m.pct}%` }} />
                 </div>
-                <span className={`dash-coverage-pct good ${good ? "good" : "bad"}`}>{m.pct}%</span>
+                  <span className={`dash-coverage-pct ${good ? "good" : "bad"}`}>{m.pct}%</span>
               </div>
               );
             })}
@@ -218,10 +247,12 @@ export default function DashboardPage() {
       <div className="dash-grid-2">
         <div className="dash-panel">
           <div className="dash-section-title">업무유형 분포</div>
-          {/* TODO(목업): task_type 집계 API 없음 - MOCK_TASK_TYPE_DIST 참고 */}
-          <div className="dash-mock-note">※ 예시 데이터입니다. 실제 집계 API는 아직 없어요.</div>
+          {taskTypeTotal === 0 ? (
+            <div className="dash-empty">아직 쌓인 데이터가 없어요.</div>
+          ) : (
+            <>
           <div className="dash-tasktype-stackbar">
-            {MOCK_TASK_TYPE_DIST.map((t) => (
+                {taskTypeItems.map((t) => (
               <div
                 key={t.label}
                 className="dash-tasktype-stackbar-seg"
@@ -232,7 +263,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="dash-tasktype-grid">
-            {MOCK_TASK_TYPE_DIST.map((t) => (
+                {taskTypeItems.map((t) => (
               <div className="dash-tasktype-item" key={t.label}>
                 <span className="dash-tasktype-dot" style={{ background: t.color }} />
                 <span className="dash-tasktype-label">{t.label}</span>
@@ -240,6 +271,8 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+            </>
+          )}
         </div>
 
         <div className="dash-panel">

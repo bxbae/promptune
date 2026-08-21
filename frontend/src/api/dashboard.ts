@@ -16,6 +16,22 @@ export interface ApplyRate {
   applyRate: number; // 0~1
 }
 
+export interface ToneApplyRate {
+  element: string;
+  acceptCount: number;
+  dismissCount: number;
+  coverageRate: number; // 0~1
+}
+
+export interface SatisfactionRate {
+  total: number;
+  good: number;
+  satisfactionRate: number; // 0~1
+}
+
+// task_type 문자열 -> 건수
+export type TaskTypeDistribution = Record<string, number>;
+
 // 날짜문자열(YYYY-MM-DD) -> 그날 프롬프트 세션 개수. 데이터 없는 날짜는 아예 키가 없음.
 export type WeeklyActivity = Record<string, number>;
 
@@ -34,3 +50,6 @@ async function get<T>(path: string): Promise<T> {
 export const getElementCoverage = () => get<ElementCoverage[]>("/api/dashboard/element-coverage");
 export const getApplyRate = () => get<ApplyRate>("/api/dashboard/apply-rate");
 export const getWeeklyActivity = () => get<WeeklyActivity>("/api/dashboard/weekly-activity");
+export const getToneApplyRate = () => get<ToneApplyRate>("/api/dashboard/tone-apply-rate");
+export const getSatisfactionRate = () => get<SatisfactionRate>("/api/dashboard/satisfaction-rate");
+export const getTaskTypeDistribution = () => get<TaskTypeDistribution>("/api/dashboard/task-type-distribution");
