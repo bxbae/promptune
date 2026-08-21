@@ -58,6 +58,42 @@ public class DashboardController {
         );
     }
 
+        // 대시보드 Top KPI 중 "정중한 말투 적용률" — element-coverage에서 Tone만 필터
+    @GetMapping("/tone-apply-rate")
+    public Map<String, Object> toneApplyRate(Authentication authentication) {
+        User user = currentUser(authentication);
+        return personalizationScoreRepository.findByUserId(user.getId()).stream()
+                .filter(s -> "Tone".equals(s.getElement()))
+                .findFirst()
+                .map(this::toCoverageEntry)
+                .orElse(Map.of("element", "Tone", "acceptCount", 0, "dismissCount", 0, "coverageRate", 0.0));
+    }
+
+    // 대시보드 Top KPI 중 "결과 만족도" — satisfaction 필드 집계
+    @GetMapping("/satisfaction-rate")
+    public Map<String, Object> satisfactionRate(Authentication authentication) {
+        User user = currentUser(authentication);
+        List<PromptSession> sessions = promptSessionRepository.findByUserId(user.getId()).stream()
+                .filter(p -> p.getSatisfaction() != null)
+                .collect(Collectors.toList());
+        long total = sessions.size();
+        long good = sessions.stream().filter(p -> "good".equals(p.getSatisfaction())).count();
+        double rate = total == 0 ? 0.0 : (double) good / total;
+        return Map.of("total", total, "good", good, "satisfactionRate", rate);
+    }
+
+    // 업무유형(task_type)별 분포 집계
+    @GetMapping("/task-type-distribution")
+    public Map<String, Long> taskTypeDistribution(Authentication authentication) {
+        User user = currentUser(authentication);
+        return promptSessionRepository.findByUserId(user.getId()).stream()
+                .filter(p -> p.getTaskType() != null)
+                .collect(Collectors.groupingBy(
+                        PromptSession::getTaskType,
+                        Collectors.counting()
+                ));
+    }
+
     // 추천 적용률 = tab(적용) 로그 수 / 전체 로그 수
     @GetMapping("/apply-rate")
     public Map<String, Object> applyRate(Authentication authentication) {
