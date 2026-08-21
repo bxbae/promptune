@@ -1,6 +1,7 @@
 package com.promptune.service;
 
 import com.promptune.dto.PipelineDtos.DiagnoseResult;
+import com.promptune.dto.PipelineDtos.ImprovePromptResult;
 import com.promptune.dto.PipelineDtos.PromptRuleResult;
 import com.promptune.dto.PipelineDtos.SuggestResult;
 import com.promptune.domain.ModelUsageLog;
@@ -114,6 +115,40 @@ public class AiServiceClient {
         }
     }
 
+    public ImprovePromptResult improvePrompt(
+            String text,
+            String taskType,
+            String speed,
+            String detail,
+            String preserve,
+            PromptRuleResult promptRule) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            ImprovePromptResult result = client.post()
+                    .uri("/api/ai/improve-prompt")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "text", text,
+                            "task_type", taskType,
+                            "preference", Map.of(
+                                    "speed", speed,
+                                    "detail", detail,
+                                    "preserve", preserve),
+                            "prompt_rule", promptRule))
+                    .retrieve()
+                    .body(ImprovePromptResult.class);
+
+            log("ai-service", "/api/ai/improve-prompt", start, "success");
+
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/improve-prompt", start, "error");
+            throw e;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> retrieve(String query, Long ownerUserId, int topK) {
         long start = System.currentTimeMillis();
@@ -136,6 +171,7 @@ public class AiServiceClient {
             throw e;
         }
     }
+
     // 문서 업로드 직후 ai-service에 청킹·임베딩 요청 (document_chunks 채우기)
     public Map<String, Object> indexDocument(Long documentId, Long ownerUserId, String fileType, MultipartFile file) {
         long start = System.currentTimeMillis();
@@ -144,7 +180,7 @@ public class AiServiceClient {
             body.add("document_id", documentId);
             body.add("owner_user_id", ownerUserId);
             body.add("file_type", fileType);
-            body.add("file", file.getResource());   // 원본 파일을 그대로 전달 (S3 재조회 없음)
+            body.add("file", file.getResource()); // 원본 파일을 그대로 전달 (S3 재조회 없음)
 
             Map result = client.post()
                     .uri("/api/ai/index-document")
@@ -168,8 +204,7 @@ public class AiServiceClient {
             Map<String, Object> body = Map.of(
                     "query", query,
                     "owner_user_id", ownerUserId,
-                    "top_k", topK
-            );
+                    "top_k", topK);
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
                     .contentType(MediaType.APPLICATION_JSON)
