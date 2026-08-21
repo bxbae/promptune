@@ -191,7 +191,6 @@ public class AiServiceClient {
             List<Map<String, Object>> documents,
             List<Map<String, Object>> webResults,
             Map<String, String> userContext) {
-
         long start = System.currentTimeMillis();
 
         try {
@@ -201,6 +200,7 @@ public class AiServiceClient {
                     .body(Map.of(
                             "prompt", prompt,
                             "task_type", taskType,
+                            "documents", documents,
                             "documents", documents,
                             "web_results", webResults,
                             "user_context", userContext))
