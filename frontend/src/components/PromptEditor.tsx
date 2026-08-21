@@ -21,6 +21,13 @@ interface AmbiguityRule {
   options: string[];
 }
 
+// "직접 입력"(사용자가 직접 타이핑)으로 해결한 요소 하나의 기록.
+export interface DirectEdit {
+  element: string;   // AmbiguityRule.id
+  generated: string; // AI가 제안했던 옵션들 (참고용, 실제로 안 쓰인 것들)
+  userFinal: string; // 사용자가 직접 입력한 값
+}
+
 // 백엔드 연결 전, 모호성 규칙을 프론트에서 임시로 정의
 // "메일"이 들어가면 모호성으로 간주
 const RULES: AmbiguityRule[] = [
@@ -52,7 +59,8 @@ const RULES: AmbiguityRule[] = [
 interface PromptEditorProps {
   // 있으면: 전송 시 이 콜백만 호출하고 입력창 비움 (실행/결과 표시는 호출한 쪽 책임)
   // 없으면: 기존처럼 이 컴포넌트가 직접 execute() 호출 + 결과를 자기 아래에 표시
-  onSubmit?: (text: string) => void;
+  // 두 번째 인자: 이번 프롬프트 작성 중 "직접 입력"으로 해결한 요소들 (없으면 빈 배열)
+  onSubmit?: (text: string, directEdits: DirectEdit[]) => void;
   // true: 큰 제목/힌트문구 없이 입력창만 (대화 스레드 하단용)
   compact?: boolean;
   disabled?: boolean;
@@ -62,6 +70,7 @@ interface PromptEditorProps {
 export default function PromptEditor({ onSubmit, compact = false, disabled = false, placeholder }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const directEditsRef = useRef<DirectEdit[]>([]);
   const [optIdx, setOptIdx] = useState(0);
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
@@ -126,8 +135,15 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
     }
   }
 
-  function applyOption(value: string) {
+  function applyOption(value: string, isCustom = false) {
     if (!activeRule || !match) return;
+    if (isCustom) {
+      directEditsRef.current.push({
+        element: activeRule.id,
+        generated: activeRule.options.join(" / "),
+        userFinal: value,
+      });
+    }
     const next = text.slice(0, match.index) + value + text.slice(match.index + match.match.length);
     setText(next);
     setResolved((prev) => new Set(prev).add(activeRule.id));
@@ -213,7 +229,8 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
     if (onSubmit) {
       if (submittingRef.current) return;   // 중복 호출 차단 (동기적으로 즉시 막힘)
       submittingRef.current = true;
-      onSubmit(text.trim());
+      onSubmit(text.trim(), directEditsRef.current);
+      directEditsRef.current = [];   // 다음 프롬프트를 위해 초기화
       setText("");
       setResolved(new Set());
       setGate(null);
@@ -289,7 +306,7 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
                       onChange={(e) => setCustomValue(e.target.value)}
                       onKeyDown={(e) => {
                         e.stopPropagation();
-                        if (e.key === "Enter") { e.preventDefault(); applyOption(customValue || underline); }
+                        if (e.key === "Enter") { e.preventDefault(); applyOption(customValue || underline, true); }
                         if (e.key === "Escape") { e.preventDefault(); setCustomOpen(false); }
                       }}
                       placeholder="직접 입력 후 Enter"
@@ -359,8 +376,8 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
 
       {!compact && (
         <div className="hint">
-        <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
-      </div>
+          <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
+        </div>
       )}
 
       {gateBlocked && <div className="gate-block">⚠ {gate!.reason}</div>}

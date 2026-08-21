@@ -47,6 +47,7 @@ public class PipelineController {
     private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
 
     private final ConsentService consentService;
+    private final com.promptune.service.MicrosoftGraphService microsoftGraphService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -54,7 +55,8 @@ public class PipelineController {
         BehaviorLogService behaviorLog,
         com.promptune.repository.PromptSessionRepository promptSessionRepository,
         com.promptune.repository.ChatSessionRepository chatSessionRepository,
-        ConsentService consentService) {
+        ConsentService consentService,
+        com.promptune.service.MicrosoftGraphService microsoftGraphService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -64,6 +66,7 @@ public class PipelineController {
         this.promptSessionRepository = promptSessionRepository;
         this.chatSessionRepository = chatSessionRepository;
         this.consentService = consentService;
+        this.microsoftGraphService = microsoftGraphService;
     }
 
     /**
@@ -132,12 +135,32 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     java.util.List<java.util.Map<String, Object>> webResults =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("web_results", java.util.List.of());
 
-    // retrieval-execute가 라우터 판단에 따라 자동으로 Tavily까지 호출 완료 (상시 사용 방식, 토글 제거)
+    // user_context이면 실제 Microsoft Graph 프로필을 생성 컨텍스트로 전달
+    Map<String, String> userContext = new java.util.HashMap<>();
+
+    if ("user_context".equals(retrieval.get("route"))) {
+        com.fasterxml.jackson.databind.JsonNode profile =
+                microsoftGraphService.getProfile(userId);
+
+        String displayName = profile.path("displayName").asText("");
+        String companyName = profile.path("companyName").asText("");
+        String department = profile.path("department").asText("");
+        String jobTitle = profile.path("jobTitle").asText("");
+        String mail = profile.path("mail").asText("");
+
+        if (!displayName.isBlank()) userContext.put("displayName", displayName);
+        if (!companyName.isBlank()) userContext.put("companyName", companyName);
+        if (!department.isBlank()) userContext.put("department", department);
+        if (!jobTitle.isBlank()) userContext.put("jobTitle", jobTitle);
+        if (!mail.isBlank()) userContext.put("mail", mail);
+    }
+
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
             documents,
-            webResults);
+            webResults,
+            userContext);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {

@@ -185,8 +185,14 @@ public class AiServiceClient {
         }
     }
 
-    public Map generate(String prompt, String taskType, List<Map<String, Object>> documents, List<Map<String, Object>> webResults) {
+    public Map generate(
+            String prompt,
+            String taskType,
+            List<Map<String, Object>> documents,
+            List<Map<String, Object>> webResults,
+            Map<String, String> userContext) {
         long start = System.currentTimeMillis();
+
         try {
             Map result = client.post()
                     .uri("/api/ai/generate")
@@ -195,15 +201,34 @@ public class AiServiceClient {
                             "prompt", prompt,
                             "task_type", taskType,
                             "documents", documents,
-                            "web_results", webResults))
+                            "documents", documents,
+                            "web_results", webResults,
+                            "user_context", userContext))
                     .retrieve()
                     .body(Map.class);
+
             log("ai-service", "/api/ai/generate", start, "success");
             return result;
         } catch (Exception e) {
             log("ai-service", "/api/ai/generate", start, "error");
             throw e;
         }
+    }
+
+    // 기존 호출부 호환용
+    public Map generate(
+            String prompt,
+            String taskType,
+            List<Map<String, Object>> documents,
+            List<Map<String, Object>> webResults,
+            boolean useWebSearch) {
+
+        return generate(
+                prompt,
+                taskType,
+                documents,
+                webResults,
+                Map.of());
     }
 
     public String summarizeTitle(String text) {
