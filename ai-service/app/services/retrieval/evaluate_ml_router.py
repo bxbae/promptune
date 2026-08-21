@@ -8,8 +8,8 @@ from app.services.retrieval.ml_router import MLRetrievalRouter
 from app.services.retrieval.retrieval_router import classify_retrieval_route
 
 APP = Path(__file__).resolve().parents[2]
-TRAIN = APP / "data/rag/routing_train_200.json"
-TEST = APP / "data/rag/routing_blind_60_v2.json"
+TRAIN = APP / "data/rag/routing_train_242.json"
+TEST = APP / "data/rag/routing_blind_batch05.json"
 
 
 def normalize(value):
