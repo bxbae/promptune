@@ -21,8 +21,8 @@ public class ActivityLogService {
     private final PromptSessionRepository promptSessionRepository;
 
     public ActivityLogService(BehaviorLogRepository behaviorLogRepository,
-                               ResponseEditRepository responseEditRepository,
-                               PromptSessionRepository promptSessionRepository) {
+            ResponseEditRepository responseEditRepository,
+            PromptSessionRepository promptSessionRepository) {
         this.behaviorLogRepository = behaviorLogRepository;
         this.responseEditRepository = responseEditRepository;
         this.promptSessionRepository = promptSessionRepository;
@@ -34,11 +34,30 @@ public class ActivityLogService {
 
         if (filter == null || filter.equals("applied") || filter.equals("rejected")) {
             for (BehaviorLogEntity log : behaviorLogRepository.findByUserId(userId)) {
-                boolean applied = "tab".equals(log.getAction());
-                String type = applied ? "applied" : "rejected";
-                if (filter != null && !filter.equals(type)) continue;
-                result.add(new ActivityLogEntry(type, log.getElement() + (applied ? " 적용" : " 거절"),
-                        log.getChatSessionId(), log.getCreatedAt()));
+
+                String type;
+
+                if (BehaviorLogService.isApplyAction(log.getAction())) {
+                    type = "applied";
+                } else if (BehaviorLogService.isRejectAction(log.getAction())) {
+                    type = "rejected";
+                } else {
+                    continue;
+                }
+
+                if (filter != null && !filter.equals(type)) {
+                    continue;
+                }
+
+                String label = "applied".equals(type)
+                        ? log.getElement() + " 적용"
+                        : log.getElement() + " 거절";
+
+                result.add(new ActivityLogEntry(
+                        type,
+                        label,
+                        log.getChatSessionId(),
+                        log.getCreatedAt()));
             }
         }
 
