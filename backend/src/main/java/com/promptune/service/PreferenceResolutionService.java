@@ -12,14 +12,12 @@ import org.springframework.stereotype.Service;
  *
  * 배경:
  * - UserPreferenceController는 Authentication(JWT subject = email)으로 사용자를 찾는다.
- * - 반면 PipelineController(/api/analyze, /api/execute)는 지금까지 요청 바디의
- *   Long userId를 써 왔는데, 이 두 경로는 SecurityConfig에서 permitAll이라 인증 없이도
- *   호출 가능하고, frontend(lib/api.ts)도 실제로는 userId를 1로 하드코딩해서 보내고
- *   있어 로그인한 실제 사용자와 무관할 수 있다.
+ * - PipelineController(/api/analyze, /api/execute)도 이제 인증 필수로 전환되어(permitAll 제거),
+ *   항상 로그인한 사용자 기준으로 호출된다.
  *
- * 따라서 Preference 조회의 identity source of truth는 요청 바디의 userId가 아니라
- * UserPreferenceController와 동일한 Authentication 기반으로 통일한다. 단, /api/analyze,
- * /api/execute는 비로그인 상태에서도 항상 동작해야 하므로(permitAll), 이 클래스는
+ * 따라서 Preference 조회의 identity source of truth는 UserPreferenceController와
+ * 동일하게 Authentication 기반으로 통일한다. 아래 폴백은 극단적인 예외 상황
+ * (테스트 코드 등에서 Authentication 없이 호출되는 경우)에 대한 최소 방어이며,
  * UserPreferenceController와 달리 예외를 던지지 않고 아래 모든 경우에 보수적 기본값으로
  * 폴백한다:
  *   - Authentication이 없거나 인증되지 않음
