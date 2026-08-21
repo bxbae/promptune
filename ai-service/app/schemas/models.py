@@ -162,6 +162,7 @@ class GenerateRequest(BaseModel):
     documents: list[Document] = Field(default_factory=list)
     web_results: list[WebSearchResult] = Field(default_factory=list)
     user_context: dict[str, str] = Field(default_factory=dict)
+    preference: dict[str, str] = Field(default_factory=dict)
 
 
 class GenerateResponse(BaseModel):
