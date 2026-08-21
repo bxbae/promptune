@@ -8,6 +8,7 @@ import com.promptune.repository.BehaviorLogRepository;
 import com.promptune.repository.PersonalizationScoreRepository;
 import com.promptune.repository.PromptSessionRepository;
 import com.promptune.repository.UserRepository;
+import com.promptune.service.BehaviorLogService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -29,9 +30,9 @@ public class DashboardController {
     private final UserRepository userRepository;
 
     public DashboardController(PersonalizationScoreRepository personalizationScoreRepository,
-                                BehaviorLogRepository behaviorLogRepository,
-                                PromptSessionRepository promptSessionRepository,
-                                UserRepository userRepository) {
+            BehaviorLogRepository behaviorLogRepository,
+            PromptSessionRepository promptSessionRepository,
+            UserRepository userRepository) {
         this.personalizationScoreRepository = personalizationScoreRepository;
         this.behaviorLogRepository = behaviorLogRepository;
         this.promptSessionRepository = promptSessionRepository;
@@ -54,19 +55,22 @@ public class DashboardController {
                 "element", s.getElement(),
                 "acceptCount", s.getAcceptCount(),
                 "dismissCount", s.getDismissCount(),
-                "coverageRate", rate
-        );
+                "coverageRate", rate);
     }
 
-        // 대시보드 Top KPI 중 "정중한 말투 적용률" — element-coverage에서 Tone만 필터
+    // 대시보드 Top KPI 중 "정중한 말투 적용률" — element-coverage에서 TONE만 필터
     @GetMapping("/tone-apply-rate")
     public Map<String, Object> toneApplyRate(Authentication authentication) {
         User user = currentUser(authentication);
         return personalizationScoreRepository.findByUserId(user.getId()).stream()
-                .filter(s -> "Tone".equals(s.getElement()))
+                .filter(s -> "TONE".equals(s.getElement()))
                 .findFirst()
                 .map(this::toCoverageEntry)
-                .orElse(Map.of("element", "Tone", "acceptCount", 0, "dismissCount", 0, "coverageRate", 0.0));
+                .orElse(Map.of(
+                        "element", "TONE",
+                        "acceptCount", 0,
+                        "dismissCount", 0,
+                        "coverageRate", 0.0));
     }
 
     // 대시보드 Top KPI 중 "결과 만족도" — satisfaction 필드 집계
@@ -90,19 +94,32 @@ public class DashboardController {
                 .filter(p -> p.getTaskType() != null)
                 .collect(Collectors.groupingBy(
                         PromptSession::getTaskType,
-                        Collectors.counting()
-                ));
+                        Collectors.counting()));
     }
 
-    // 추천 적용률 = tab(적용) 로그 수 / 전체 로그 수
+    // 추천 적용률 = (tab + APPLY) / (tab + APPLY + esc + REJECT)
     @GetMapping("/apply-rate")
     public Map<String, Object> applyRate(Authentication authentication) {
         User user = currentUser(authentication);
         List<BehaviorLogEntity> logs = behaviorLogRepository.findByUserId(user.getId());
-        long total = logs.size();
-        long applied = logs.stream().filter(l -> "tab".equals(l.getAction())).count();
-        double rate = total == 0 ? 0.0 : (double) applied / total;
-        return Map.of("total", total, "applied", applied, "applyRate", rate);
+
+        long total = logs.stream()
+                .filter(log -> BehaviorLogService.isApplyAction(log.getAction())
+                        || BehaviorLogService.isRejectAction(log.getAction()))
+                .count();
+
+        long applied = logs.stream()
+                .filter(log -> BehaviorLogService.isApplyAction(log.getAction()))
+                .count();
+
+        double rate = total == 0
+                ? 0.0
+                : (double) applied / total;
+
+        return Map.of(
+                "total", total,
+                "applied", applied,
+                "applyRate", rate);
     }
 
     // 주간 활동 추이 = 최근 7일 일별 프롬프트 세션 개수
@@ -114,8 +131,7 @@ public class DashboardController {
                 .filter(p -> p.getCreatedAt() != null && !p.getCreatedAt().isBefore(since))
                 .collect(Collectors.groupingBy(
                         p -> p.getCreatedAt().toLocalDate().toString(),
-                        Collectors.counting()
-                ));
+                        Collectors.counting()));
     }
 
     private User currentUser(Authentication authentication) {
