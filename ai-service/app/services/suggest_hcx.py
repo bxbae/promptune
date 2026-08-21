@@ -283,7 +283,13 @@ def _normalize_target_elements(
 
 
 def _merge_prompt_with_candidate(text: str, candidate: str) -> str:
-    return f"{text.strip()} {candidate.strip()}".strip()
+    base = text.strip()
+    addition = candidate.strip()
+
+    if base and base[-1] not in ".!?。！？":
+        base = f"{base}."
+
+    return f"{base} {addition}".strip()
 
 
 def _candidate_is_diagnosis_safe(

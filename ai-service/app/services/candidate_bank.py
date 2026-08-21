@@ -34,7 +34,7 @@ _CANDIDATE_BANK: Final[dict[str, tuple[str, ...]]] = {
         "의사결정을 위한 자료라는 배경을 반영해서",
         "내부 공유용 자료라는 배경을 반영해서",
         "고객 안내용 자료라는 배경을 반영해서",
-        "회의 후속 업무를 위한 자료라는 배경을 반영해서",
+        "내부 공유와 후속 업무 진행을 위한 목적으로 사용할 거야.",
         "업무 검토를 위한 자료라는 배경을 반영해서",
     ),
     "FORMAT": (
@@ -137,7 +137,7 @@ def get_candidates(
         elif any(word in normalized for word in ("고객", "안내", "서비스")):
             preferred = "고객 안내용 자료라는 배경을 반영해서"
         elif any(word in normalized for word in ("회의", "회고")):
-            preferred = "회의 후속 업무를 위한 자료라는 배경을 반영해서"
+            preferred = "내부 공유와 후속 업무 진행을 위한 목적으로 사용할 거야."
 
     elif key == "FORMAT":
         if any(word in normalized for word in ("비교", "경쟁사", "가격", "기능")):
