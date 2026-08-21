@@ -3,6 +3,7 @@ package com.promptune.controller;
 import com.promptune.dto.PipelineDtos.DiagnoseResult;
 import com.promptune.dto.PipelineDtos.ImproveRequest;
 import com.promptune.dto.PipelineDtos.ImproveResponse;
+import com.promptune.dto.PipelineDtos.ImprovePromptResult;
 import com.promptune.dto.PipelineDtos.PreferenceResult;
 import com.promptune.dto.PipelineDtos.PromptRuleResult;
 import com.promptune.service.AiServiceClient;
@@ -56,6 +57,14 @@ public class ImproveController {
         preference.detail(),
         preference.preserve());
 
+    ImprovePromptResult improveResult = ai.improvePrompt(
+        req.text(),
+        diagnose.taskType(),
+        preference.speed(),
+        preference.detail(),
+        preference.preserve(),
+        promptRule);
+
     PreferenceResult preferenceResult = new PreferenceResult(
         preference.speed(),
         preference.detail(),
@@ -65,6 +74,8 @@ public class ImproveController {
     return new ImproveResponse(
         preferenceResult,
         diagnose,
-        promptRule);
+        promptRule,
+        improveResult.improvedPrompt(),
+        improveResult.usedFallback());
   }
 }

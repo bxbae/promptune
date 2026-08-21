@@ -84,9 +84,17 @@ public class PipelineDtos {
                         @JsonProperty("use_few_shot") boolean useFewShot) {
         }
 
+        // ai-service /api/ai/improve-prompt 응답
+        public record ImprovePromptResult(
+                        @JsonProperty("improved_prompt") String improvedPrompt,
+                        @JsonProperty("used_fallback") boolean usedFallback) {
+        }
+
         public record ImproveResponse(
                         PreferenceResult preference,
                         DiagnoseResult diagnose,
-                        PromptRuleResult promptRule) {
+                        PromptRuleResult promptRule,
+                        String improvedPrompt,
+                        boolean usedFallback) {
         }
 }

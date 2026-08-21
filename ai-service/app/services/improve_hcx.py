@@ -222,6 +222,7 @@ def improve(req: ImprovePromptRequest) -> ImprovePromptResponse:
             messages,
             tokenize=True,
             add_generation_prompt=True,
+            return_dict=True,
             return_tensors="pt",
         )
         inputs = inputs.to(device)
@@ -229,7 +230,7 @@ def improve(req: ImprovePromptRequest) -> ImprovePromptResponse:
         with HCX_MODEL_LOCK:
             with torch.inference_mode():
                 outputs = model.generate(
-                    inputs,
+                    **inputs,
                     max_new_tokens=512,
                     do_sample=False,
                     eos_token_id=tokenizer.eos_token_id,
@@ -237,7 +238,7 @@ def improve(req: ImprovePromptRequest) -> ImprovePromptResponse:
                     tokenizer=tokenizer,
                 )
 
-        generated = outputs[0][inputs.shape[-1]:]
+        generated = outputs[0][inputs["input_ids"].shape[-1]:]
         improved_prompt = tokenizer.decode(
             generated,
             skip_special_tokens=True,
