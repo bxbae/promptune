@@ -159,8 +159,9 @@ class WebSearchResult(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     task_type: TaskType
-    documents: list[Document] = Field(default_factory=list)  # 13번 결과 (있으면)
+    documents: list[Document] = Field(default_factory=list)
     web_results: list[WebSearchResult] = Field(default_factory=list)
+    user_context: dict[str, str] = Field(default_factory=dict)
 
 
 class GenerateResponse(BaseModel):
