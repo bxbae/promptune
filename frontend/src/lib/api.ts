@@ -14,15 +14,28 @@ export interface DiagnoseResult {
   typos: { span: string; suggest: string }[];
   needsInternalDocs: boolean;
 }
+
+export interface SuggestionItem {
+  element: string;
+  primary: string;
+  alternatives: string[];
+}
+
+export interface SuggestResult {
+  suggestions: SuggestionItem[];
+}
+
 export interface AnalyzeResponse {
   gate: { passed: boolean; reason: string };
   diagnose: DiagnoseResult | null;
   recommend: { targetElements: string[] } | null;
+  suggest: SuggestResult | null;
 }
 
 // 2번: 분석 요청 (이전 요청은 signal로 취소)
 export async function analyze(
-  text: string, signal: AbortSignal
+  text: string,
+  signal: AbortSignal,
 ): Promise<AnalyzeResponse> {
   const res = await fetch(`${API}/api/analyze`, {
     method: "POST",

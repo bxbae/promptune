@@ -585,6 +585,31 @@ def merge_detected_typos(
 
     return results
 
+def _remove_whitespace(text: str) -> str:
+    return "".join(text.split())
+
+
+def _is_spacing_only_correction(
+    detected: DetectedTypo,
+) -> bool:
+    """
+    Bareun의 순수 띄어쓰기 교정인지 판단한다.
+
+    예:
+    정리해줘 -> 정리해 줘
+    => True
+
+    회의록정리헤줘 -> 회의록 정리해줘
+    => False
+       (띄어쓰기뿐 아니라 '헤줘 -> 해줘'도 변경됨)
+    """
+
+    return (
+        detected.category == "SPACING"
+        and _remove_whitespace(detected.span)
+        == _remove_whitespace(detected.suggest)
+    )
+
 def _to_api_typos(
     detected_typos: list[DetectedTypo],
 ) -> list[Typo]:
@@ -592,12 +617,18 @@ def _to_api_typos(
     내부 DetectedTypo 결과를 기존 API Typo 형식으로 변환한다.
 
     Backend / Frontend 계약은 변경하지 않는다.
+
+    순수 띄어쓰기 교정은 Promptune의 오탈자 후보에서 제외한다.
+    단, 띄어쓰기와 실제 오타가 함께 수정된 결과는 유지한다.
     """
 
     results: list[Typo] = []
     seen: set[tuple[str, str]] = set()
 
     for detected in detected_typos:
+        if _is_spacing_only_correction(detected):
+            continue
+
         key = (
             detected.span,
             detected.suggest,
