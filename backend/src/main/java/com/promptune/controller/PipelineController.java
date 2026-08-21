@@ -137,8 +137,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             req.finalPrompt(),
             d.taskType(),
             documents,
-            webResults,
-            false);
+            webResults);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
