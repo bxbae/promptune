@@ -21,9 +21,6 @@ export interface AnalyzeResponse {
 }
 
 // 2번: 분석 요청 (이전 요청은 signal로 취소)
-// TODO: execute()와 같은 userId 하드코딩문제 있음
-// /api/analyze도 인증 필요로 바꾸고 Authentication에서 유저를 뽑도록 고치면
-// 여기서도 userId 제거 + authHeaders() 추가.
 export async function analyze(
   text: string, signal: AbortSignal
 ): Promise<AnalyzeResponse> {

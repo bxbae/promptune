@@ -16,7 +16,6 @@ function timeAgo(iso: string) {
   return `${Math.floor(day / 7)}주 전`;
 }
 
-// TODO: 채팅 목록에 Task label 보이게 할지 상의 후 로직 추가 or 해당 코드 제거
 const TASK_LABEL: Record<string, string> = {
   email: "이메일", report: "보고서", notice: "공지", application: "신청서", support: "문의",
 };

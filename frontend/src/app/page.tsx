@@ -1,10 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import PromptEditor from "@/components/PromptEditor";
 import AuthForm from "@/components/AuthForm";
-import AppShell, { NavKey } from "@/components/AppShell";
-import { getToken, logout } from "@/lib/auth";
+import { getToken } from "@/lib/auth";
 import { getPreference } from "@/api/userPreferences";
 
 export default function Home() {
@@ -42,37 +40,4 @@ export default function Home() {
       <AuthForm onSuccess={setUser} />
     </main>
   );
-
-  /* 
-    // 사이드바 네비게이션: 실제 라우트가 있는 탭(설정)은 페이지 이동,
-    // 아직 제작 전인 탭은 로컬 placeholder 유지
-    function handleNavigate(key: NavKey) {
-      if (key === "settings") {
-        router.push("/settings");
-        return;
-      }
-      setActive(key);
-    }
-  
-    // 로그인 후: AppShell(사이드바) + 새 채팅 화면
-    return (
-      <AppShell
-        active={active}
-        onNavigate={setActive}
-        onNewChat={() => setActive("newChat")}
-        onLogout={() => {
-          logout();
-          setUser(null);
-        }}
-      >
-        <div className="page">
-          {active === "newChat" && <PromptEditor />}
-          {active !== "newChat" && (
-            <div style={{padding: "40px 0", color: "var(--muted)"}}>
-              "{active}" 화면은 추후 제작 예정
-            </div>
-          )}
-        </div>
-      </AppShell>
-    ) */
 }
