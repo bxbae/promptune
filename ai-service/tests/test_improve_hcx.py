@@ -72,6 +72,9 @@ def _make_runtime_request() -> ImprovePromptRequest:
         ),
     )
 
+class _FakeBatchEncoding(dict):
+    def to(self, device):
+        return self
 
 class _FakeTokenizer:
     eos_token_id = 0
@@ -84,21 +87,29 @@ class _FakeTokenizer:
         messages,
         tokenize,
         add_generation_prompt,
+        return_dict,
         return_tensors,
     ):
-        return torch.tensor([[1, 2]], dtype=torch.long)
+        return _FakeBatchEncoding(
+            {
+                "input_ids": torch.tensor(
+                    [[1, 2]],
+                    dtype=torch.long,
+                )
+            }
+        )
 
     def decode(self, tokens, skip_special_tokens=True):
         return self.decoded_text
 
 
 class _FakeModel:
-    def generate(self, inputs, **kwargs):
+    def generate(self, input_ids=None, **kwargs):
         return torch.tensor([[1, 2, 3]], dtype=torch.long)
 
 
 class _FailingModel:
-    def generate(self, inputs, **kwargs):
+    def generate(self, input_ids=None, **kwargs):
         raise RuntimeError("mock HCX generation failure")
 
 
