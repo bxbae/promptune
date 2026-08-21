@@ -525,7 +525,34 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .status-step.done { color: var(--accent); }
 .status-step.current { color: var(--ink); font-weight: 600; }
 
+/* /api/improve 연동 */
+.improve-btn {
+  height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; margin-right: 8px;
+}
+.improve-btn:disabled { opacity: 0.5; cursor: default; }
+.improve-btn:not(:disabled):hover { background: var(--panel-alt); }
 
+.improve-card {
+  margin-top: 12px; padding: 14px 16px; border: 1px solid var(--accent);
+  background: var(--accent-tint); border-radius: 12px;
+}
+.improve-card-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.improve-card-missing { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.improve-card-preview {
+  font-size: 13.5px; line-height: 1.6; color: var(--ink); background: var(--panel);
+  border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; white-space: pre-wrap;
+}
+.improve-card-actions { display: flex; gap: 8px; }
+.improve-card-apply {
+  height: 32px; padding: 0 14px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.improve-card-dismiss {
+  height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted); font-size: 12.5px; cursor: pointer;
+}
 
 /* ---- 파일관리 (/files) ---- */
 .files-header { margin-bottom: 20px; }
@@ -768,10 +795,16 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .dash-kpi-label { font-size: 12px; color: var(--ink); margin-top: 4px; font-weight: 600; }
 .dash-kpi-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+.dash-kpi-value-text { font-size: 17px; }
 .dash-kpi-unit { font-size: 18px; font-weight: 700; color: var(--muted); opacity: 0.8; }
+.dash-kpi-unit-small { font-size: 13px; }
 
 .dash-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .dash-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.dash-grid-featured { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 900px) {
+  .dash-grid-featured { grid-template-columns: 1fr; }
+}
 
 .dash-panel {
   padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
@@ -790,7 +823,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .dash-more-link:hover { text-decoration: underline; }
 .dash-empty { color: var(--muted); font-size: 13px; padding: 16px 0; flex-grow: 1; }
 
-.dash-coverage-list { display: flex; flex-direction: column; gap: 10px; }
+.dash-coverage-list { display: flex; flex-direction: column; gap: 5px; }
 .dash-coverage-row { display: flex; align-items: center; gap: 10px; }
 .dash-coverage-label { width: 70px; flex-shrink: 0; font-size: 12.5px; color: var(--ink); }
 .dash-coverage-bar-track {
@@ -814,10 +847,10 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .dash-receiver-rate { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 
 .dash-tasktype-stackbar {
-  display: flex; height: 14px; border-radius: 999px; overflow: hidden; margin-bottom: 14px;
+  display: flex; height: 30px; border-radius: 999px; overflow: hidden; margin-bottom: 14px;
 }
 .dash-tasktype-stackbar-seg { height: 100%; }
-.dash-tasktype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
+.dash-tasktype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
 .dash-tasktype-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; }
 .dash-tasktype-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .dash-tasktype-label { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -829,6 +862,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .dash-weekly-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
 .dash-weekly-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
 .dash-weekly-bar-fill { width: 60%; min-height: 2px; background: var(--accent); border-radius: 4px 4px 0 0; }
+.dash-weekly-bar-fill-max { background: var(--block); }
 .dash-weekly-count { font-size: 11px; color: var(--muted); }
 .dash-weekly-day { font-size: 12px; color: var(--ink); font-weight: 600; }
 
@@ -909,3 +943,21 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .ms-profile-row:last-child { border-bottom: none; }
 .ms-profile-label { color: var(--muted); font-weight: 600; }
 .ms-profile-value { color: var(--ink); }
+
+/* 설정 > Microsoft 구성원 프로필 목록 */
+.ms-members-view { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 4px; }
+.ms-member-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ms-member-row:last-child { border-bottom: none; }
+.ms-member-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--accent-tint);
+  color: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 13px; flex-shrink: 0;
+}
+.ms-member-info { flex: 1; min-width: 0; }
+.ms-member-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.ms-member-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.ms-member-mail { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.ms-members-empty { margin-top: 16px; font-size: 13px; color: var(--muted); }

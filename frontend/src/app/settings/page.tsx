@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import MicrosoftProfileView from "./components/MicrosoftProfileView";
+import MicrosoftMembersView from "./components/MicrosoftMembersView";
 import {
   microsoftConnect,
   microsoftDisconnect,
   microsoftEvents,
   microsoftFiles,
-  microsoftMessages,
+  microsoftMembers,
   microsoftProfile,
   microsoftStatus,
+  MicrosoftMember,
 } from "@/lib/microsoft";
 
 type MsStatus = {
@@ -115,15 +117,17 @@ export default function SettingsPage() {
                 </p>
 
                 <div className="settings-ms-actions">
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>프로필</button>
+                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>내 프로필</button>
+                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMembers)}>구성원 프로필</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftEvents)}>캘린더</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftFiles)}>OneDrive</button>
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMessages)}>메일</button>
                 </div>
 
                 <button className="settings-btn-danger" onClick={handleMsDisconnect}>연결 해제</button>
 
-                {msResult !== null && typeof msResult === "object" && "displayName" in msResult ? (
+                {Array.isArray(msResult) ? (
+                  <MicrosoftMembersView members={msResult as MicrosoftMember[]} />
+                ) : msResult !== null && typeof msResult === "object" && "displayName" in msResult ? (
                   <MicrosoftProfileView data={msResult} />
                 ) : msResult !== null ? (
                   <pre className="settings-ms-result">{JSON.stringify(msResult, null, 2)}</pre>
