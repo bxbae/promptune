@@ -27,7 +27,8 @@ public class MicrosoftGraphService {
             "Mail.Read",
             "Calendars.Read",
             "Files.Read",
-            "offline_access"
+            "offline_access",
+            "User.ReadBasic.All"
     );
 
     private final MicrosoftConnectionRepository connectionRepository;
@@ -166,6 +167,11 @@ public class MicrosoftGraphService {
 
     public JsonNode getMessages(Long userId) {
         return graphGet(userId, "/v1.0/me/messages?$top=10");
+    }
+
+    // 조직 구성원 목록 — 사람이 들어오고 나가는 게 바로 반영돼야 해서 캐싱 없이 매번 실시간 조회
+    public JsonNode getOrganizationUsers(Long userId) {
+        return graphGet(userId, "/v1.0/users?$select=id,displayName,mail,jobTitle,department");
     }
 
     private JsonNode graphGet(Long userId, String path) {
