@@ -3,9 +3,11 @@ package com.promptune.controller;
 import com.promptune.domain.ReceiverProfile;
 import com.promptune.domain.User;
 import com.promptune.dto.ReceiverProfileDtos.UpsertReceiverProfileRequest;
+import com.promptune.dto.ReceiverProfileDtos.UpdateReceiverProfileRequest; // ← 신규 추가
 import com.promptune.repository.UserRepository;
 import com.promptune.service.ReceiverProfileService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity; // ← 신규 추가
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,6 +39,24 @@ public class ReceiverProfileController {
     public List<ReceiverProfile> list(Authentication authentication) {
         User user = currentUser(authentication);
         return receiverProfileService.list(user.getId());
+    }
+
+    // ← 신규 추가: 수신자 프로필 수정 (관계·선호 톤)
+    @PatchMapping("/{id}")
+    public ReceiverProfile update(
+            @PathVariable Long id,
+            @RequestBody UpdateReceiverProfileRequest req,
+            Authentication authentication) {
+        User user = currentUser(authentication);
+        return receiverProfileService.update(user.getId(), id, req.relationship(), req.preferredTone());
+    }
+
+    // ← 신규 추가: 수신자 프로필 삭제 (개인화 데이터 초기화용)
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id, Authentication authentication) {
+        User user = currentUser(authentication);
+        receiverProfileService.delete(user.getId(), id);
+        return ResponseEntity.ok().build();
     }
 
     private User currentUser(Authentication authentication) {
