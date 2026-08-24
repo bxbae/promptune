@@ -126,13 +126,20 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                     org.springframework.http.HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
     Long userId = currentUser.getId();
 
+    java.util.List<java.util.Map<String, String>> conversationHistory =
+            buildConversationHistory(req.chatSessionId(), userId);
+
     DiagnoseResult d = ai.diagnose(req.finalPrompt());
 
     // Retrieval Router/Orchestrator(승연님 PR #67)가 내부문서 검색·웹검색 여부까지
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
     // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
     // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    Map<String, Object> retrieval = ai.retrievalExecute(req.finalPrompt(), userId, 3);
+    Map<String, Object> retrieval = ai.retrievalExecute(
+            req.finalPrompt(),
+            userId,
+            3,
+            conversationHistory);
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
     java.util.List<java.util.Map<String, Object>> webResults =
@@ -170,7 +177,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             documents,
             webResults,
             userContext,
-            preferenceMap);
+            preferenceMap,
+            conversationHistory);
 
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
@@ -215,6 +223,71 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             "result", result,
             "promptSessionId", session.getId());
 }
+
+    private java.util.List<java.util.Map<String, String>> buildConversationHistory(
+            Long chatSessionId,
+            Long userId) {
+
+        if (chatSessionId == null) {
+            return java.util.List.of();
+        }
+
+        com.promptune.domain.ChatSession chat =
+                chatSessionRepository.findById(chatSessionId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "대화를 찾을 수 없습니다."));
+
+        if (!userId.equals(chat.getUserId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "본인 대화만 사용할 수 있습니다.");
+        }
+
+        java.util.List<com.promptune.domain.PromptSession> sessions =
+                promptSessionRepository
+                        .findByChatSessionIdOrderByCreatedAtAsc(chatSessionId);
+
+        // 최근 6개 대화쌍만 전달하여 HCX context 크기를 제한
+        int startIndex = Math.max(0, sessions.size() - 6);
+
+        java.util.List<java.util.Map<String, String>> history =
+                new java.util.ArrayList<>();
+
+        for (int i = startIndex; i < sessions.size(); i++) {
+            com.promptune.domain.PromptSession session = sessions.get(i);
+
+            String userText = compactHistoryText(session.getOriginalText());
+
+            if (userText != null && !userText.isBlank()) {
+                history.add(java.util.Map.of(
+                        "role", "user",
+                        "content", userText));
+            }
+
+            String assistantText =
+                    compactHistoryText(session.getAiResponseText());
+
+            if (assistantText != null && !assistantText.isBlank()) {
+                history.add(java.util.Map.of(
+                        "role", "assistant",
+                        "content", assistantText));
+            }
+        }
+
+        return history;
+    }
+
+    private String compactHistoryText(String text) {
+        if (text == null || text.length() <= 1500) {
+            return text;
+        }
+
+        return text.substring(0, 750)
+                + "\n...[이전 대화 중략]...\n"
+                + text.substring(text.length() - 750);
+    }
+
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) — /api/execute와 동일한 이유로 경로변수 대신 인증 기반으로 전환 */
     @GetMapping("/context")

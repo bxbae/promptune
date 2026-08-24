@@ -187,6 +187,8 @@ def _build_prompt(
         "7. 사용자 프로필은 실제로 제공된 경우에만 활용해.",
         "8. 최종 답변만 출력하고 분석 과정은 출력하지 마.",
         "9. 사용자 선호도가 제공된 경우, 그 스타일(속도/설명 분량/원문 존중도)에 맞춰 답변을 조정해.",
+        "10. 사용자가 요청하지 않은 링크, URL, 유튜브/영상 링크, 첨부파일, 참고자료 항목을 임의로 추가하지 마.",
+        "11. '[링크 삽입]', '[URL]', '[첨부파일]' 같은 placeholder를 임의로 생성하지 마.",
         "",
         f"[업무 유형]\n{req.task_type}",
         "",
@@ -228,6 +230,65 @@ def _build_prompt(
 
     return "\n".join(parts)
 
+
+def _build_system_prompt(
+    req: GenerateRequest,
+    web_results: list[dict],
+) -> str:
+    internal_context = _build_internal_context(req)
+    web_context = _build_web_context(web_results)
+    user_context = _build_user_context(req.user_context)
+    preference_context = _build_preference_context(req.preference)
+
+    parts = [
+        "너는 PrompTune의 대화형 업무 AI 어시스턴트다.",
+        "현재 사용자의 의도를 가장 우선해서 수행한다.",
+        "",
+        "대화 규칙:",
+        "1. 사용자가 직접 제공한 사실은 이 대화의 사실로 받아들여라.",
+        "2. 사용자가 '코드명은 X', '담당자는 Y'처럼 새로 정의한 이름은 외부의 동명 대상과 연결하지 마라.",
+        "3. 사용자가 '기억해줘'라고 하면 새로운 정보를 검색하거나 추측하지 말고, 제공한 사실을 간단히 확인하라.",
+        "4. 사용자가 이전 답변을 수정하거나 반박하면 최신 사용자 메시지를 이전 assistant 답변보다 우선하라.",
+        "5. 이전 assistant 답변에는 오류가 있을 수 있으므로 사용자가 제공한 사실과 충돌하면 사용자의 말을 따른다.",
+        "6. 내부 문서가 실제 제공된 경우에만 내부 문서 내용을 근거로 사용한다.",
+        "7. 웹 검색 결과가 실제 제공된 경우에만 웹 검색 결과를 사용한다.",
+        "8. 웹 검색 결과가 없으면 검색했다고 주장하지 마라.",
+        "9. 사용자가 요청하지 않은 배경설명, 링크, 외부 프로젝트, 회사, 인물 정보를 임의로 추가하지 마라.",
+        "10. 사용자의 질문에 필요한 범위만 답하고 관련 없는 내용을 확장하지 마라.",
+    ]
+
+    if internal_context != "없음":
+        parts.extend([
+            "",
+            "[내부 문서]",
+            internal_context,
+        ])
+
+    if web_context != "없음":
+        parts.extend([
+            "",
+            "[웹 검색 결과]",
+            web_context,
+        ])
+
+    if user_context != "없음":
+        parts.extend([
+            "",
+            "[사용자 프로필]",
+            user_context,
+        ])
+
+    if preference_context != "없음":
+        parts.extend([
+            "",
+            "[응답 스타일 선호도]",
+            preference_context,
+        ])
+
+    return "\n".join(parts)
+
+
+
 def generate(
     req: GenerateRequest,
     web_results=None,
@@ -237,14 +298,35 @@ def generate(
 
     tokenizer, model, device = load_hcx_runtime()
 
-    prompt = _build_prompt(req=req, web_results=web_results)
+    system_prompt = _build_system_prompt(
+        req=req,
+        web_results=web_results,
+    )
+
+    user_prompt = _build_effective_user_prompt(req)
 
     messages = [
         {
-            "role": "user",
-            "content": prompt,
+            "role": "system",
+            "content": system_prompt,
         }
     ]
+
+    messages.extend(
+        {
+            "role": message.role,
+            "content": message.content.strip(),
+        }
+        for message in req.history
+        if message.content.strip()
+    )
+
+    messages.append(
+        {
+            "role": "user",
+            "content": user_prompt,
+        }
+    )
 
     inputs = tokenizer.apply_chat_template(
         messages,

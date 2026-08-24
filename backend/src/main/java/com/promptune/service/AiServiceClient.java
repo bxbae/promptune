@@ -198,13 +198,21 @@ public class AiServiceClient {
     }
 
     // Retrieval Router/Orchestrator 연동 (승연님 PR #67) — 내부문서/웹검색 여부까지 통째로 판단·실행
-    public Map<String, Object> retrievalExecute(String query, Long ownerUserId, int topK) {
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
+            int topK,
+            List<Map<String, String>> history) {
+
         long start = System.currentTimeMillis();
+
         try {
             Map<String, Object> body = Map.of(
                     "query", query,
                     "owner_user_id", ownerUserId,
-                    "top_k", topK);
+                    "top_k", topK,
+                    "history", history);
+
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -220,13 +228,26 @@ public class AiServiceClient {
         }
     }
 
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
+            int topK) {
+
+        return retrievalExecute(
+                query,
+                ownerUserId,
+                topK,
+                List.of());
+    }
+
     public Map generate(
             String prompt,
             String taskType,
             List<Map<String, Object>> documents,
             List<Map<String, Object>> webResults,
             Map<String, String> userContext,
-            Map<String, String> preference) {
+            Map<String, String> preference,
+            List<Map<String, String>> history) {
         long start = System.currentTimeMillis();
 
         try {
@@ -239,7 +260,8 @@ public class AiServiceClient {
                             "documents", documents,
                             "web_results", webResults,
                             "user_context", userContext,
-                            "preference", preference))
+                            "preference", preference,
+                            "history", history))
                     .retrieve()
                     .body(Map.class);
 
@@ -249,6 +271,24 @@ public class AiServiceClient {
             log("ai-service", "/api/ai/generate", start, "error");
             throw e;
         }
+    }
+
+    public Map generate(
+            String prompt,
+            String taskType,
+            List<Map<String, Object>> documents,
+            List<Map<String, Object>> webResults,
+            Map<String, String> userContext,
+            Map<String, String> preference) {
+
+        return generate(
+                prompt,
+                taskType,
+                documents,
+                webResults,
+                userContext,
+                preference,
+                List.of());
     }
 
     // 기존 호출부 호환용
