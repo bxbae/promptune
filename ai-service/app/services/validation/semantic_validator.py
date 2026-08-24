@@ -14,22 +14,31 @@ class SemanticValidationResult:
     issues: list[str] = field(default_factory=list)
 
 
-def _calculate_similarity(
-    original: str,
-    generated: str,
-) -> float:
+def calculate_similarities(
+    reference: str,
+    candidates: list[str],
+) -> list[float]:
     """
-    BGE-M3 dense embedding을 사용해
-    원본 요청과 생성 응답의 cosine similarity를 계산한다.
+    하나의 기준 문장(reference)과 여러 후보 문장의
+    BGE-M3 cosine similarity를 한 번의 batch inference로 계산한다.
 
     기존 RAG의 get_model()을 재사용하므로
     BGE-M3 모델은 프로세스당 한 번만 로딩된다.
     """
+
+    if not candidates:
+        return []
+
     model = get_model()
 
+    texts = [
+        reference,
+        *candidates,
+    ]
+
     output = model.encode(
-        [original, generated],
-        batch_size=2,
+        texts,
+        batch_size=len(texts),
         max_length=512,
         return_dense=True,
         return_sparse=False,
@@ -41,26 +50,73 @@ def _calculate_similarity(
         dtype=np.float32,
     )
 
-    if embeddings.shape != (2, 1024):
-        raise RuntimeError(
-            f"unexpected BGE-M3 embedding shape: {embeddings.shape}"
-        )
-
-    original_vector = embeddings[0]
-    generated_vector = embeddings[1]
-
-    original_norm = float(np.linalg.norm(original_vector))
-    generated_norm = float(np.linalg.norm(generated_vector))
-
-    if original_norm == 0.0 or generated_norm == 0.0:
-        raise RuntimeError("BGE-M3 returned a zero-length embedding vector.")
-
-    similarity = float(
-        np.dot(original_vector, generated_vector)
-        / (original_norm * generated_norm)
+    expected_shape = (
+        len(texts),
+        1024,
     )
 
-    return similarity
+    if embeddings.shape != expected_shape:
+        raise RuntimeError(
+            "unexpected BGE-M3 embedding shape: "
+            f"{embeddings.shape}"
+        )
+
+    reference_vector = embeddings[0]
+    candidate_vectors = embeddings[1:]
+
+    reference_norm = float(
+        np.linalg.norm(reference_vector)
+    )
+
+    candidate_norms = np.linalg.norm(
+        candidate_vectors,
+        axis=1,
+    )
+
+    if reference_norm == 0.0:
+        raise RuntimeError(
+            "BGE-M3 returned a zero-length reference vector."
+        )
+
+    if np.any(candidate_norms == 0.0):
+        raise RuntimeError(
+            "BGE-M3 returned a zero-length candidate vector."
+        )
+
+    similarities = (
+        candidate_vectors @ reference_vector
+    ) / (
+        candidate_norms * reference_norm
+    )
+
+    return [
+        float(score)
+        for score in similarities
+    ]
+
+
+def _calculate_similarity(
+    original: str,
+    generated: str,
+) -> float:
+    """
+    BGE-M3 dense embedding을 사용해
+    원본 요청과 생성 응답의 cosine similarity를 계산한다.
+
+    단일 비교도 calculate_similarities()를 재사용해
+    임베딩/정규화 계산 로직을 한 곳에서 관리한다.
+    """
+    scores = calculate_similarities(
+        reference=original,
+        candidates=[generated],
+    )
+
+    if not scores:
+        raise RuntimeError(
+            "BGE-M3 similarity could not be calculated."
+        )
+
+    return scores[0]
 
 
 def validate_semantic(
