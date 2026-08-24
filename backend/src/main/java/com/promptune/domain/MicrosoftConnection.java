@@ -27,6 +27,9 @@ public class MicrosoftConnection {
     @Column(name = "job_title")
     private String jobTitle;
 
+    @Column(name = "company_name")
+    private String companyName;
+
     @Column(
         name = "token_cache_encrypted",
         nullable = false,
@@ -65,6 +68,9 @@ public class MicrosoftConnection {
     public void setDepartment(String department) {
         this.department = department;
     }
+
+    public String getCompanyName() { return companyName; }
+    public void setCompanyName(String companyName) { this.companyName = companyName; }
 
     public String getJobTitle() {
         return jobTitle;
