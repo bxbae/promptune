@@ -231,6 +231,14 @@ def generate(req: GenerateRequest):
     tags=["15.최종 검증"],
 )
 def validate(req: ValidateRequest):
+    # semantic_validator가 rag_retriever.get_model()(BGE-M3)을 플래그 체크 없이
+    # 항상 호출해서, mock 모드(USE_REAL_MODELS=false)에서도 /api/execute마다
+    # 매번 real 임베딩 모델을 로드하려다 메모리 부족(OOM)으로 ai-service가
+    # 죽는 문제가 있었음 (2026-08-24). /retrieve와 동일하게 USE_REAL_RETRIEVAL로
+    # 게이트해서, mock 모드에서는 이미 있는 pipeline_mock.validate()를 쓰도록 수정.
+    if not USE_REAL_RETRIEVAL:
+        return pipeline_mock.validate(req)
+
     result = validate_response(
         original=req.original,
         generated=req.generated,
