@@ -120,6 +120,7 @@ public class MicrosoftGraphService {
         String displayName = profile.path("displayName").asText(null);
         String department = profile.path("department").asText(null);
         String jobTitle = profile.path("jobTitle").asText(null);
+        String companyName = profile.path("companyName").asText(null);
         String email = resolveEmail(profile);
 
         String serializedCache = app.tokenCache().serialize();
@@ -132,6 +133,7 @@ public class MicrosoftGraphService {
         connection.setDisplayName(displayName);
         connection.setDepartment(department);
         connection.setJobTitle(jobTitle);
+        connection.setCompanyName(companyName);
         connection.setTokenCacheEncrypted(encryptedCache);
         connectionRepository.save(connection);
     }

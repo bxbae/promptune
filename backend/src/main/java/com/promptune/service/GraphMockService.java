@@ -46,6 +46,7 @@ public class GraphMockService {
         MicrosoftConnection connection = connectionOpt.get();
         String department = connection.getDepartment() != null ? connection.getDepartment() : "";
         String position = connection.getJobTitle() != null ? connection.getJobTitle() : "";
+        String companyName = connection.getCompanyName() != null ? connection.getCompanyName() : "";
 
         List<Map<String, Object>> upcomingEvents = new ArrayList<>();
         try {
@@ -64,6 +65,7 @@ public class GraphMockService {
                 "msConnected", true,
                 "department", department,
                 "position", position,
+                "companyName", companyName,
                 "upcomingEvents", upcomingEvents
         );
     }
