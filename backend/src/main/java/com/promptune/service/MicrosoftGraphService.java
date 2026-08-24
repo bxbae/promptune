@@ -27,7 +27,8 @@ public class MicrosoftGraphService {
             "Mail.Read",
             "Calendars.Read",
             "Files.Read",
-            "offline_access"
+            "offline_access",
+            "User.ReadBasic.All"
     );
 
     private final MicrosoftConnectionRepository connectionRepository;
@@ -111,9 +112,14 @@ public class MicrosoftGraphService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Microsoft 인증 코드 교환에 실패했습니다.");
         }
 
-        JsonNode profile = fetchGraph("/v1.0/me", authResult.accessToken());
+        // department/jobTitle까지 받으려면 $select에 명시해야 함 (getProfile()과 동일 패턴)
+        JsonNode profile = fetchGraph(
+                "/v1.0/me?$select=id,displayName,userPrincipalName,mail,companyName,department,jobTitle",
+                authResult.accessToken());
         String microsoftUserId = profile.path("id").asText(null);
         String displayName = profile.path("displayName").asText(null);
+        String department = profile.path("department").asText(null);
+        String jobTitle = profile.path("jobTitle").asText(null);
         String email = resolveEmail(profile);
 
         String serializedCache = app.tokenCache().serialize();
@@ -124,6 +130,8 @@ public class MicrosoftGraphService {
         connection.setMicrosoftUserId(microsoftUserId);
         connection.setMicrosoftEmail(email);
         connection.setDisplayName(displayName);
+        connection.setDepartment(department);
+        connection.setJobTitle(jobTitle);
         connection.setTokenCacheEncrypted(encryptedCache);
         connectionRepository.save(connection);
     }
@@ -159,6 +167,11 @@ public class MicrosoftGraphService {
 
     public JsonNode getMessages(Long userId) {
         return graphGet(userId, "/v1.0/me/messages?$top=10");
+    }
+
+    // 조직 구성원 목록 — 사람이 들어오고 나가는 게 바로 반영돼야 해서 캐싱 없이 매번 실시간 조회
+    public JsonNode getOrganizationUsers(Long userId) {
+        return graphGet(userId, "/v1.0/users?$select=id,displayName,mail,jobTitle,department");
     }
 
     private JsonNode graphGet(Long userId, String path) {

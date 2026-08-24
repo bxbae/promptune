@@ -94,6 +94,12 @@ public class MicrosoftIntegrationController {
         return ResponseEntity.ok(java.util.Map.of("ok", true));
     }
 
+    @GetMapping("/users")
+    public ResponseEntity<?> organizationUsers(Authentication authentication) {
+        Long userId = currentUserId(authentication);
+        return ResponseEntity.ok(microsoftGraphService.getOrganizationUsers(userId));
+    }
+
     private Long currentUserId(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResponseStatusException(

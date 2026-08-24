@@ -1,335 +1,534 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { analyze, execute } from "@/lib/api";
-import { uploadDocument, DocumentItem } from "@/api/documents";
 
-/**
- * 모호성 규칙 (mock)
- * ------------------------------------------------------------
- * 실제로는 KcELECTRA가 문장을 분석해 "어떤 부분이 왜 모호한지"를
- * 좌표(span)까지 함께 돌려줘야 하는데, 지금 백엔드(/api/analyze)는
- * 요소별 충족 여부(0/1)만 주고 정확한 위치는 안 줍니다.
- * 그래서 화면(밑줄 표시 위치)만 프론트에서 임시로 흉내 냅니다.
- * → 백엔드가 span을 내려주기 시작하면 find() 부분만 교체하면 됩니다.
- */
-interface AmbiguityRule {
-  id: string;
-  dependsOn?: string; // 이 규칙이 나타나려면 먼저 해결돼야 하는 규칙
-  find: (text: string) => { match: string; index: number } | null;
-  label: string;      // 팝업 상단 빨간 점 옆 문구
-  question: string;   // 팝업의 굵은 질문
-  options: string[];
+import { useCallback, useEffect, useRef, useState } from "react";
+import { analyze, execute, type AnalyzeResponse } from "@/lib/api";
+import { uploadDocument, type DocumentItem } from "@/api/documents";
+
+interface ElementUiMeta {
+  label: string;
+  question: string;
 }
 
-// "직접 입력"(사용자가 직접 타이핑)으로 해결한 요소 하나의 기록.
+const ELEMENT_UI: Record<string, ElementUiMeta> = {
+  TASK: {
+    label: "요청할 작업을 조금 더 명확히 하면 좋아요",
+    question: "무엇을 해드리면 될까요?",
+  },
+  AUDIENCE: {
+    label: "결과물을 볼 대상이 더 명확하면 좋아요",
+    question: "누구를 위한 결과물인가요?",
+  },
+  CONTEXT: {
+    label: "업무 배경이나 목적이 조금 더 필요해요",
+    question: "어떤 상황이나 목적으로 사용하는 건가요?",
+  },
+  FORMAT: {
+    label: "원하는 출력 형식을 지정하면 좋아요",
+    question: "어떤 형식으로 작성할까요?",
+  },
+  TONE: {
+    label: "말투나 문체를 지정하면 좋아요",
+    question: "어떤 어조로 작성할까요?",
+  },
+  LENGTH: {
+    label: "원하는 분량을 지정하면 좋아요",
+    question: "어느 정도 길이로 작성할까요?",
+  },
+  CONSTRAINT: {
+    label: "지켜야 할 조건을 추가하면 좋아요",
+    question: "반드시 지켜야 할 조건이 있나요?",
+  },
+  EXAMPLE: {
+    label: "참고할 예시가 있으면 결과가 더 정확해져요",
+    question: "참고할 예시나 형태가 있나요?",
+  },
+};
+
+// 사용자가 AI 추천 대신 직접 입력해서 보완한 요소 기록.
+// 기존 onSubmit(text, directEdits) 계약을 유지한다.
 export interface DirectEdit {
-  element: string;   // AmbiguityRule.id
-  generated: string; // AI가 제안했던 옵션들 (참고용, 실제로 안 쓰인 것들)
-  userFinal: string; // 사용자가 직접 입력한 값
+  element: string;
+  generated: string;
+  userFinal: string;
 }
-
-// 백엔드 연결 전, 모호성 규칙을 프론트에서 임시로 정의
-// "메일"이 들어가면 모호성으로 간주
-const RULES: AmbiguityRule[] = [
-  {
-    id: "task",
-    find: (t) => {
-      const i = t.indexOf("메일");
-      return i >= 0 ? { match: "메일", index: i } : null;
-    },
-    label: "무엇을 요청하는 메일인지 불명확해요",
-    question: "어떤 내용의 메일인가요?",
-    options: ["보고서 제출 요청 메일", "회의 일정 안내 메일"],
-  },
-  {
-    id: "tone",
-    dependsOn: "task",
-    find: (t) => {
-      if (/정중하게|친근하게/.test(t)) return null;
-      const m = t.match(/(좀)\s*보내(줘|주세요|줄래)?/);
-      if (!m || m.index === undefined) return null;
-      return { match: m[1], index: m.index };
-    },
-    label: "어조·말투 조건이 불명확해요",
-    question: "어떤 어조로 보낼까요?",
-    options: ["정중하게", "친근하게"],
-  },
-];
 
 interface PromptEditorProps {
-  // 있으면: 전송 시 이 콜백만 호출하고 입력창 비움 (실행/결과 표시는 호출한 쪽 책임)
-  // 없으면: 기존처럼 이 컴포넌트가 직접 execute() 호출 + 결과를 자기 아래에 표시
-  // 두 번째 인자: 이번 프롬프트 작성 중 "직접 입력"으로 해결한 요소들 (없으면 빈 배열)
   onSubmit?: (text: string, directEdits: DirectEdit[]) => void;
-  // true: 큰 제목/힌트문구 없이 입력창만 (대화 스레드 하단용)
   compact?: boolean;
   disabled?: boolean;
   placeholder?: string;
 }
 
-export default function PromptEditor({ onSubmit, compact = false, disabled = false, placeholder }: PromptEditorProps = {}) {
+type AttachmentState = {
+  key: string;
+  name: string;
+  status: "uploading" | "done" | "error";
+  doc?: DocumentItem;
+};
+
+export default function PromptEditor({
+  onSubmit,
+  compact = false,
+  disabled = false,
+  placeholder,
+}: PromptEditorProps = {}) {
   const [text, setText] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const directEditsRef = useRef<DirectEdit[]>([]);
+
   const [optIdx, setOptIdx] = useState(0);
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
 
-  const [gate, setGate] = useState<{ passed: boolean; reason: string } | null>(null);
+  const [gate, setGate] = useState<{
+    passed: boolean;
+    reason: string;
+  } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(
+    null,
+  );
   const [analyzing, setAnalyzing] = useState(false);
+
   const [result, setResult] = useState("");
   const [sending, setSending] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // + 버튼 파일 첨부: /api/documents로 실제 저장
-  // TODO: 아직 채팅 프롬프트 자체에 내용이 자동으로 반영되진 않음 (문서 텍스트 추출·RAG 연동은 아직 범위 밖).
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<
-    { key: string; name: string; status: "uploading" | "done" | "error"; doc?: DocumentItem }[]
-  >([]);
-  // onExecute() 중복 호출 방지
   const submittingRef = useRef(false);
 
-  // 지금 화면에 떠 있어야 할 모호성 규칙 (한 번에 하나만)
-  const activeRule = RULES.find(
-    (r) =>
-      !resolved.has(r.id) &&
-      (!r.dependsOn || resolved.has(r.dependsOn)) &&
-      r.find(text)
-  );
-  const match = activeRule ? activeRule.find(text) : null;
+  const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
-  // 0.7~1초 입력 중단 감지 → 실제 백엔드 진단 호출 (게이트 검사용)
+  const activeSuggestion =
+    analysisResult?.suggest?.suggestions.find(
+      (suggestion) => !resolved.has(suggestion.element),
+    ) ?? null;
+
+  const activeElement = activeSuggestion?.element ?? null;
+
+  const activeMeta = activeElement
+    ? (ELEMENT_UI[activeElement] ?? {
+        label: `${activeElement} 요소를 보완하면 좋아요`,
+        question: "어떤 내용을 추가할까요?",
+      })
+    : null;
+
+  const activeOptions = activeSuggestion
+    ? [activeSuggestion.primary, ...activeSuggestion.alternatives].filter(
+        (option, index, array) =>
+          option.trim().length > 0 && array.indexOf(option) === index,
+      )
+    : [];
+
   const scheduleAnalyze = useCallback((value: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (abortRef.current) abortRef.current.abort();
-    if (!value.trim()) { setGate(null); return; }
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    setGate(null);
+    setAnalysisResult(null);
+    setOptIdx(0);
+    setCustomOpen(false);
+    setCustomValue("");
+
+    if (!value.trim()) {
+      setAnalyzing(false);
+      return;
+    }
+
     timerRef.current = setTimeout(async () => {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
+
       try {
         setAnalyzing(true);
-        const res = await analyze(value, ctrl.signal);
-        setGate(res.gate);
-      } catch (e: any) {
-        if (e.name !== "AbortError") console.error(e);
+        const response = await analyze(value, ctrl.signal);
+
+        if (abortRef.current !== ctrl) {
+          return;
+        }
+
+        setGate(response.gate);
+        setAnalysisResult(response);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("프롬프트 분석 실패:", error);
+
+        if (abortRef.current === ctrl) {
+          setGate(null);
+          setAnalysisResult(null);
+        }
       } finally {
-        setAnalyzing(false);
+        if (abortRef.current === ctrl) {
+          abortRef.current = null;
+          setAnalyzing(false);
+        }
       }
     }, 800);
   }, []);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (abortRef.current) abortRef.current.abort();
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
   }, []);
 
-  // 오버레이(밑줄 표시용 div)와 textarea의 스크롤 위치를 항상 맞춰줌
-  function syncScroll() {
-    if (overlayRef.current && textareaRef.current) {
-      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+  function applySuggestion(value: string, isCustom = false) {
+    if (!activeElement) {
+      return;
     }
-  }
 
-  function applyOption(value: string, isCustom = false) {
-    if (!activeRule || !match) return;
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return;
+    }
+
     if (isCustom) {
       directEditsRef.current.push({
-        element: activeRule.id,
-        generated: activeRule.options.join(" / "),
-        userFinal: value,
+        element: activeElement,
+        generated: activeOptions.join(" / "),
+        userFinal: trimmedValue,
       });
     }
-    const next = text.slice(0, match.index) + value + text.slice(match.index + match.match.length);
-    setText(next);
-    setResolved((prev) => new Set(prev).add(activeRule.id));
+
+    const nextText = mergePromptWithSuggestion(text, trimmedValue);
+
+    setResolved((prev) => {
+      const updated = new Set(prev);
+      updated.add(activeElement);
+      return updated;
+    });
+
+    setText(nextText);
     setOptIdx(0);
     setCustomOpen(false);
     setCustomValue("");
-    scheduleAnalyze(next);
+
+    scheduleAnalyze(nextText);
   }
 
-  function skipActiveRule() {
-    if (!activeRule) return;
-    setResolved((prev) => new Set(prev).add(activeRule.id));
+  function skipActiveSuggestion() {
+    if (!activeElement) {
+      return;
+    }
+
+    setResolved((prev) => {
+      const updated = new Set(prev);
+      updated.add(activeElement);
+      return updated;
+    });
+
     setOptIdx(0);
     setCustomOpen(false);
+    setCustomValue("");
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (activeRule && !customOpen) {
+    if (activeSuggestion && !customOpen) {
       if (e.key === "Tab") {
         e.preventDefault();
-        applyOption(activeRule.options[optIdx]);
+        const option = activeOptions[optIdx];
+        if (option) {
+          applySuggestion(option);
+        }
         return;
       }
+
       if (e.key === "Escape") {
         e.preventDefault();
-        skipActiveRule();
+        skipActiveSuggestion();
         return;
       }
-      if (e.key === "ArrowDown") {
+
+      if (e.key === "ArrowDown" && activeOptions.length > 0) {
         e.preventDefault();
-        setOptIdx((i) => Math.min(activeRule.options.length - 1, i + 1));
+        setOptIdx((index) => Math.min(activeOptions.length - 1, index + 1));
         return;
       }
-      if (e.key === "ArrowUp") {
+
+      if (e.key === "ArrowUp" && activeOptions.length > 0) {
         e.preventDefault();
-        setOptIdx((i) => Math.max(0, i - 1));
+        setOptIdx((index) => Math.max(0, index - 1));
         return;
       }
     }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onExecute();
+      void onExecute();
     }
   }
 
-  // 파일 선택되면 즉시 업로드 시작 (여러 개 선택 가능)
+  function mergePromptWithSuggestion(text: string, suggestion: string): string {
+    let base = text.trim();
+    const addition = suggestion.trim();
+
+    if (base && !/[.!?。！？]$/.test(base)) {
+      base = `${base}.`;
+    }
+
+    return `${base} ${addition}`.trim();
+  }
+
   async function handleFilesSelected(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+
     const files = Array.from(fileList);
-    // 첨부 시점에 컴포저에 입력돼있던 텍스트를 description으로 사용.
-    // TODO: (임시) 진짜 파일 내용 요약이 아니라 사용자가 그 순간 입력한 텍스트일 뿐임.
-    // 나중에 문서 파싱·AI 요약 파이프라인(승연님 RAG 작업) 붙으면 이 부분 제거하고
-    // 백엔드/ai-service가 채운 description을 그대로 쓰도록 교체할 것.
     const descriptionAtAttach = text.trim() || undefined;
 
     for (const file of files) {
-      const key = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setAttachments((prev) => [...prev, { key, name: file.name, status: "uploading" }]);
+      const key = `${file.name}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`;
+
+      setAttachments((prev) => [
+        ...prev,
+        { key, name: file.name, status: "uploading" },
+      ]);
 
       try {
-        // 채팅에서 첨부한 파일은 기본 "기타"(OTHER) 분류로 저장 (파일관리 페이지에서 나중에 변경 가능)
-        const doc = await uploadDocument(file, file.name, "기타", descriptionAtAttach);
-        setAttachments((prev) =>
-          prev.map((a) => (a.key === key ? { ...a, status: "done", doc } : a))
+        const doc = await uploadDocument(
+          file,
+          file.name,
+          "기타",
+          descriptionAtAttach,
         );
-      } catch {
+
         setAttachments((prev) =>
-          prev.map((a) => (a.key === key ? { ...a, status: "error" } : a))
+          prev.map((attachment) =>
+            attachment.key === key
+              ? { ...attachment, status: "done", doc }
+              : attachment,
+          ),
+        );
+      } catch (error) {
+        console.error("문서 업로드 실패:", error);
+        setAttachments((prev) =>
+          prev.map((attachment) =>
+            attachment.key === key
+              ? { ...attachment, status: "error" }
+              : attachment,
+          ),
         );
       }
     }
 
-    // 같은 파일을 다시 선택해도 onChange가 발생하도록 초기화
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   function removeAttachment(key: string) {
-    setAttachments((prev) => prev.filter((a) => a.key !== key));
+    setAttachments((prev) =>
+      prev.filter((attachment) => attachment.key !== key),
+    );
+  }
+
+  function resetEditor() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    setText("");
+    setResolved(new Set());
+    directEditsRef.current = [];
+    setOptIdx(0);
+    setCustomOpen(false);
+    setCustomValue("");
+    setGate(null);
+    setAnalysisResult(null);
+    setAnalyzing(false);
+    setAttachments([]);
   }
 
   async function onExecute() {
-    if (!text.trim() || sending || disabled) return;
-    if (onSubmit) {
-      if (submittingRef.current) return;   // 중복 호출 차단 (동기적으로 즉시 막힘)
-      submittingRef.current = true;
-      onSubmit(text.trim(), directEditsRef.current);
-      directEditsRef.current = [];   // 다음 프롬프트를 위해 초기화
-      setText("");
-      setResolved(new Set());
-      setGate(null);
-      setCustomOpen(false);
-      setAttachments([]);   // 전송했으니 첨부 칩 목록 비움 (업로드된 파일 자체는 유지됨)
-      setTimeout(() => { submittingRef.current = false; }, 0);
+    const finalPrompt = text.trim();
+
+    if (!finalPrompt || sending || disabled) {
       return;
     }
+
+    if (onSubmit) {
+      if (submittingRef.current) {
+        return;
+      }
+
+      submittingRef.current = true;
+
+      try {
+        onSubmit(finalPrompt, [...directEditsRef.current]);
+        resetEditor();
+      } finally {
+        setTimeout(() => {
+          submittingRef.current = false;
+        }, 0);
+      }
+
+      return;
+    }
+
     setSending(true);
+
     try {
-      const res = await execute(text);
-      setResult(res?.result?.result ?? JSON.stringify(res));
+      const response = await execute(finalPrompt);
+      setResult(response?.result?.result ?? JSON.stringify(response));
+    } catch (error) {
+      console.error("프롬프트 실행 실패:", error);
+      setResult("요청 실행 중 오류가 발생했습니다.");
     } finally {
       setSending(false);
     }
   }
 
-  // 오버레이용: 텍스트를 [이전 | 모호한 구간(밑줄) | 이후] 로 쪼갬
-  let before = text, underline = "", after = "";
-  if (activeRule && match) {
-    before = text.slice(0, match.index);
-    underline = match.match;
-    after = text.slice(match.index + match.match.length);
-  }
-
-  const gateBlocked = gate && !gate.passed;
+  const gateBlocked = Boolean(gate && !gate.passed);
+  const targetElements = analysisResult?.recommend?.targetElements ?? [];
+  const missing = analysisResult?.diagnose?.missing ?? {};
+  const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
   return (
     <div className="composer-wrap">
-      {!compact && <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>}
+      {!compact && (
+        <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>
+      )}
 
       <div className="composer-box">
         <div className="input-wrap">
           <textarea
-            ref={textareaRef}
             value={text}
-            onChange={(e) => { setText(e.target.value); scheduleAnalyze(e.target.value); }}
-            onScroll={syncScroll}
+            onChange={(e) => {
+              const value = e.target.value;
+              setText(value);
+              scheduleAnalyze(value);
+            }}
             onKeyDown={onKeyDown}
             placeholder={placeholder ?? "보내기 전에 먼저 다듬어드려요"}
             rows={compact ? 1 : 2}
           />
-          {/* 밑줄 오버레이: 실제 글자는 투명, 모호한 구간만 빨간 점선 밑줄 */}
-          <div className="overlay" ref={overlayRef} aria-hidden>
-            <span className="ov-plain">{before}</span>
-            {activeRule && (
-              <span className="ov-underline">
-                {underline}
-                <span className="popup">
-                  <span className="popup-label">
-                    <span className="popup-dot" /> {activeRule.label}
-                  </span>
-                  <div className="popup-question">{activeRule.question}</div>
-                  {activeRule.options.map((opt, i) => (
-                    <button
-                      key={opt}
-                      className={`popup-option ${i === optIdx && !customOpen ? "active" : ""}`}
-                      onMouseDown={(e) => { e.preventDefault(); applyOption(opt); }}
-                      onMouseEnter={() => setOptIdx(i)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                  {!customOpen ? (
-                    <button className="popup-custom-btn" onMouseDown={(e) => { e.preventDefault(); setCustomOpen(true); }}>
-                      직접 입력
-                    </button>
-                  ) : (
-                    <input
-                      className="popup-custom-input"
-                      autoFocus
-                      value={customValue}
-                      onChange={(e) => setCustomValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") { e.preventDefault(); applyOption(customValue || underline, true); }
-                        if (e.key === "Escape") { e.preventDefault(); setCustomOpen(false); }
-                      }}
-                      placeholder="직접 입력 후 Enter"
-                    />
-                  )}
-                </span>
-              </span>
-            )}
-            <span className="ov-plain">{after}</span>
-          </div>
         </div>
+
+        {activeSuggestion && activeMeta && (
+          <div
+            className="ai-suggestion-card"
+            role="region"
+            aria-label={`${activeElement ?? ""} 요소 추천`}
+          >
+            <div className="popup-label">
+              <span className="popup-dot" />
+              {activeMeta.label}
+            </div>
+
+            <div className="popup-question">{activeMeta.question}</div>
+
+            {activeOptions.map((option, index) => (
+              <button
+                key={`${activeElement}-${option}`}
+                type="button"
+                className={`popup-option ${
+                  index === optIdx && !customOpen ? "active" : ""
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applySuggestion(option);
+                }}
+                onMouseEnter={() => setOptIdx(index)}
+              >
+                {option}
+              </button>
+            ))}
+
+            {!customOpen ? (
+              <button
+                type="button"
+                className="popup-custom-btn"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setCustomOpen(true);
+                }}
+              >
+                직접 입력
+              </button>
+            ) : (
+              <input
+                className="popup-custom-input"
+                autoFocus
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applySuggestion(customValue, true);
+                  }
+
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setCustomOpen(false);
+                    setCustomValue("");
+                  }
+                }}
+                placeholder="직접 입력 후 Enter"
+              />
+            )}
+
+            <button
+              type="button"
+              className="popup-custom-btn"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                skipActiveSuggestion();
+              }}
+            >
+              이 요소는 건너뛰기
+            </button>
+          </div>
+        )}
 
         {attachments.length > 0 && (
           <div className="attach-chip-row">
-            {attachments.map((a) => (
-              <div key={a.key} className={`attach-chip ${a.status}`}>
-                <span className="attach-chip-name" title={a.name}>{a.name}</span>
-                {a.status === "uploading" && <span className="attach-chip-status">업로드 중…</span>}
-                {a.status === "error" && <span className="attach-chip-status">실패</span>}
+            {attachments.map((attachment) => (
+              <div
+                key={attachment.key}
+                className={`attach-chip ${attachment.status}`}
+              >
+                <span className="attach-chip-name" title={attachment.name}>
+                  {attachment.name}
+                </span>
+
+                {attachment.status === "uploading" && (
+                  <span className="attach-chip-status">업로드 중…</span>
+                )}
+
+                {attachment.status === "error" && (
+                  <span className="attach-chip-status">실패</span>
+                )}
+
                 <button
                   type="button"
                   className="attach-chip-remove"
-                  onClick={() => removeAttachment(a.key)}
+                  onClick={() => removeAttachment(attachment.key)}
                   aria-label="첨부 제거"
                 >
                   ×
@@ -346,8 +545,11 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
               type="file"
               multiple
               hidden
-              onChange={(e) => handleFilesSelected(e.target.files)}
+              onChange={(e) => {
+                void handleFilesSelected(e.target.files);
+              }}
             />
+
             <button
               className="icon-btn"
               type="button"
@@ -356,16 +558,21 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
             >
               <img src="/icons/plus-muted.png" alt="" />
             </button>
+
             <button className="icon-btn" type="button" title="링크 (미구현)">
               <img src="/icons/link.png" alt="" />
             </button>
           </div>
+
           <div className="composer-right">
             <span className="char-analyzing">{analyzing && "분석 중…"}</span>
+
             <button
               className="send-btn"
               disabled={!text.trim() || sending || disabled}
-              onClick={onExecute}
+              onClick={() => {
+                void onExecute();
+              }}
               title="Enter로도 실행됩니다"
             >
               ↑
@@ -376,11 +583,28 @@ export default function PromptEditor({ onSubmit, compact = false, disabled = fal
 
       {!compact && (
         <div className="hint">
-          <b>왜 이렇게 표시되나요?</b> KcELECTRA가 문장의 8요소(Task·Tone 등) 충족 여부를 진단해, 모호한 부분에만 밑줄을 표시해요.
+          <b>왜 이렇게 표시되나요?</b> KcELECTRA가 프롬프트의 8요소 충족 여부를
+          진단하고, 보완이 필요한 요소 중 우선순위가 높은 항목에 대해 추천
+          문구를 제안해요.
         </div>
       )}
 
-      {gateBlocked && <div className="gate-block">⚠ {gate!.reason}</div>}
+      {analysisResult?.diagnose && !gateBlocked && (
+        <div className="prompt-analysis-summary">
+          <span>
+            보완 필요:{" "}
+            {Object.values(missing).filter((value) => value === 1).length}개
+          </span>
+
+          {targetElements.length > 0 && (
+            <span> · 우선 추천: {targetElements.join(", ")}</span>
+          )}
+
+          {typoCount > 0 && <span> · 오탈자 후보: {typoCount}개</span>}
+        </div>
+      )}
+
+      {gateBlocked && <div className="gate-block">⚠ {gate?.reason}</div>}
 
       {result && (
         <div className="result">

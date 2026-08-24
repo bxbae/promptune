@@ -3,28 +3,22 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import MicrosoftProfileView from "./components/MicrosoftProfileView";
+import MicrosoftMembersView from "./components/MicrosoftMembersView";
 import {
   microsoftConnect,
   microsoftDisconnect,
   microsoftEvents,
   microsoftFiles,
-  microsoftMessages,
+  microsoftMembers,
   microsoftProfile,
   microsoftStatus,
+  MicrosoftMember,
 } from "@/lib/microsoft";
 
 type MsStatus = {
   connected: boolean;
   microsoftEmail?: string;
   displayName?: string;
-};
-
-// TODO(목업 미리보기): 실제 연동 없이 "연결됨" 상태 UI를 확인하기 위한 용도.
-// 확인 끝나면 이 상수 + previewMock state/토글 버튼만 지우면 됨 (아래 로직과는 완전히 분리돼있음).
-const MOCK_CONNECTED_STATUS: MsStatus = {
-  connected: true,
-  microsoftEmail: "tester@company.com",
-  displayName: "Tester",
 };
 
 export default function SettingsPage() {
@@ -35,7 +29,6 @@ export default function SettingsPage() {
   const [msCallback, setMsCallback] = useState<string | null>(null);
   const [msResult, setMsResult] = useState<unknown>(null);
   const [msError, setMsError] = useState("");
-  const [previewMock, setPreviewMock] = useState(false); // TODO(목업 미리보기)
 
   async function loadMsStatus() {
     try {
@@ -62,9 +55,6 @@ export default function SettingsPage() {
   }
 
   async function handleMsDisconnect() {
-    // TODO : 목업, 추후 삭제
-    if (previewMock) { alert("목업 미리보기 상태입니다. 실제 연동이 아니에요."); return; }
-    // 여기까지
     if (!confirm("Microsoft 계정 연결을 해제할까요?")) return;
     try {
       await microsoftDisconnect();
@@ -76,9 +66,6 @@ export default function SettingsPage() {
   }
 
   async function runMsQuery(fn: () => Promise<unknown>) {
-    // TODO : 목업, 추후 삭제
-    if (previewMock) { alert("목업 미리보기 상태입니다. 실제 연동이 아니에요."); return; }
-    // 여기까지
     try {
       setMsError("");
       setMsResult(await fn());
@@ -92,9 +79,6 @@ export default function SettingsPage() {
     logout();
     window.location.href = "/";
   }
-
-  // TODO(목업 미리보기): 실제 연동/조회 대신 mock 상태를 보여주는 동안은 진짜 API를 안 건드림
-  const displayStatus = previewMock ? MOCK_CONNECTED_STATUS : msStatus;
 
   return (
     <div>
@@ -122,26 +106,7 @@ export default function SettingsPage() {
         {/* Microsoft 업무 계정 */}
         {!msLoading && (
           <div className="settings-card">
-             {/* TODO(목업 미리보기): 확인 끝나면 이 토글 버튼 통째로 삭제 */}
-            <button
-              className="settings-mock-toggle"
-              onClick={() => setPreviewMock((v) => !v)}
-            >
-              {previewMock ? "목업 미리보기 끄기" : "연결됨 상태 미리보기 (목업)"}
-            </button>
-
-            {displayStatus.connected ? (
-              <>
-                <div className="settings-card-header">
-                  <span className="settings-card-title">Microsoft 업무 계정</span>
-                  <span className="settings-badge-connected">
-                    연결됨{previewMock && " (목업)"}
-                  </span>
-                </div>
-                <p className="settings-card-desc">
-                  {displayStatus.microsoftEmail || displayStatus.displayName || "Microsoft 계정"}
-                </p>
-            {/* {msStatus.connected ? (
+            {msStatus.connected ? (
               <>
                 <div className="settings-card-header">
                   <span className="settings-card-title">Microsoft 업무 계정</span>
@@ -149,24 +114,26 @@ export default function SettingsPage() {
                 </div>
                 <p className="settings-card-desc">
                   {msStatus.microsoftEmail || msStatus.displayName || "Microsoft 계정"}
-                </p> */}
+                </p>
 
                 <div className="settings-ms-actions">
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>프로필</button>
+                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>내 프로필</button>
+                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMembers)}>구성원 프로필</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftEvents)}>캘린더</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftFiles)}>OneDrive</button>
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMessages)}>메일</button>
                 </div>
 
                 <button className="settings-btn-danger" onClick={handleMsDisconnect}>연결 해제</button>
 
-                {msResult !== null && typeof msResult === "object" && "displayName" in msResult ? (
+                {Array.isArray(msResult) ? (
+                  <MicrosoftMembersView members={msResult as MicrosoftMember[]} />
+                ) : msResult !== null && typeof msResult === "object" && "displayName" in msResult ? (
                   <MicrosoftProfileView data={msResult} />
                 ) : msResult !== null ? (
                   <pre className="settings-ms-result">{JSON.stringify(msResult, null, 2)}</pre>
                 ) : null}
-          </>
-        ) : (
+              </>
+            ) : (
               <div className="settings-ms-empty">
                 <div className="settings-ms-empty-icon">
                   <img src="/icons/microsoft.png" alt="" />

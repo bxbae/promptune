@@ -7,12 +7,10 @@ import com.promptune.dto.PromptSessionDtos.SubmitEditRequest;
 import com.promptune.repository.PromptSessionRepository;
 import com.promptune.repository.ResponseEditRepository;
 import com.promptune.repository.UserRepository;
-import com.promptune.service.BehaviorLogService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import com.promptune.service.ConsentService;
 
 @RestController
 @RequestMapping("/api/prompt-sessions")
@@ -21,24 +19,18 @@ public class PromptSessionController {
     private final PromptSessionRepository promptSessionRepository;
     private final ResponseEditRepository responseEditRepository;
     private final UserRepository userRepository;
-    private final BehaviorLogService behaviorLog;
-    private final ConsentService consentService;
 
     public PromptSessionController(PromptSessionRepository promptSessionRepository,
-                                    ResponseEditRepository responseEditRepository,
-                                    UserRepository userRepository,
-                                    BehaviorLogService behaviorLog,
-                                    ConsentService consentService) {
+            ResponseEditRepository responseEditRepository,
+            UserRepository userRepository) {
         this.promptSessionRepository = promptSessionRepository;
         this.responseEditRepository = responseEditRepository;
         this.userRepository = userRepository;
-        this.behaviorLog = behaviorLog;
-        this.consentService = consentService;
     }
 
     @PostMapping("/{id}/edits")
     public PromptSession submitEdit(@PathVariable Long id, @RequestBody SubmitEditRequest req,
-                                     Authentication authentication) {
+            Authentication authentication) {
         User user = currentUser(authentication);
         PromptSession session = promptSessionRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "요청을 찾을 수 없습니다."));
@@ -54,9 +46,6 @@ public class PromptSessionController {
         if (edited) {
             responseEditRepository.save(new ResponseEdit(
                     id, user.getId(), req.generatedResult(), req.userFinalResult()));
-            if (consentService.canUsePersonalization(user.getId())) {
-                behaviorLog.recordAction(user.getId(), session.getTaskType(), "edit", session.getChatSessionId());
-            }
         }
 
         if (req.satisfaction() != null) {

@@ -225,7 +225,8 @@ public class AiServiceClient {
             String taskType,
             List<Map<String, Object>> documents,
             List<Map<String, Object>> webResults,
-            Map<String, String> userContext) {
+            Map<String, String> userContext,
+            Map<String, String> preference) {
         long start = System.currentTimeMillis();
 
         try {
@@ -236,9 +237,9 @@ public class AiServiceClient {
                             "prompt", prompt,
                             "task_type", taskType,
                             "documents", documents,
-                            "documents", documents,
                             "web_results", webResults,
-                            "user_context", userContext))
+                            "user_context", userContext,
+                            "preference", preference))
                     .retrieve()
                     .body(Map.class);
 
@@ -263,6 +264,7 @@ public class AiServiceClient {
                 taskType,
                 documents,
                 webResults,
+                Map.of(),
                 Map.of());
     }
 
