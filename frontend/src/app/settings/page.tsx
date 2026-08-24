@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, logout } from "@/lib/auth";
+import { CurrentUser, getCurrentUser, logout } from "@/lib/auth";
 import MicrosoftProfileView from "./components/MicrosoftProfileView";
 import MicrosoftMembersView from "./components/MicrosoftMembersView";
 import {
@@ -22,13 +22,17 @@ type MsStatus = {
 };
 
 export default function SettingsPage() {
-  const user = getCurrentUser();
+  const [user, setUser] = useState<CurrentUser | null>(null);
 
   const [msStatus, setMsStatus] = useState<MsStatus>({ connected: false });
   const [msLoading, setMsLoading] = useState(true);
   const [msCallback, setMsCallback] = useState<string | null>(null);
   const [msResult, setMsResult] = useState<unknown>(null);
   const [msError, setMsError] = useState("");
+
+  useEffect(() => {
+    setUser(getCurrentUser());
+  }, []);
 
   async function loadMsStatus() {
     try {

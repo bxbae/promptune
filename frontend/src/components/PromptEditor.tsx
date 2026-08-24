@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { analyze, execute, type AnalyzeResponse } from "@/lib/api";
+import {
+  analyze,
+  execute,
+  recordBehaviorAction,
+  type AnalyzeResponse,
+} from "@/lib/api";
 import { uploadDocument, type DocumentItem } from "@/api/documents";
 
 interface ElementUiMeta {
@@ -57,6 +62,7 @@ interface PromptEditorProps {
   compact?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  chatSessionId?: number;
 }
 
 type AttachmentState = {
@@ -71,6 +77,7 @@ export default function PromptEditor({
   compact = false,
   disabled = false,
   placeholder,
+  chatSessionId,
 }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
@@ -95,9 +102,17 @@ export default function PromptEditor({
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
+
+  // 파일 드래그앤드롭 (input-wrap 전체가 드롭존).
+  // dragCounterRef: input-wrap 안 자식(textarea/overlay/popup 등) 경계를
+  // 넘나들 때마다 발생하는 dragEnter/dragLeave로 isDragOver가 깜빡이는 것을 방지.
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const targetElements = analysisResult?.recommend?.targetElements ?? [];
 
@@ -191,6 +206,40 @@ export default function PromptEditor({
     };
   }, []);
 
+  // 사용자가 드롭존(input-wrap) 밖에서 파일을 놓치면 브라우저가 그 파일을
+  // 새 탭으로 열어버리므로, window 레벨에서도 기본 동작을 막아준다.
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => e.preventDefault();
+
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
+
+    return () => {
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
+    };
+  }, []);
+
+  // 프롬프트가 길어질수록 textarea 높이를 내용에 맞게 늘려준다.
+  // compact(대화 중 하단 컴포저)와 홈 화면 컴포저는 허용 높이를 다르게 둔다.
+  // overlay는 mirror-div라 textarea와 정확히 같은 높이/스크롤 위치를 유지해야
+  // 밑줄 위치가 어긋나지 않는다.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const maxHeight = compact ? 160 : 320;
+
+    el.style.height = "auto";
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+
+    if (overlayRef.current) {
+      overlayRef.current.style.height = `${nextHeight}px`;
+      overlayRef.current.scrollTop = el.scrollTop;
+    }
+  }, [text, compact]);
+
   function applySuggestion(value: string, isCustom = false) {
     if (!activeElement) {
       return;
@@ -208,6 +257,10 @@ export default function PromptEditor({
         userFinal: trimmedValue,
       });
     }
+
+    recordBehaviorAction(activeElement, "applied", chatSessionId).catch(() => {
+      // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
+    });
 
     const nextText = mergePromptWithSuggestion(text, trimmedValue);
 
@@ -229,6 +282,10 @@ export default function PromptEditor({
     if (!activeElement) {
       return;
     }
+
+    recordBehaviorAction(activeElement, "rejected", chatSessionId).catch(() => {
+      // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
+    });
 
     setResolved((prev) => {
       const updated = new Set(prev);
@@ -411,14 +468,42 @@ export default function PromptEditor({
   const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
   return (
-    <div className="composer-wrap">
+    <div className={`composer-wrap ${compact ? "compact" : ""}`}>
       {!compact && (
         <h1 className="composer-heading">오늘은 뭘 다듬어볼까요?</h1>
       )}
 
       <div className="composer-box">
-        <div className="input-wrap">
+        <div
+          className={`input-wrap ${isDragOver ? "drag-over" : ""}`}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            if (disabled) return;
+            dragCounterRef.current += 1;
+            setIsDragOver(true);
+          }}
+          onDragOver={(e) => {
+            // 필수: 이게 없으면 onDrop 자체가 브라우저에서 안 잡힘
+            e.preventDefault();
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            dragCounterRef.current -= 1;
+            if (dragCounterRef.current <= 0) {
+              dragCounterRef.current = 0;
+              setIsDragOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            dragCounterRef.current = 0;
+            setIsDragOver(false);
+            if (disabled) return;
+            void handleFilesSelected(e.dataTransfer.files);
+          }}
+        >
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => {
               const value = e.target.value;
@@ -426,88 +511,107 @@ export default function PromptEditor({
               scheduleAnalyze(value);
             }}
             onKeyDown={onKeyDown}
+            onScroll={(e) => {
+              // 캡(maxHeight)에 도달해 내부 스크롤이 생기면
+              // overlay(밑줄 레이어)도 같은 스크롤 위치를 따라가야 함
+              if (overlayRef.current) {
+                overlayRef.current.scrollTop = e.currentTarget.scrollTop;
+              }
+            }}
             placeholder={placeholder ?? "보내기 전에 먼저 다듬어드려요"}
-            rows={compact ? 1 : 2}
+            rows={1}
           />
-        </div>
+          {/* textarea와 완전히 겹치는 오버레이(mirror-div 기법)로 밑줄만 그려줌.
+              font-size/line-height/padding이 textarea와 정확히 같아야 줄바꿈 위치가 어긋나지 않음(globals.css 참고).
+              백엔드가 정확한 글자 위치(span)를 안 줘서, 지금은 "부족한 요소가 있으면 프롬프트 전체"에 밑줄. */}
+          <div className="overlay" ref={overlayRef} aria-hidden="true">
+            {activeElement ? (
+              <span className="ov-underline-word">{text}</span>
+            ) : (
+              text
+            )}
+          </div>
 
-        {activeElement && activeMeta && (
-          <div
-            className="ai-suggestion-card"
-            role="region"
-            aria-label={`${activeElement ?? ""} 요소 추천`}
-          >
-            <div className="popup-label">
-              <span className="popup-dot" />
-              {activeMeta.label}
-            </div>
+          {/* 밑줄(=지금은 입력창 전체) 바로 위에 뜨는 플로팅 카드.
+              .input-wrap이 position:relative라 이 카드는 그 기준으로 절대 위치. */}
+          {activeElement && activeMeta && (
+            <div
+              className="ai-suggestion-card"
+              role="region"
+              aria-label={`${activeElement ?? ""} 요소 추천`}
+            >
+              <div className="popup-label">
+                <span className="popup-dot" />
+                {activeMeta.label}
+              </div>
 
-            <div className="popup-question">{activeMeta.question}</div>
+              <div className="popup-question">{activeMeta.question}</div>
 
-            {activeOptions.map((option, index) => (
-              <button
-                key={`${activeElement}-${option}`}
-                type="button"
-                className={`popup-option ${
-                  index === optIdx && !customOpen ? "active" : ""
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  applySuggestion(option);
-                }}
-                onMouseEnter={() => setOptIdx(index)}
-              >
-                {option}
-              </button>
-            ))}
+              {activeOptions.map((option, index) => (
+                <button
+                  key={`${activeElement}-${option}`}
+                  type="button"
+                  className={`popup-option ${
+                    index === optIdx && !customOpen ? "active" : ""
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applySuggestion(option);
+                  }}
+                  onMouseEnter={() => setOptIdx(index)}
+                >
+                  {option}
+                </button>
+              ))}
 
-            {!customOpen ? (
+              {!customOpen ? (
+                <button
+                  type="button"
+                  className="popup-custom-btn"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setCustomOpen(true);
+                  }}
+                >
+                  직접 입력
+                </button>
+              ) : (
+                <input
+                  className="popup-custom-input"
+                  autoFocus
+                  value={customValue}
+                  onChange={(e) => setCustomValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applySuggestion(customValue, true);
+                    }
+
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setCustomOpen(false);
+                      setCustomValue("");
+                    }
+                  }}
+                  placeholder="직접 입력 후 Enter"
+                />
+              )}
+
               <button
                 type="button"
                 className="popup-custom-btn"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  setCustomOpen(true);
+                  skipActiveSuggestion();
                 }}
               >
-                직접 입력
+                이 요소는 건너뛰기
               </button>
-            ) : (
-              <input
-                className="popup-custom-input"
-                autoFocus
-                value={customValue}
-                onChange={(e) => setCustomValue(e.target.value)}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    applySuggestion(customValue, true);
-                  }
-
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setCustomOpen(false);
-                    setCustomValue("");
-                  }
-                }}
-                placeholder="직접 입력 후 Enter"
-              />
-            )}
-
-            <button
-              type="button"
-              className="popup-custom-btn"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                skipActiveSuggestion();
-              }}
-            >
-              이 요소는 건너뛰기
-            </button>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {attachments.length > 0 && (
           <div className="attach-chip-row">

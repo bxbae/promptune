@@ -38,13 +38,16 @@ jobs:
             if [ "$deploy_ok" = "true" ]; then
               echo "빌드/재시작 성공, 헬스체크 시작"
               healthy=false
-              for i in $(seq 1 6); do
-                sleep 5
-                if curl -fsS -o /dev/null https://54-180-115-193.nip.io/; then
+              # ai-service/backend/frontend를 한 번에 재기동하면 (특히 Spring Boot
+              # 콜드스타트) 30초로는 부족해서 정상 배포도 헬스체크 오탐으로 롤백되는
+              # 경우가 있었음 (2026-08-24) — 재시도 횟수/간격을 늘림.
+              for i in $(seq 1 18); do
+                sleep 10
+                if curl -fsS --max-time 5 -o /dev/null https://54-180-115-193.nip.io/; then
                   healthy=true
                   break
                 fi
-                echo "헬스체크 재시도 ($i/6)..."
+                echo "헬스체크 재시도 ($i/18)..."
               done
               if [ "$healthy" != "true" ]; then
                 echo "헬스체크 실패 (사이트가 응답하지 않음)"
