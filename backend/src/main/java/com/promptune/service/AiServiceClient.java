@@ -308,6 +308,26 @@ public class AiServiceClient {
                 Map.of());
     }
 
+    public Map validate(String original, String generated) {
+        long start = System.currentTimeMillis();
+        try {
+            Map result = client.post()
+                    .uri("/api/ai/validate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "original", original,
+                            "generated", generated))
+                    .retrieve()
+                    .body(Map.class);
+
+            log("ai-service", "/api/ai/validate", start, "success");
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/validate", start, "error");
+            throw e;
+        }
+    }
+
     public String summarizeTitle(String text) {
         long start = System.currentTimeMillis();
         try {

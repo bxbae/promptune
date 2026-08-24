@@ -180,6 +180,16 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             preferenceMap,
             conversationHistory);
 
+    result = validateWithRetry(
+              req.finalPrompt(),
+              result,
+              d.taskType(),
+              documents,
+              webResults,
+              userContext,
+              preferenceMap,
+              conversationHistory);
+
     if (req.elementActions() != null && consentService.canUsePersonalization(userId)) {
         for (com.promptune.dto.PipelineDtos.ElementAction ea : req.elementActions()) {
             behaviorLog.recordAction(userId, ea.element(), ea.action(), req.chatSessionId());
@@ -222,7 +232,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             "usedWebSearch", retrieval.getOrDefault("used_web_search", false),
             "result", result,
             "promptSessionId", session.getId());
-}
+    }
 
     private java.util.List<java.util.Map<String, String>> buildConversationHistory(
             Long chatSessionId,
@@ -241,8 +251,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         if (!userId.equals(chat.getUserId())) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "본인 대화만 사용할 수 있습니다.");
-        }
+               }
 
         java.util.List<com.promptune.domain.PromptSession> sessions =
                 promptSessionRepository
@@ -288,6 +297,66 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 + text.substring(text.length() - 750);
     }
 
+    // generate() 결과를 검증하고, 실패 시 1회만 재생성 후 재검증.
+    // 재생성 시에도 동일한 conversation history를 유지한다.
+    private Map validateWithRetry(
+            String originalPrompt,
+            Map result,
+            String taskType,
+            java.util.List<java.util.Map<String, Object>> documents,
+            java.util.List<java.util.Map<String, Object>> webResults,
+            Map<String, String> userContext,
+            Map<String, String> preferenceMap,
+            java.util.List<java.util.Map<String, String>> conversationHistory) {
+
+        Object generatedText = result != null ? result.get("result") : null;
+
+        if (generatedText == null) {
+            return result;
+        }
+
+        Map validation =
+                ai.validate(originalPrompt, generatedText.toString());
+
+        boolean passed =
+                Boolean.TRUE.equals(validation.get("passed"));
+
+        if (passed) {
+            return result;
+        }
+
+        Map retryResult = ai.generate(
+                originalPrompt,
+                taskType,
+                documents,
+                webResults,
+                userContext,
+                preferenceMap,
+                conversationHistory);
+
+        Object retryText =
+                retryResult != null ? retryResult.get("result") : null;
+
+        if (retryText == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "답변 생성에 실패했습니다.");
+        }
+
+        Map retryValidation =
+                ai.validate(originalPrompt, retryText.toString());
+
+        boolean retryPassed =
+                Boolean.TRUE.equals(retryValidation.get("passed"));
+
+        if (!retryPassed) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "검증을 통과하는 답변을 생성하지 못했습니다.");
+        }
+
+        return retryResult;
+    }
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) — /api/execute와 동일한 이유로 경로변수 대신 인증 기반으로 전환 */
     @GetMapping("/context")
