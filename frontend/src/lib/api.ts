@@ -57,3 +57,18 @@ export async function execute(finalPrompt: string, chatSessionId?: number) {
   if (!res.ok) throw new Error(`실행 실패: ${res.status}`);
   return res.json();
 }
+
+// 밑줄 제안에 대한 사용자 행동(적용/거절) 기록
+// 실패해도 채팅 흐름을 막으면 안되므로 호출부에서 항상 .catch()로 감쌀 것.
+export async function recordBehaviorAction(
+  element: string,
+  action: "applied" | "rejected",
+  chatSessionId?: number
+): Promise<void> {
+  const res = await fetch(`${API}/api/behavior-actions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ element, action, chatSessionId: chatSessionId ?? null }),
+  });
+  if (!res.ok) throw new Error(`행동 기록 실패: ${res.status}`);
+}
