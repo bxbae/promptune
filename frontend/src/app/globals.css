@@ -65,21 +65,39 @@ body {
   padding: 14px 16px 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 .input-wrap { position: relative; }
+/* 파일 드래그앤드롭 하이라이트. z-index는 .overlay(2)보다 위,
+   .ai-suggestion-card(팝업)보다는 아래로 둔다. */
+.input-wrap.drag-over::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--accent-tint);
+  pointer-events: none;
+  z-index: 3;
+}
 textarea, .overlay {
   width: 100%; font-size: 16px; line-height: 1.6; padding: 0;
   font-family: inherit; border: none; background: transparent;
 }
 textarea {
   color: var(--ink); resize: none; position: relative; z-index: 1;
-  display: block;
+  display: block; overflow-y: auto; overflow-x: hidden;
+  /* JS(PromptEditor.tsx)가 scrollHeight에 맞춰 height를 매 입력마다 갱신한다.
+     rows=1이 시작 높이, 그 이상은 내용에 따라 자동으로 늘어남(최대치는 JS의 maxHeight). */
 }
+/* 홈 화면 컴포저는 기존 2줄 정도의 시작 높이를 유지, 대화 중 하단 컴포저는 1줄부터 시작 */
+.composer-wrap:not(.compact) textarea { min-height: 51px; }
 textarea::placeholder { color: var(--muted); }
 textarea:focus { outline: none; }
 
-/* 오버레이는 textarea보다 앞(z-index 위)에 있지만 클릭은 통과시킴 */
+/* 오버레이는 textarea보다 앞(z-index 위)에 있지만 클릭은 통과시킴.
+  textarea가 캡(maxHeight)에 도달해 내부 스크롤이 생기면, overlay도 hidden으로 잘라내고
+  JS가 scrollTop을 맞춰줘야 밑줄 위치가 실제 보이는 텍스트와 어긋나지 않는다. */
 .overlay {
   position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  white-space: pre-wrap; word-break: break-word; overflow: visible;
+  white-space: pre-wrap; word-break: break-word; overflow: hidden;
   color: transparent;
 }
 .ov-plain { color: transparent; }
@@ -97,6 +115,25 @@ textarea:focus { outline: none; }
   pointer-events: auto; color: initial;
 }
 .ov-underline:hover .popup { display: block; }
+/* 밑줄만 순수 시각 표시 (클릭/호버 상호작용 없음 - 상호작용은 .ai-suggestion-card가 담당) */
+.ov-underline-word {
+  color: transparent;
+  text-decoration: underline wavy var(--miss); text-underline-offset: 3px;
+}
+
+/* 밑줄(입력창 전체) 바로 위에 뜨는 플로팅 카드. .input-wrap 기준 절대 위치. */
+.ai-suggestion-card {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 50;
+  width: min(320px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
 .popup-label {
   display: flex; align-items: center; gap: 6px; font-size: 12px;
   color: var(--miss); margin-bottom: 6px;
@@ -478,14 +515,30 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .msg-assistant { max-width: 90%; }
 .msg-sender { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 6px; }
 
-/* 만족도(👍/👎) */
-.satisfaction-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* 만족도 응답(.msg-assistant)에 마우스를 올렸을 때만 작게 나타남 - 평소엔 화면을 거슬리지 않게 숨김.
+  opacity+pointer-events로 숨겨서 항상 같은 공간을 차지 → hover 시 레이아웃이 흔들리지 않음.
+  키보드 접근성을 위해 focus-within에서도 노출. */
+.satisfaction-row { display: flex; align-items: center; min-height: 22px; margin-top: 8px; }
+.satisfaction-pending {
+  display: flex; align-items: center; gap: 6px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.15s ease;
+  color: var(--muted);
+  font-size: 10px;
+}
+.msg-assistant:hover .satisfaction-pending,
+.satisfaction-pending:focus-within {
+  opacity: 1; pointer-events: auto;
+}
 .satisfaction-label { font-size: 12px; color: var(--muted); }
 .satisfaction-btn {
-  border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
-  width: 30px; height: 26px; font-size: 13px; cursor: pointer; line-height: 1;
+  border: none; background: transparent;
+  width: 26px; height: 26px; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .satisfaction-btn:hover { background: var(--panel-alt); }
+/* thumbs_up.png / thumbs_down.png를 frontend/public/icons/ 에 추가하면 바로 적용됨 */
+.satisfaction-btn img { width: 14px; height: 14px; object-fit: contain; display: block; }
 .satisfaction-thanks { font-size: 12px; color: var(--accent); font-weight: 600; }
 
 
@@ -515,15 +568,38 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
 .msg-bubble.assistant {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  padding: 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
+  padding: 16px 40px 16px 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
+  position: relative;
 }
+/* 복사 버튼 - 답변 오른쪽 위, 평소엔 숨겨뒀다가 응답에 마우스를 올렸을 때만 나타남 */
+.copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 6px;
+  background: var(--panel); color: var(--muted); cursor: pointer;
+  opacity: 0; transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.msg-assistant:hover .copy-btn,
+.copy-btn:focus-visible {
+  opacity: 1;
+}
+.copy-btn:hover { background: var(--panel-alt); color: var(--ink); }
+.copy-btn.copied { color: var(--accent); border-color: var(--accent-soft); opacity: 1; }
+.copy-btn svg { width: 14px; height: 14px; }
 
-.status-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-.status-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.status-box {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+}
+.status-title { font-size: 13px; font-weight: 700; color: var(--ink); }
 .status-title .dots { color: var(--muted); }
-.status-step { font-size: 13px; color: var(--muted); padding: 3px 0; }
-.status-step.done { color: var(--accent); }
-.status-step.current { color: var(--ink); font-weight: 600; }
+.loading-spinner {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* /api/improve 연동 */
 .improve-btn {

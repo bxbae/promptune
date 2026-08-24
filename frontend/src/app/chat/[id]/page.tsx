@@ -32,8 +32,6 @@ const MOCK_STYLE_HINTS = [
   "마감일과 회신 요청을 자주 포함",
 ];
 
-const STATUS_STEPS = ["업무 유형 분석 중", "필요한 정보 확인 중", "답변 생성 중"];
-
 export default function ChatThreadPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -42,7 +40,7 @@ export default function ChatThreadPage() {
   const isFresh = searchParams.get("run") === "1";  // /chat(새 채팅)에서 막 넘어온 경우
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [statusStep, setStatusStep] = useState<number | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(!isFresh);
   const [historyError, setHistoryError] = useState("");
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -73,6 +71,32 @@ export default function ChatThreadPage() {
 
   // 만족도(👍/👎) - 메시지 id별로 선택 상태 기록 (한 번 누르면 고정, 재선택 불가 - 스토리보드 기준)
   const [satisfaction, setSatisfaction] = useState<Record<string, "good" | "bad">>({});
+  // 응답 복사 버튼 - 복사 직후 잠깐 체크 아이콘으로 바뀌었다가 원래대로 돌아옴
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  async function copyMessage(m: Message) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(m.content);
+      } else {
+        // Clipboard API를 못 쓰는 환경(구형 브라우저·비보안 컨텍스트) 대비 폴백
+        const textarea = document.createElement("textarea");
+        textarea.value = m.content;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedId(m.id);
+      setTimeout(() => {
+        setCopiedId((id) => (id === m.id ? null : id));
+      }, 1500);
+    } catch {
+      alert("복사에 실패했습니다.");
+    }
+  }
 
   async function rateSatisfaction(m: Message, value: "good" | "bad") {
     if (!m.promptSessionId || satisfaction[m.id]) return;
@@ -169,19 +193,15 @@ export default function ChatThreadPage() {
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, statusStep]);
+  }, [messages, isGenerating]);
 
   async function runAssistant(prompt: string, directEdits: DirectEdit[] = []) {
-    setStatusStep(0);
-    const stepTimer = setInterval(() => {
-      setStatusStep((s) => (s === null ? null : Math.min(s + 1, STATUS_STEPS.length - 1)));
-    }, 550);
+    setIsGenerating(true);
 
     try {
       const res = await execute(prompt, chatSessionId);
       const resultText = res?.result?.result ?? JSON.stringify(res);
-      clearInterval(stepTimer);
-      setStatusStep(null);
+      setIsGenerating(false);
       const assistantId = generateId();
       setMessages((prev) => [
         ...prev,
@@ -226,8 +246,7 @@ export default function ChatThreadPage() {
       );
 
     } catch {
-      clearInterval(stepTimer);
-      setStatusStep(null);
+      setIsGenerating(false);
       setMessages((prev) => [
         ...prev,
         { id: generateId(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
@@ -236,7 +255,7 @@ export default function ChatThreadPage() {
   }
 
   function handleSubmit(text: string, directEdits: DirectEdit[]) {
-    if (statusStep !== null) return;
+    if (isGenerating) return;
     setPendingConsent(null); // 새 메시지 보내면 이전 턴의 동의 카드는 정리
     setMessages((prev) => [...prev, { id: generateId(), role: "user", content: text }]);
     runAssistant(text, directEdits);
@@ -276,30 +295,51 @@ export default function ChatThreadPage() {
               ) : (
                 <div className="msg-assistant">
                   <div className="msg-sender">PROMPTUNE</div>
-                  <div className="msg-bubble assistant">{m.content}</div>
+                  <div className="msg-bubble assistant">
+                    {m.content}
+                    <button
+                      type="button"
+                      className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
+                      onClick={() => copyMessage(m)}
+                      aria-label="응답 복사"
+                      title={copiedId === m.id ? "복사됨" : "복사하기"}
+                    >
+                      {copiedId === m.id ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
 
                   {m.promptSessionId != null && (
                     <div className="satisfaction-row">
                       {satisfaction[m.id] ? (
                         <span className="satisfaction-thanks">감사해요, 다음 추천에 반영할게요</span>
                       ) : (
-                        <>
+                        <div className="satisfaction-pending">
                           <span className="satisfaction-label">이 결과, 도움이 됐나요?</span>
                           <button
                             className="satisfaction-btn"
                             onClick={() => rateSatisfaction(m, "good")}
                             aria-label="도움이 됐어요"
                           >
-                            👍
+                            <img src="/icons/thumbs-up.png" alt="" />
                           </button>
+                          |
                           <button
                             className="satisfaction-btn"
                             onClick={() => rateSatisfaction(m, "bad")}
                             aria-label="도움이 안 됐어요"
                           >
-                            👎
+                            <img src="/icons/thumbs-down.png" alt="" />
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
@@ -351,16 +391,12 @@ export default function ChatThreadPage() {
             </div>
           ))}
 
-          {statusStep !== null && (
+          {isGenerating && (
             <div className="msg-assistant">
-              <div className="msg-sender">PROMPTUNE</div>
+              <div className="msg-sender">PrompTune</div>
               <div className="status-box">
-                <div className="status-title">답변 생성 중 <span className="dots">···</span></div>
-                {STATUS_STEPS.map((label, i) => (
-                  <div key={label} className={`status-step ${i < statusStep ? "done" : i === statusStep ? "current" : ""}`}>
-                    {i < statusStep ? "✓" : "•"} {label}
-                  </div>
-                ))}
+                <span className="loading-spinner" aria-hidden="true" />
+                <span className="status-title">답변 생성 중<span className="dots">···</span></span>
               </div>
             </div>
           )}
@@ -371,9 +407,10 @@ export default function ChatThreadPage() {
 
       <PromptEditor
         onSubmit={handleSubmit}
-        disabled={statusStep != null || loadingHistory}
+        disabled={isGenerating || loadingHistory}
         compact
         placeholder="다음 프롬프트를 입력하세요"
+        chatSessionId={chatSessionId}
       />
     </div>
   )

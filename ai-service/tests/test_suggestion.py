@@ -165,7 +165,7 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
             target_elements=[
                 "TASK",
                 "AUDIENCE",
-                "CONTEXT",
+                "FORMAT",
             ],
             context=None,
         )
@@ -191,7 +191,7 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
             [
                 "TASK",
                 "AUDIENCE",
-                "CONTEXT",
+                "FORMAT",
             ],
         )
 
@@ -210,6 +210,38 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
     ):
         req = SuggestRequest(
             text="회의 내용을 정리해줘",
+            target_elements=["FORMAT"],
+            context=None,
+        )
+
+        with patch(
+            "app.services.suggest_hcx.predict_missing",
+            return_value={
+                **{
+                    element: 0
+                    for element in ELEMENTS
+                },
+                "FORMAT": 1,
+            },
+        ):
+            result = suggest(req)
+
+        self.assertEqual(
+            result.suggestions,
+            [],
+        )
+
+        mock_generate.assert_called_once()
+
+    @patch(
+        "app.services.suggest_hcx._generate_candidates",
+    )
+    def test_suggest_skips_context_generation_without_explicit_context(
+        self,
+        mock_generate,
+    ):
+        req = SuggestRequest(
+            text="임원에게 보고할 회의 내용을 정리해줘",
             target_elements=["CONTEXT"],
             context=None,
         )
@@ -230,8 +262,7 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
             result.suggestions,
             [],
         )
-
-        mock_generate.assert_called_once()
+        mock_generate.assert_not_called()
 
     def test_parse_generated_candidates_supports_five_candidates(self):
         raw = """

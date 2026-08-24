@@ -148,24 +148,32 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     java.util.List<java.util.Map<String, Object>> webResults =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("web_results", java.util.List.of());
 
-    // user_context이면 실제 Microsoft Graph 프로필을 생성 컨텍스트로 전달
+    // user_context이면 실제 Microsoft Graph 프로필을 생성 컨텍스트로 전달.
+    // Microsoft 미연동/연동 실패 시에도 채팅 자체는 계속 진행돼야 하므로
+    // (다른 보조 조회들과 동일하게) 실패는 조용히 무시하고 컨텍스트 없이 진행한다.
+    // (안 그러면 user_context 라우트로 분류된 모든 메시지가 Microsoft 미연동
+    // 사용자에게는 통째로 실패해버림 - 2026-08-24 채팅 전체 실패 이슈)
     Map<String, String> userContext = new java.util.HashMap<>();
 
     if ("user_context".equals(retrieval.get("route"))) {
-        com.fasterxml.jackson.databind.JsonNode profile =
-                microsoftGraphService.getProfile(userId);
+        try {
+            com.fasterxml.jackson.databind.JsonNode profile =
+                    microsoftGraphService.getProfile(userId);
 
-        String displayName = profile.path("displayName").asText("");
-        String companyName = profile.path("companyName").asText("");
-        String department = profile.path("department").asText("");
-        String jobTitle = profile.path("jobTitle").asText("");
-        String mail = profile.path("mail").asText("");
+            String displayName = profile.path("displayName").asText("");
+            String companyName = profile.path("companyName").asText("");
+            String department = profile.path("department").asText("");
+            String jobTitle = profile.path("jobTitle").asText("");
+            String mail = profile.path("mail").asText("");
 
-        if (!displayName.isBlank()) userContext.put("displayName", displayName);
-        if (!companyName.isBlank()) userContext.put("companyName", companyName);
-        if (!department.isBlank()) userContext.put("department", department);
-        if (!jobTitle.isBlank()) userContext.put("jobTitle", jobTitle);
-        if (!mail.isBlank()) userContext.put("mail", mail);
+            if (!displayName.isBlank()) userContext.put("displayName", displayName);
+            if (!companyName.isBlank()) userContext.put("companyName", companyName);
+            if (!department.isBlank()) userContext.put("department", department);
+            if (!jobTitle.isBlank()) userContext.put("jobTitle", jobTitle);
+            if (!mail.isBlank()) userContext.put("mail", mail);
+        } catch (Exception e) {
+            // Microsoft 미연동(404) 등 - userContext 없이 계속 진행
+        }
     }
 
     var preference = preferenceResolutionService.resolve(authentication);
