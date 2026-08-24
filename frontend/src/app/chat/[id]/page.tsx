@@ -4,6 +4,8 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
 import { getChatMessages } from "@/api/chatSessions";
 import { listReceiverProfiles, upsertReceiverProfile, ReceiverProfile } from "@/api/receiverProfiles";
+import { microsoftMembers } from "@/lib/microsoft";
+import { suggestToneFromJobTitle } from "@/lib/toneMapping";
 import { grantConsent, getConsentStatus } from "@/api/consents";
 import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
@@ -118,10 +120,21 @@ export default function ChatThreadPage() {
     setPendingConsent((c) => (c ? { ...c, saving: true } : c));
     try {
       const lastAssistant = messages.find((m) => m.id === pendingConsent.forMessageId);
+
+      // MS 조직도에서 같은 이름 동료 찾아서 직급 기반으로 톤 추천 (없으면 null, 기존과 동일 동작)
+      let suggestedTone: string | null = null;
+      try {
+        const members = await microsoftMembers();
+        const matched = members.find((m) => m.displayName === pendingConsent.name);
+        if (matched) suggestedTone = suggestToneFromJobTitle(matched.jobTitle);
+      } catch {
+        // MS 연동 안 한 사용자거나 조회 실패 - 조용히 무시, null로 폴백 (기존 동작과 동일)
+      }
+
       // 1) 수신자 프로필 등록/갱신 (없으면 새로 생김, 있으면 톤·길이 평균 갱신)
       const saved = await upsertReceiverProfile(
         pendingConsent.name,
-        null, // 톤 자동 감지 로직은 아직 없음 - null이면 이후 수동 수정 가능
+        suggestedTone, // MS 조직도 매칭되면 자동 추천값, 안 되면 기존처럼 null (사용자가 나중에 수동 입력)
         lastAssistant?.content.length ?? 0
       );
       // 2) 그 프로필 기준으로 저장 동의 기록
@@ -198,8 +211,14 @@ export default function ChatThreadPage() {
   async function runAssistant(prompt: string, directEdits: DirectEdit[] = []) {
     setIsGenerating(true);
 
+    // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
+    const detectedBeforeGen = detectReceiverName(prompt);
+    const matchedProfile = detectedBeforeGen
+      ? receiverProfiles.find((p) => p.receiverName === detectedBeforeGen)
+      : undefined;
+
     try {
-      const res = await execute(prompt, chatSessionId);
+      const res = await execute(prompt, chatSessionId, matchedProfile?.id);
       const resultText = res?.result?.result ?? JSON.stringify(res);
       setIsGenerating(false);
       const assistantId = generateId();

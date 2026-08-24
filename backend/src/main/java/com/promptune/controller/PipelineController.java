@@ -1,5 +1,6 @@
 package com.promptune.controller;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,6 +51,7 @@ public class PipelineController {
     private final com.promptune.service.MicrosoftGraphService microsoftGraphService;
     private final com.promptune.service.PreferenceResolutionService preferenceResolutionService;
     private final com.promptune.repository.ReceiverProfileRepository receiverProfileRepository; // 추가
+    private final com.promptune.repository.DocumentRepository documentRepository; // 추가
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -60,7 +62,8 @@ public class PipelineController {
         ConsentService consentService,
         com.promptune.service.MicrosoftGraphService microsoftGraphService,
         com.promptune.service.PreferenceResolutionService preferenceResolutionService,
-        com.promptune.repository.ReceiverProfileRepository receiverProfileRepository) {
+        com.promptune.repository.ReceiverProfileRepository receiverProfileRepository,
+        com.promptune.repository.DocumentRepository documentRepository) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -73,6 +76,7 @@ public class PipelineController {
         this.microsoftGraphService = microsoftGraphService;
         this.preferenceResolutionService = preferenceResolutionService;
         this.receiverProfileRepository = receiverProfileRepository;
+        this.documentRepository = documentRepository;
     }
 
     /**
@@ -223,6 +227,18 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     Object aiText = result != null ? result.get("result") : null;
     session.setAiResponseText(aiText != null ? aiText.toString() : null);
     promptSessionRepository.save(session);
+
+    // 이 메시지에 첨부된 문서가 있으면 prompt_session_id로 연결
+    // (본인 소유 문서만 연결 - 다른 사람 문서 id를 끼워넣는 걸 방지)
+    if (req.documentIds() != null && !req.documentIds().isEmpty()) {
+        List<com.promptune.domain.Document> docs = documentRepository.findAllById(req.documentIds());
+        for (com.promptune.domain.Document doc : docs) {
+            if (doc.getOwnerUserId().equals(userId)) {
+                doc.setPromptSessionId(session.getId());
+            }
+        }
+        documentRepository.saveAll(docs);
+    }
 
     if (req.chatSessionId() != null) {
     chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
