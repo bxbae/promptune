@@ -9,7 +9,7 @@ import os
 
 from fastapi import FastAPI
 
-from app.routers import pipeline
+from app.routers import documents, pipeline
 
 
 USE_REAL_MODELS = os.getenv("USE_REAL_MODELS", "false").lower() == "true"
@@ -36,6 +36,11 @@ app = FastAPI(
 
 app.include_router(
     pipeline.router,
+    prefix="/api/ai",
+)
+
+app.include_router(
+    documents.router,
     prefix="/api/ai",
 )
 
