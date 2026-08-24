@@ -42,6 +42,9 @@ public class ReceiverProfile {
     public void setPreferredTone(String tone) { this.preferredTone = tone; this.updatedAt = LocalDateTime.now(); }
     public void setAvgLength(int length) { this.avgLength = length; }
 
+    // ← 신규 추가: relationship 세터가 원래 없어서 못 고치고 있었음
+    public void setRelationship(String relationship) { this.relationship = relationship; this.updatedAt = LocalDateTime.now(); }
+
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getReceiverName() { return receiverName; }
