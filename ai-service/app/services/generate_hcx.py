@@ -72,6 +72,7 @@ def _build_preference_context(preference: dict[str, str]) -> str:
         "speed": "속도",
         "detail": "설명 분량",
         "preserve": "원문 존중도",
+        "receiverTone": "수신자 존댓말 수위",
     }
 
     value_labels = {
@@ -189,6 +190,7 @@ def _build_prompt(
         "9. 사용자 선호도가 제공된 경우, 그 스타일(속도/설명 분량/원문 존중도)에 맞춰 답변을 조정해.",
         "10. 사용자가 요청하지 않은 링크, URL, 유튜브/영상 링크, 첨부파일, 참고자료 항목을 임의로 추가하지 마.",
         "11. '[링크 삽입]', '[URL]', '[첨부파일]' 같은 placeholder를 임의로 생성하지 마.",
+        "12. 수신자 존댓말 수위가 제공된 경우, 답변의 높임말 수준을 그 기준에 맞춰 조정해.",
         "",
         f"[업무 유형]\n{req.task_type}",
         "",
