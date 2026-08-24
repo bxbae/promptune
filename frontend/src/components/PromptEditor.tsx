@@ -99,12 +99,16 @@ export default function PromptEditor({
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
-  const activeSuggestion =
-    analysisResult?.suggest?.suggestions.find(
-      (suggestion) => !resolved.has(suggestion.element),
-    ) ?? null;
+  const targetElements = analysisResult?.recommend?.targetElements ?? [];
 
-  const activeElement = activeSuggestion?.element ?? null;
+  const activeElement =
+    targetElements.find((element) => !resolved.has(element)) ?? null;
+
+  const activeSuggestion = activeElement
+    ? (analysisResult?.suggest?.suggestions.find(
+        (suggestion) => suggestion.element === activeElement,
+      ) ?? null)
+    : null;
 
   const activeMeta = activeElement
     ? (ELEMENT_UI[activeElement] ?? {
@@ -403,7 +407,6 @@ export default function PromptEditor({
   }
 
   const gateBlocked = Boolean(gate && !gate.passed);
-  const targetElements = analysisResult?.recommend?.targetElements ?? [];
   const missing = analysisResult?.diagnose?.missing ?? {};
   const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
@@ -428,7 +431,7 @@ export default function PromptEditor({
           />
         </div>
 
-        {activeSuggestion && activeMeta && (
+        {activeElement && activeMeta && (
           <div
             className="ai-suggestion-card"
             role="region"
