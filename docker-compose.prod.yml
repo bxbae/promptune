@@ -14,7 +14,15 @@ services:
       USE_REAL_SPELLCHECK: "${USE_REAL_SPELLCHECK:-false}"
       BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
       USE_REAL_SUGGESTION: "${USE_REAL_SUGGESTION:-false}"
+      # 2026-08-24: 승득님이 올린 real HyperCLOVA X 생성(generate_hcx.py)을 켜기 위해 추가.
+      # USE_REAL_GENERATION이 컨테이너 환경에 아예 없으면 코드가 USE_REAL_MODELS로 폴백하는데,
+      # USE_REAL_MODELS를 통째로 true로 켜면 진단(KcELECTRA)/추천(suggest_hcx, 내부적으로
+      # BGE-M3까지 무조건 로드함)까지 같이 켜져 버려서 위험함 — 생성만 별도로 켤 수 있게
+      # 명시적으로 선언.
+      USE_REAL_GENERATION: "${USE_REAL_GENERATION:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
+      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
+      HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
       HF_HOME: /root/.cache/huggingface
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
