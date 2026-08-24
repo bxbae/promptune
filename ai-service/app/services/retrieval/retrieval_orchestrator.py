@@ -9,12 +9,24 @@ from app.schemas.models import (
 from app.services.retrieval.rag_retriever import retrieve
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import search_web
+from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 
 
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
-    route = classify_ml_retrieval_route(req.query)
+    conversation = resolve_conversation_retrieval(
+        query=req.query,
+        history=req.history,
+    )
+
+    effective_query = conversation.query
+
+    route = (
+        conversation.route_override
+        if conversation.route_override is not None
+        else classify_ml_retrieval_route(effective_query)
+    )
 
     documents = []
     web_results: list[WebSearchResult] = []
@@ -31,7 +43,7 @@ def execute_retrieval(
 
         result = retrieve(
             RetrieveRequest(
-                query=req.query,
+                query=effective_query,
                 owner_user_id=req.owner_user_id,
                 top_k=req.top_k,
             )
@@ -43,7 +55,7 @@ def execute_retrieval(
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
         results = search_web(
-            req.query,
+            effective_query,
             max_results=req.top_k,
         )
 

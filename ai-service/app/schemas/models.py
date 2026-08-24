@@ -156,6 +156,11 @@ class WebSearchResult(BaseModel):
 
 
 # ---------- 14번: 최종 답변 생성 ----------
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class GenerateRequest(BaseModel):
     prompt: str
     task_type: TaskType
@@ -163,6 +168,7 @@ class GenerateRequest(BaseModel):
     web_results: list[WebSearchResult] = Field(default_factory=list)
     user_context: dict[str, str] = Field(default_factory=dict)
     preference: dict[str, str] = Field(default_factory=dict)
+    history: list[ConversationMessage] = Field(default_factory=list)
 
 
 class GenerateResponse(BaseModel):
@@ -199,6 +205,7 @@ class RetrievalExecuteRequest(BaseModel):
     query: str
     owner_user_id: int | None = None
     top_k: int = 3
+    history: list[ConversationMessage] = Field(default_factory=list)
 
 
 class RetrievalExecuteResponse(BaseModel):
