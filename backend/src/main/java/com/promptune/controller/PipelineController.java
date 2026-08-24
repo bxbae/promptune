@@ -46,9 +46,10 @@ public class PipelineController {
     private final com.promptune.repository.PromptSessionRepository promptSessionRepository;
     private final com.promptune.repository.ChatSessionRepository chatSessionRepository;
 
-    private final ConsentService consentService;
+        private final ConsentService consentService;
     private final com.promptune.service.MicrosoftGraphService microsoftGraphService;
     private final com.promptune.service.PreferenceResolutionService preferenceResolutionService;
+    private final com.promptune.repository.ReceiverProfileRepository receiverProfileRepository; // 추가
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -58,7 +59,8 @@ public class PipelineController {
         com.promptune.repository.ChatSessionRepository chatSessionRepository,
         ConsentService consentService,
         com.promptune.service.MicrosoftGraphService microsoftGraphService,
-        com.promptune.service.PreferenceResolutionService preferenceResolutionService) {
+        com.promptune.service.PreferenceResolutionService preferenceResolutionService,
+        com.promptune.repository.ReceiverProfileRepository receiverProfileRepository) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -70,6 +72,7 @@ public class PipelineController {
         this.consentService = consentService;
         this.microsoftGraphService = microsoftGraphService;
         this.preferenceResolutionService = preferenceResolutionService;
+        this.receiverProfileRepository = receiverProfileRepository;
     }
 
     /**
@@ -174,10 +177,20 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     }
 
     var preference = preferenceResolutionService.resolve(authentication);
-    Map<String, String> preferenceMap = Map.of(
-            "speed", preference.speed(),
-            "detail", preference.detail(),
-            "preserve", preference.preserve());
+    Map<String, String> preferenceMap = new java.util.HashMap<>();
+    preferenceMap.put("speed", preference.speed());
+    preferenceMap.put("detail", preference.detail());
+    preferenceMap.put("preserve", preference.preserve());
+
+    // 수신자가 지정된 경우, 그 사람 preferredTone을 생성 요청에 함께 전달
+    // (본인 소유 프로필인지 확인 - 남의 receiverProfileId를 넣어도 무시되도록 방어)
+    if (req.receiverProfileId() != null) {
+        receiverProfileRepository.findById(req.receiverProfileId())
+                .filter(rp -> rp.getUserId().equals(userId))
+                .map(com.promptune.domain.ReceiverProfile::getPreferredTone)
+                .filter(tone -> tone != null && !tone.isBlank())
+                .ifPresent(tone -> preferenceMap.put("receiverTone", tone));
+    }
 
     Map result = ai.generate(
             req.finalPrompt(),
