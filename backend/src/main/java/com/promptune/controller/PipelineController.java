@@ -251,7 +251,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         if (!userId.equals(chat.getUserId())) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-               }
+                    "본인 대화만 사용할 수 있습니다.");
+        }
 
         java.util.List<com.promptune.domain.PromptSession> sessions =
                 promptSessionRepository
