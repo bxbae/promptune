@@ -1,15 +1,34 @@
 from __future__ import annotations
 
+import os
+
 from app.schemas.models import (
     RetrievalExecuteRequest,
     RetrievalExecuteResponse,
     RetrieveRequest,
     WebSearchResult,
 )
-from app.services.retrieval.rag_retriever import retrieve
+from app.services import pipeline_mock
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
+
+# app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
+# (거길 직접 import하면 순환참조라 동일 로직을 복제함)
+USE_REAL_RETRIEVAL = (
+    os.getenv(
+        "USE_REAL_RETRIEVAL",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
+
+# /retrieve 엔드포인트와 동일하게, real 모드일 때만 실제 BGE-M3 임베딩 모델을
+# 쓰는 rag_retriever를 로드한다. 예전엔 이 플래그 체크 없이 항상 real 모델을
+# 불러서, mock 모드로 설정해도 internal_rag 라우트에서 매번 BGE-M3를 로드하려다
+# 메모리 부족(OOM)으로 ai-service가 죽는 문제가 있었음 (2026-08-24).
+if USE_REAL_RETRIEVAL:
+    from app.services.retrieval.rag_retriever import retrieve
 
 
 def execute_retrieval(
@@ -41,12 +60,15 @@ def execute_retrieval(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
             )
 
-        result = retrieve(
-            RetrieveRequest(
-                query=effective_query,
-                owner_user_id=req.owner_user_id,
-                top_k=req.top_k,
-            )
+        retrieve_req = RetrieveRequest(
+            query=effective_query,
+            owner_user_id=req.owner_user_id,
+            top_k=req.top_k,
+        )
+        result = (
+            retrieve(retrieve_req)
+            if USE_REAL_RETRIEVAL
+            else pipeline_mock.retrieve(retrieve_req)
         )
 
         documents = result.documents
