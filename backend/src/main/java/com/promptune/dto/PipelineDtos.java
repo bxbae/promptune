@@ -51,10 +51,12 @@ public class PipelineDtos {
         }
 
         public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId,
-                        List<ElementAction> elementActions, Boolean useWebSearch, Long receiverProfileId) {
+                        List<ElementAction> elementActions, Boolean useWebSearch, Long receiverProfileId,
+                        List<Long> documentIds) {
                 // useWebSearch: 사용자가 "웹에서 확인" 버튼을 눌렀을 때만 true. 안 보내면(null) false로 처리.
                 // receiverProfileId: 이 프롬프트가 특정 수신자 앞으로 가는 경우, 그 사람의
                 // receiver_profile.id. 안 보내면(null) 수신자 톤 반영 없이 기존과 동일하게 동작.
+                // documentIds: 이 메시지에 첨부된 문서 id 목록. 안 보내면(null) 첨부 없음.
         }
 
         public record ClassifyResult(
