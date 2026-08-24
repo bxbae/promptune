@@ -23,12 +23,12 @@ import java.util.UUID;
 public class MicrosoftGraphService {
 
     private static final Set<String> SCOPES = Set.of(
-            "User.Read",
-            "Mail.Read",
-            "Calendars.Read",
-            "Files.Read",
-            "offline_access",
-            "User.ReadBasic.All"
+        "User.Read",
+        "Mail.Read",
+        "Calendars.Read",
+        "Files.Read",
+        "offline_access",
+        "User.Read.All"
     );
 
     private final MicrosoftConnectionRepository connectionRepository;
