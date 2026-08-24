@@ -68,16 +68,30 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        // /api/** 요청이 인증 안 됐을 때는 소셜로그인용 /login 페이지로 리다이렉트하지 않고
+        // 그냥 401만 내려주기 위한 전용 진입점. (안 하면 fetch가 리다이렉트를 타다가
+        // "Failed to fetch"로 실패하고, 토큰이 없을 때 /login 자체가 인증이 필요한 걸로
+        // 잘못 막혀있으면 무한 리다이렉트(ERR_TOO_MANY_REDIRECTS)까지 났었음)
+        org.springframework.security.web.AuthenticationEntryPoint apiEntryPoint =
+                (request, response, authException) ->
+                        response.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED, "인증이 필요합니다.");
+
         http
             .cors(cors -> {})
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex.defaultAuthenticationEntryPointFor(
+                    apiEntryPoint,
+                    new org.springframework.security.web.util.matcher.AntPathRequestMatcher("/api/**")))
             .authorizeHttpRequests(auth -> auth
                 // preflight(OPTIONS)는 브라우저가 Authorization 헤더 없이 보내므로 항상 인증 예외
                 // (없으면 CORS 이전에 Security가 403으로 먼저 막아버림 - 실제로 PATCH 요청에서 이 문제로 preflight 자체가 403 났음)
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/**", "/health", "/actuator/**", "/error").permitAll()
-                .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                // 소셜로그인이 3개(구글/네이버/카카오) 등록돼있어서 미인증 브라우저 요청은
+                // 스프링이 자동으로 "/login" 페이지로 리다이렉트함 — 이 경로 자체를 막아두면
+                // /login → 인증필요 → /login으로 리다이렉트 → ... 무한루프가 났었어서 "/login/**"로 열어둠
+                .requestMatchers("/oauth2/**", "/login/**").permitAll()
                 .requestMatchers("/api/integrations/microsoft/callback").permitAll()
                 .anyRequest().authenticated()
             )
