@@ -611,6 +611,17 @@ def suggest(
         if baseline_missing.get(element) != 1:
             continue
 
+        # CONTEXT는 현재 요청에 대한 명시적 업무 맥락이 없으면
+        # HCX가 사실을 추측해서 만들지 않도록 fail-closed 처리한다.
+        # 이 경우 suggestions=[]로 반환하고 Frontend의 되묻기/직접 입력으로 보완한다.
+        if element == "CONTEXT" and not context:
+            logger.info(
+                "Skip ungrounded CONTEXT suggestion because "
+                "no explicit context was provided text=%r",
+                req.text,
+            )
+            continue
+
         try:
             candidates = _generate_candidates(
                 text=req.text,

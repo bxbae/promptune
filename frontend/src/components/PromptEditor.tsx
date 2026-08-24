@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { analyze, execute, recordBehaviorAction, type AnalyzeResponse } from "@/lib/api";
+import {
+  analyze,
+  execute,
+  recordBehaviorAction,
+  type AnalyzeResponse,
+} from "@/lib/api";
 import { uploadDocument, type DocumentItem } from "@/api/documents";
 
 interface ElementUiMeta {
@@ -109,12 +114,16 @@ export default function PromptEditor({
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
 
-  const activeSuggestion =
-    analysisResult?.suggest?.suggestions.find(
-      (suggestion) => !resolved.has(suggestion.element),
-    ) ?? null;
+  const targetElements = analysisResult?.recommend?.targetElements ?? [];
 
-  const activeElement = activeSuggestion?.element ?? null;
+  const activeElement =
+    targetElements.find((element) => !resolved.has(element)) ?? null;
+
+  const activeSuggestion = activeElement
+    ? (analysisResult?.suggest?.suggestions.find(
+        (suggestion) => suggestion.element === activeElement,
+      ) ?? null)
+    : null;
 
   const activeMeta = activeElement
     ? (ELEMENT_UI[activeElement] ?? {
@@ -455,7 +464,6 @@ export default function PromptEditor({
   }
 
   const gateBlocked = Boolean(gate && !gate.passed);
-  const targetElements = analysisResult?.recommend?.targetElements ?? [];
   const missing = analysisResult?.diagnose?.missing ?? {};
   const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
@@ -526,83 +534,83 @@ export default function PromptEditor({
 
           {/* 밑줄(=지금은 입력창 전체) 바로 위에 뜨는 플로팅 카드.
               .input-wrap이 position:relative라 이 카드는 그 기준으로 절대 위치. */}
-        {activeSuggestion && activeMeta && (
-          <div
-            className="ai-suggestion-card"
-            role="region"
-            aria-label={`${activeElement ?? ""} 요소 추천`}
-          >
-            <div className="popup-label">
-              <span className="popup-dot" />
-              {activeMeta.label}
-            </div>
+          {activeElement && activeMeta && (
+            <div
+              className="ai-suggestion-card"
+              role="region"
+              aria-label={`${activeElement ?? ""} 요소 추천`}
+            >
+              <div className="popup-label">
+                <span className="popup-dot" />
+                {activeMeta.label}
+              </div>
 
-            <div className="popup-question">{activeMeta.question}</div>
+              <div className="popup-question">{activeMeta.question}</div>
 
-            {activeOptions.map((option, index) => (
-              <button
-                key={`${activeElement}-${option}`}
-                type="button"
-                className={`popup-option ${
-                  index === optIdx && !customOpen ? "active" : ""
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  applySuggestion(option);
-                }}
-                onMouseEnter={() => setOptIdx(index)}
-              >
-                {option}
-              </button>
-            ))}
+              {activeOptions.map((option, index) => (
+                <button
+                  key={`${activeElement}-${option}`}
+                  type="button"
+                  className={`popup-option ${
+                    index === optIdx && !customOpen ? "active" : ""
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applySuggestion(option);
+                  }}
+                  onMouseEnter={() => setOptIdx(index)}
+                >
+                  {option}
+                </button>
+              ))}
 
-            {!customOpen ? (
+              {!customOpen ? (
+                <button
+                  type="button"
+                  className="popup-custom-btn"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setCustomOpen(true);
+                  }}
+                >
+                  직접 입력
+                </button>
+              ) : (
+                <input
+                  className="popup-custom-input"
+                  autoFocus
+                  value={customValue}
+                  onChange={(e) => setCustomValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applySuggestion(customValue, true);
+                    }
+
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setCustomOpen(false);
+                      setCustomValue("");
+                    }
+                  }}
+                  placeholder="직접 입력 후 Enter"
+                />
+              )}
+
               <button
                 type="button"
                 className="popup-custom-btn"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  setCustomOpen(true);
+                  skipActiveSuggestion();
                 }}
               >
-                직접 입력
+                이 요소는 건너뛰기
               </button>
-            ) : (
-              <input
-                className="popup-custom-input"
-                autoFocus
-                value={customValue}
-                onChange={(e) => setCustomValue(e.target.value)}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    applySuggestion(customValue, true);
-                  }
-
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setCustomOpen(false);
-                    setCustomValue("");
-                  }
-                }}
-                placeholder="직접 입력 후 Enter"
-              />
-            )}
-
-            <button
-              type="button"
-              className="popup-custom-btn"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                skipActiveSuggestion();
-              }}
-            >
-              이 요소는 건너뛰기
-            </button>
-          </div>
-        )}
+            </div>
+          )}
         </div>
 
         {attachments.length > 0 && (
