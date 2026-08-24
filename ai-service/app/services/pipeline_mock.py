@@ -156,13 +156,25 @@ def validate(req: ValidateRequest) -> ValidateResponse:
     if not facts_preserved:
         issues.append(f"원문 숫자 누락: {orig_nums - gen_nums}")
 
-    # mock: 톤·모순은 실제론 KcELECTRA NLI가 판정. 지금은 통과로 가정.
-    tone_ok = True
-    no_contradiction = True
+    # 규칙 검증 결과 = 숫자 보존 여부
+    rule_ok = facts_preserved
 
-    passed = facts_preserved and tone_ok and no_contradiction
+    # mock: 의미 유사도는 실제론 BGE-M3 임베딩(semantic_validator)이 판정.
+    # mock 모드에서는 모델을 로드하지 않고 항상 통과로 가정.
+    # (2026-08-24: 이 함수가 ValidateResponse의 실제 필드(rule_ok/semantic_ok/
+    # semantic_score)가 아니라 존재하지 않는 tone_ok/no_contradiction으로
+    # 응답을 만들고 있어서, /validate가 mock 경로를 타자마자 Pydantic
+    # ValidationError로 500이 났음. /validate가 이 함수를 처음 실제로
+    # 타면서 드러난 기존 버그.)
+    semantic_ok = True
+    semantic_score = 1.0 if semantic_ok else 0.0
+
+    passed = rule_ok and semantic_ok
     return ValidateResponse(
-        passed=passed, tone_ok=tone_ok,
-        no_contradiction=no_contradiction,
-        facts_preserved=facts_preserved, issues=issues,
+        passed=passed,
+        rule_ok=rule_ok,
+        semantic_ok=semantic_ok,
+        semantic_score=semantic_score,
+        facts_preserved=facts_preserved,
+        issues=issues,
     )
