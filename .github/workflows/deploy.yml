@@ -27,7 +27,12 @@ jobs:
             cd ${{ secrets.EC2_DEPLOY_PATH }}
 
             PREV_COMMIT=$(git rev-parse HEAD)
-            echo "롤백 대상(현재) 커밋: $PREV_COMMI  ./scripts/fetch-secrets.sh || deploy_ok=false
+            echo "롤백 대상(현재) 커밋: $PREV_COMMIT"
+
+            deploy_ok=true
+            git fetch origin main || deploy_ok=false
+            git reset --hard origin/main || deploy_ok=false
+            ./scripts/fetch-secrets.sh || deploy_ok=false
             docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build || deploy_ok=false
 
             if [ "$deploy_ok" = "true" ]; then
@@ -50,7 +55,9 @@ jobs:
             if [ "$deploy_ok" != "true" ]; then
               echo "배포 실패 감지 — 이전 커밋($PREV_COMMIT)으로 롤백합니다"
               git reset --hard "$PREV_COMMIT"
-              docker compose -f docker-compose. 완료. 이번 배포는 실패로 처리합니다."
+              docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+              docker image prune -f
+              echo "롤백 완료. 이번 배포는 실패로 처리합니다."
               exit 1
             fi
 
