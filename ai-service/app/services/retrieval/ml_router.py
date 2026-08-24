@@ -99,8 +99,44 @@ def _load_router() -> MLRetrievalRouter:
 _ROUTER = _load_router()
 
 
+def _is_explicit_internal_rag(query: str) -> bool:
+    """사용자가 내부/업로드 문서를 명시적으로 지칭하면 ML보다 우선한다."""
+    text = query.strip().lower()
+
+    internal_markers = [
+        "내부 문서",
+        "내부문서",
+        "업로드한 문서",
+        "업로드 문서",
+        "업로드한 파일",
+        "사내 문서",
+        "회사 문서",
+        "첨부 문서",
+        "첨부파일",
+    ]
+
+    file_markers = [
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".xlsx",
+        ".xls",
+        ".pptx",
+        ".txt",
+        ".md",
+    ]
+
+    return (
+        any(marker in text for marker in internal_markers)
+        or any(marker in text for marker in file_markers)
+    )
+
+
 def classify_ml_retrieval_route(query: str) -> str:
     if _is_restricted(query):
         return "not_rag_or_restricted"
+
+    if _is_explicit_internal_rag(query):
+        return "internal_rag"
 
     return _ROUTER.predict(query)
