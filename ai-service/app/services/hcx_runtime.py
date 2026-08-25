@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 from functools import lru_cache
 
@@ -65,6 +66,12 @@ def load_hcx_runtime():
             "HF_HCX_DEVICE=cuda but CUDA is not available"
         )
 
+    # 2026-08-25: CPU vs GPU 벤치마크에서 "모델 로딩 시간"을 "생성 시간"과
+    # 분리해서 보려고 명시적으로 측정/로깅. 이 함수 전체(tokenizer/model
+    # from_pretrained + device로 옮기는 것까지)가 lru_cache로 최초 1회만
+    # 실행되므로, 컨테이너 기동 후 첫 요청에만 이 로그가 찍힌다.
+    load_start = time.monotonic()
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         token=token,
@@ -78,10 +85,13 @@ def load_hcx_runtime():
     model.to(device)
     model.eval()
 
+    load_elapsed = time.monotonic() - load_start
+
     logger.info(
-        "Loaded shared HCX model=%s device=%s",
+        "Loaded shared HCX model=%s device=%s load_seconds=%.2f",
         model_name,
         device,
+        load_elapsed,
     )
 
     return tokenizer, model, device
