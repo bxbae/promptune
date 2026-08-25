@@ -673,67 +673,68 @@ export default function ChatThreadPage() {
               ) : (
                 <div className="msg-assistant">
                   <div className="msg-sender">PrompTune</div>
-                  <div className="msg-assistant-row">
-                    <div className="msg-bubble assistant">
-                      {m.content}
+                  <div className="msg-assistant-response">
+                    <div className="msg-assistant-row">
+                      <div className="msg-bubble assistant">
+                        {m.content}
+                        <button
+                          type="button"
+                          className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
+                          onClick={() => copyMessage(m)}
+                          aria-label="응답 복사"
+                          title={copiedId === m.id ? "복사됨" : "복사하기"}
+                        >
+                          {copiedId === m.id ? (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
-                        onClick={() => copyMessage(m)}
-                        aria-label="응답 복사"
-                        title={copiedId === m.id ? "복사됨" : "복사하기"}
+                        className="quote-btn"
+                        onClick={() => quoteMessage(m)}
+                        aria-label="이 응답 인용"
+                        title="이 응답을 인용해서 다시 질문하기"
                       >
-                        {copiedId === m.id ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 14 4 9 9 4" />
+                          <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                        </svg>
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="quote-btn"
-                      onClick={() => quoteMessage(m)}
-                      aria-label="이 응답 인용"
-                      title="이 응답을 인용해서 다시 질문하기"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 14 4 9 9 4" />
-                        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
-                      </svg>
-                    </button>
-                  </div>
 
-                      {generatedDocuments[m.id] && (
-                        <div className="generated-file-card">
-                          <div className="generated-file-icon">
-                            📄
-                          </div>
-
-                          <div className="generated-file-info">
-                            <div className="generated-file-name">
-                              {generatedDocuments[m.id].fileName}
-                            </div>
-                            <div className="generated-file-type">
-                              {generatedDocuments[m.id].format.toUpperCase()}
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="generated-file-download"
-                            onClick={() => downloadGeneratedDocument(m)}
-                          >
-                            다운로드
-                          </button>
+                    {generatedDocuments[m.id] && (
+                      <div className="generated-file-card">
+                        <div className="generated-file-icon">
+                          📄
                         </div>
-                      )}
 
+                        <div className="generated-file-info">
+                          <div className="generated-file-name">
+                            {generatedDocuments[m.id].fileName}
+                          </div>
+                          <div className="generated-file-type">
+                            {generatedDocuments[m.id].format.toUpperCase()}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="generated-file-download"
+                          onClick={() => downloadGeneratedDocument(m)}
+                        >
+                          다운로드
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {m.promptSessionId != null && (
                     <div className="satisfaction-row">
                       {satisfaction[m.id] ? (
