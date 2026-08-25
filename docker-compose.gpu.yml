@@ -1,0 +1,52 @@
+# GPU 인스턴스 단독 테스트용 — ai-service 하나만 띄운다.
+# backend/frontend/nginx는 기존 t3.large에 그대로 둔 채, 이 인스턴스에서
+# 직접 curl로 /api/ai/generate를 호출해 CPU 대비 속도만 먼저 비교하기 위함.
+#
+# 사전 조건:
+#   1. 이 인스턴스가 g4dn.xlarge(또는 다른 GPU 인스턴스)이고, NVIDIA 드라이버 +
+#      NVIDIA Container Toolkit이 설치돼 있어야 함 (Deep Learning AMI면 기본 포함).
+#      `nvidia-smi`가 호스트에서 정상 동작하는지 먼저 확인할 것.
+#   2. 이 인스턴스에 SSM 파라미터 읽기 권한이 있는 IAM 역할(promptune-ec2-s3-role,
+#      기존 backend/ai-service 인스턴스와 동일한 역할)이 붙어있어야
+#      ./scripts/fetch-secrets.sh로 HF_TOKEN/TAVILY_API_KEY를 받아올 수 있음.
+#      역할을 못 붙이는 상황이면, 기존 인스턴스의 .env.production을 scp로
+#      임시로 옮겨와도 됨 (테스트 끝나면 지울 것).
+#
+# 사용법:
+#   ./scripts/fetch-secrets.sh              # .env.production에 HF_TOKEN 등 채우기
+#   docker compose -f docker-compose.gpu.yml --env-file .env.production up -d --build
+
+services:
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile.gpu
+    environment:
+      USE_REAL_MODELS: "false"
+      USE_REAL_DIAGNOSIS: "false"
+      USE_REAL_SPELLCHECK: "false"
+      USE_REAL_SUGGESTION: "false"
+      USE_REAL_RETRIEVAL: "false"
+      USE_REAL_VALIDATION: "false"
+      # 이 테스트의 핵심 — CPU 빌드에서 cpu였던 값을 cuda로.
+      USE_REAL_GENERATION: "true"
+      HF_TOKEN: "${HF_TOKEN:-}"
+      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
+      HF_HCX_DEVICE: "cuda"
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    # docker compose(스웜 아님)에서도 Compose v2.3+ / NVIDIA Container
+    # Toolkit이 설치돼 있으면 이 reservations 블록으로 GPU를 컨테이너에 붙일 수 있음.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  hf_cache:
