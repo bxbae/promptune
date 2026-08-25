@@ -529,7 +529,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .satisfaction-row { display: flex; align-items: center; min-height: 22px; margin-top: 8px; }
 .satisfaction-pending {
   display: flex; align-items: center; gap: 6px;
-  opacity: 0; pointer-events: none;
+  opacity: 1; pointer-events: auto;
   transition: opacity 0.15s ease;
   color: var(--muted);
   font-size: 10px;
@@ -1077,3 +1077,179 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .ms-member-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .ms-member-mail { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 .ms-members-empty { margin-top: 16px; font-size: 13px; color: var(--muted); }
+
+.document-export-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.document-export-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.document-export-btn:hover {
+  background: var(--panel-alt);
+  color: var(--ink);
+}
+
+.document-export-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.generated-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.generated-file-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.generated-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.generated-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.generated-file-type {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.generated-file-download {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.generated-file-download:hover {
+  background: var(--panel-alt);
+}
+
+.msg-assistant {
+  width: 90%;
+  max-width: 90%;
+}
+
+.generated-file-card {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+}
+
+.generated-file-icon {
+  position: relative;
+  width: 30px;
+  height: 34px;
+  flex: 0 0 30px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-alt);
+  font-size: 0;
+}
+
+.generated-file-icon::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 10px;
+  height: 1px;
+  background: var(--muted);
+  box-shadow:
+    0 5px 0 var(--muted),
+    0 10px 0 var(--muted);
+  opacity: 0.45;
+}
+
+.generated-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.generated-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.generated-file-type {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.generated-file-download {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.generated-file-download:hover {
+  background: var(--panel-alt);
+}
+
+.satisfaction-row {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  margin-top: 7px;
+}
+
+.satisfaction-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  color: var(--muted);
+  font-size: 11px;
+}
