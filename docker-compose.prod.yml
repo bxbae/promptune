@@ -14,6 +14,11 @@ services:
       USE_REAL_SPELLCHECK: "${USE_REAL_SPELLCHECK:-false}"
       BAREUN_API_KEY: "${BAREUN_API_KEY:-}"
       USE_REAL_SUGGESTION: "${USE_REAL_SUGGESTION:-false}"
+      # 2026-08-25: retrieval-execute의 웹검색(external_or_realtime) 라우트에서 사용.
+      # 이 줄이 없으면 .env.production에 TAVILY_API_KEY를 채워도 컨테이너 안으로
+      # 전달되지 않아서(docker compose는 environment에 명시된 변수만 주입함)
+      # [Retrieval] execute failed: TAVILY_API_KEY가 없습니다 가 계속 재현됨.
+      TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
       # 2026-08-24: 승득님이 올린 real HyperCLOVA X 생성(generate_hcx.py)을 켜기 위해 추가.
       # USE_REAL_GENERATION이 컨테이너 환경에 아예 없으면 코드가 USE_REAL_MODELS로 폴백하는데,
       # USE_REAL_MODELS를 통째로 true로 켜면 진단(KcELECTRA)/추천(suggest_hcx, 내부적으로
