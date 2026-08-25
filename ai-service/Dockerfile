@@ -2,6 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    fonts-noto-cjk \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
 # 1차 통합은 GPU가 아니라 CPU inference로 검증한다.

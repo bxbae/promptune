@@ -127,3 +127,34 @@ export async function deleteDocument(id: number): Promise<void> {
   });
   if (!res.ok) throw new Error(`삭제 실패: ${res.status}`);
 }
+export type DocumentFormat = "docx" | "pdf";
+
+export async function generateDocumentFile(
+  title: string,
+  content: string,
+  format: DocumentFormat,
+  templateDocumentId?: number,
+): Promise<Blob> {
+  const res = await fetch(`${API}/api/documents/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({
+      title,
+      content,
+      format,
+      templateDocumentId: templateDocumentId ?? null,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(
+      body?.error || `문서 생성 실패: ${res.status}`
+    );
+  }
+
+  return res.blob();
+}

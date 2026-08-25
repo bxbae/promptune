@@ -7,6 +7,7 @@ import com.promptune.repository.DocumentRepository;
 import com.promptune.repository.UserRepository;
 import com.promptune.service.AiServiceClient;
 import com.promptune.service.S3StorageService;
+import com.promptune.service.DocumentTemplateResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,15 +27,18 @@ public class DocumentController {
     private final UserRepository userRepository;
     private final S3StorageService s3StorageService;
     private final AiServiceClient aiServiceClient;
+    private final DocumentTemplateResolver templateResolver;
 
     public DocumentController(DocumentRepository documentRepository,
                                UserRepository userRepository,
                                S3StorageService s3StorageService,
-                               AiServiceClient aiServiceClient) {
+                               AiServiceClient aiServiceClient,
+                               DocumentTemplateResolver templateResolver) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.s3StorageService = s3StorageService;
         this.aiServiceClient = aiServiceClient;
+        this.templateResolver = templateResolver;
     }
 
     // 실제 파일을 받아 S3(promptune-document 버킷)에 업로드하고, 메타데이터를 DB에 저장한다.
@@ -79,6 +83,127 @@ public class DocumentController {
 
         return document;
     }
+
+    public record GenerateDocumentRequest(
+            String title,
+            String content,
+            String format,
+            Long templateDocumentId) {
+    }
+
+    @PostMapping(
+            value = "/generate",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<byte[]> generateDocument(
+            @RequestBody GenerateDocumentRequest req,
+            Authentication authentication) {
+
+        // 다운로드도 로그인 사용자 기능으로 유지
+        User user = currentUser(authentication);
+
+        if (req.title() == null || req.title().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "title은 비어 있을 수 없습니다.");
+        }
+
+        if (req.content() == null || req.content().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "content는 비어 있을 수 없습니다.");
+        }
+
+        if (req.format() == null || req.format().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "format은 비어 있을 수 없습니다.");
+        }
+
+        String format = req.format()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        Document template = null;
+
+        if (req.templateDocumentId() != null) {
+            template = documentRepository
+                    .findById(req.templateDocumentId())
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "템플릿 문서를 찾을 수 없습니다."));
+
+            if (!template.getOwnerUserId().equals(user.getId())) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "본인 템플릿 문서만 사용할 수 있습니다.");
+            }
+
+            if (!"TEMPLATE".equalsIgnoreCase(template.getDocumentType())) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "templateDocumentId는 TEMPLATE 문서여야 합니다.");
+            }
+        }
+
+        if (!List.of("docx", "pdf", "xlsx", "txt", "md").contains(format)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "지원 형식은 docx, pdf, xlsx, txt, md입니다.");
+        }
+
+        if (template == null) {
+            String templateIntent =
+                    (req.title() + " " + req.content())
+                            .toLowerCase(Locale.ROOT);
+
+            boolean wantsExistingTemplate =
+                    templateIntent.contains("회사 양식")
+                    || templateIntent.contains("사내 양식")
+                    || templateIntent.contains("기존 양식")
+                    || templateIntent.contains("내부 양식")
+                    || templateIntent.contains("업로드한 양식")
+                    || templateIntent.contains("회사 템플릿")
+                    || templateIntent.contains("사내 템플릿")
+                    || templateIntent.contains("기존 템플릿");
+
+            if (wantsExistingTemplate) {
+                template = templateResolver.resolve(
+                        user.getId(),
+                        req.title(),
+                        req.content(),
+                        format);
+            }
+        }
+
+        if (template == null) {
+            return aiServiceClient.generateDocument(
+                    req.title().trim(),
+                    req.content(),
+                    format);
+        }
+
+        byte[] templateBytes =
+                s3StorageService.download(template.getS3Key());
+
+        String templateFilename = template.getTitle();
+
+        if (template.getFileType() != null
+                && !template.getFileType().isBlank()
+                && !templateFilename.toLowerCase(Locale.ROOT)
+                        .endsWith("." + template.getFileType()
+                                .toLowerCase(Locale.ROOT))) {
+            templateFilename =
+                    templateFilename + "." + template.getFileType();
+        }
+
+        return aiServiceClient.generateDocument(
+                req.title().trim(),
+                req.content(),
+                format,
+                templateBytes,
+                templateFilename);
+    }
+
 
     @GetMapping
     public List<Document> myDocuments(Authentication authentication) {

@@ -12,3 +12,4 @@ python-docx
 python-multipart
 PyMuPDF
 scikit-learn==1.7.2
+openpyxl==3.1.5

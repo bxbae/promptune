@@ -6,6 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -45,6 +46,19 @@ public class S3StorageService {
             throw new UncheckedIOException("S3 업로드 실패: " + e.getMessage(), e);
         }
         return key;
+    }
+
+    public byte[] download(String s3Key) {
+        if (s3Key == null || s3Key.isBlank()) {
+            throw new IllegalArgumentException("S3 key가 비어 있습니다.");
+        }
+
+        return s3Client.getObjectAsBytes(
+                GetObjectRequest.builder()
+                        .bucket(documentsBucket)
+                        .key(s3Key)
+                        .build()
+        ).asByteArray();
     }
 
     public void delete(String s3Key) {
