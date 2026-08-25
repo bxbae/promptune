@@ -142,11 +142,22 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
     // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
     // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    Map<String, Object> retrieval = ai.retrievalExecute(
-            req.finalPrompt(),
-            userId,
-            3,
-            conversationHistory);
+    //
+    // 2026-08-25: TAVILY_API_KEY가 prod에 없으면 web_search/external_or_realtime
+    // 라우트로 분류된 요청은 ai-service의 /retrieval-execute가 500을 던지는데,
+    // 그걸 그대로 흘려보내면 /api/execute 전체가 실패해서 채팅 자체가 안 됐음
+    // (아래 user_context/Microsoft 미연동과 동일한 부류의 fail-open 처리 필요 -
+    // 검색이 안 되면 검색 없이라도 답변은 계속 생성돼야 함).
+    Map<String, Object> retrieval;
+    try {
+        retrieval = ai.retrievalExecute(
+                req.finalPrompt(),
+                userId,
+                3,
+                conversationHistory);
+    } catch (Exception e) {
+        retrieval = java.util.Map.of();
+    }
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
     java.util.List<java.util.Map<String, Object>> webResults =
