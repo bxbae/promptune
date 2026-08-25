@@ -12,6 +12,19 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 logger = logging.getLogger(__name__)
+# 2026-08-25: 벤치마크에서 "모델 로딩 시간"이 컨테이너 로그에 안 찍히는 문제
+# 확인됨 — root logger에 별도 핸들러가 없으면 Python logging의
+# "handler of last resort"가 WARNING 이상만 stderr로 내보내서,
+# logger.info()로 남긴 load_seconds= 로그가 조용히 버려지고 있었음
+# (반면 logger.exception()은 ERROR라 통과되어 보였던 것). 다른 모듈/전역
+# 로깅 설정은 건드리지 않고, 이 로거에만 INFO 레벨 핸들러를 직접 달아서
+# 확실히 컨테이너 로그(docker logs)에 찍히게 함.
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setLevel(logging.INFO)
+    _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
+    logger.addHandler(_handler)
 
 HCX_MODEL_LOCK = threading.Lock()
 
