@@ -69,6 +69,14 @@ USE_REAL_RETRIEVAL = (
     == "true"
 )
 
+USE_REAL_VALIDATION = (
+    os.getenv(
+        "USE_REAL_VALIDATION",
+        os.getenv("USE_REAL_MODELS", "false"),
+    ).lower()
+    == "true"
+)
+
 USE_REAL_GENERATION = (
     os.getenv(
         "USE_REAL_GENERATION",
@@ -231,12 +239,10 @@ def generate(req: GenerateRequest):
     tags=["15.최종 검증"],
 )
 def validate(req: ValidateRequest):
-    # semantic_validator가 rag_retriever.get_model()(BGE-M3)을 플래그 체크 없이
-    # 항상 호출해서, mock 모드(USE_REAL_MODELS=false)에서도 /api/execute마다
-    # 매번 real 임베딩 모델을 로드하려다 메모리 부족(OOM)으로 ai-service가
-    # 죽는 문제가 있었음 (2026-08-24). /retrieve와 동일하게 USE_REAL_RETRIEVAL로
-    # 게이트해서, mock 모드에서는 이미 있는 pipeline_mock.validate()를 쓰도록 수정.
-    if not USE_REAL_RETRIEVAL:
+    # semantic validator는 BGE-M3를 lazy loading하고 프로세스 내에서 재사용한다.
+    # mock 모드에서는 불필요한 BGE-M3 로딩과 메모리 사용을 피하기 위해
+    # USE_REAL_VALIDATION으로 게이트하고 pipeline_mock.validate()를 사용한다.
+    if not USE_REAL_VALIDATION:
         return pipeline_mock.validate(req)
 
     result = validate_response(
