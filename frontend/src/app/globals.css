@@ -513,15 +513,79 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   background: var(--accent-tint); color: var(--ink); padding: 12px 16px;
   border-radius: 14px 14px 2px 14px; white-space: pre-wrap; font-size: 15px;
 }
+
 /* 메시지에 첨부된 파일 칩 (전송 완료 후 - 제거 버튼 없이 읽기 전용) */
 .msg-attach-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .attach-chip.sent { background: var(--panel); max-width: 200px; }
 .msg-assistant { max-width: 90%; }
 .msg-sender { font-size: 10px; font-weight: 700; color: var(--accent-soft); letter-spacing: 0.05em; margin-bottom: 6px; }
+.msg-assistant-response { display: flex; flex-direction: column; }
 .msg-assistant-row {
   width: fit-content; position: relative; 
   display: flex; align-items: flex-end; gap: 6px; 
 }
+
+/* document 생성 */
+.document-export-row { display: flex; gap: 6px; margin-top: 8px; }
+.document-export-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer;
+}
+
+.document-export-btn:hover { background: var(--panel-alt); color: var(--ink); }
+.document-export-btn:disabled { opacity: 0.55; cursor: default; }
+
+.generated-file-card {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 10px; padding: 12px 14px; max-width: 520px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+}
+.generated-file-icon { font-size: 24px; flex-shrink: 0; }
+.generated-file-info { flex: 1; min-width: 0; }
+.generated-file-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.generated-file-type { margin-top: 3px; font-size: 11px; color: var(--muted); }
+.generated-file-download {
+  flex-shrink: 0; padding: 7px 12px; 
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; cursor: pointer;
+}
+.generated-file-download:hover { background: var(--panel-alt); }
+
+.generated-file-card {
+  width: 100%; max-width: none; box-sizing: border-box; 
+  display: flex; align-items: center; gap: 12px; 
+  margin-top: 8px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; 
+  background: transparent;
+}
+
+.generated-file-icon {
+  position: relative; width: 30px; height: 34px; flex: 0 0 30px; 
+  border: 1px solid var(--line); border-radius: 5px; background: var(--panel-alt); 
+  font-size: 0;
+}
+.generated-file-icon::after {
+  content: ""; position: absolute; left: 7px; right: 7px; top: 10px; 
+  height: 1px; background: var(--muted); 
+  box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); opacity: 0.45;
+}
+
+.generated-file-info { flex: 1; min-width: 0; }
+.generated-file-name { 
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+
+.generated-file-type { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.generated-file-download {
+  flex-shrink: 0; padding: 7px 12px; 
+  border: 1px solid var(--line); border-radius: 8px; 
+  background: transparent; color: var(--ink); 
+  font-size: 12px; cursor: pointer;
+}
+.generated-file-download:hover { ackground: var(--panel-alt); }
 
 /* 만족도 응답(.msg-assistant)에 마우스를 올렸을 때만 작게 나타남 - 평소엔 화면을 거슬리지 않게 숨김.
   opacity+pointer-events로 숨겨서 항상 같은 공간을 차지 → hover 시 레이아웃이 흔들리지 않음.
@@ -529,7 +593,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .satisfaction-row { display: flex; align-items: center; min-height: 22px; margin-top: 8px; }
 .satisfaction-pending {
   display: flex; align-items: center; gap: 6px;
-  opacity: 1; pointer-events: auto;
+  opacity: 0; pointer-events: auto;
   transition: opacity 0.15s ease;
   color: var(--muted);
   font-size: 10px;
@@ -579,6 +643,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   padding: 16px 40px 16px 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6;
   position: relative;
 }
+
 /* 복사 버튼 - 답변 오른쪽 위, 평소엔 숨겨뒀다가 응답에 마우스를 올렸을 때만 나타남 */
 .copy-btn {
   position: absolute; top: 8px; right: 8px;
@@ -1077,179 +1142,3 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .ms-member-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .ms-member-mail { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 .ms-members-empty { margin-top: 16px; font-size: 13px; color: var(--muted); }
-
-.document-export-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.document-export-btn {
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.document-export-btn:hover {
-  background: var(--panel-alt);
-  color: var(--ink);
-}
-
-.document-export-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.generated-file-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 12px 14px;
-  max-width: 520px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-}
-
-.generated-file-icon {
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.generated-file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.generated-file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.generated-file-type {
-  margin-top: 3px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.generated-file-download {
-  flex-shrink: 0;
-  padding: 7px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.generated-file-download:hover {
-  background: var(--panel-alt);
-}
-
-.msg-assistant {
-  width: 90%;
-  max-width: 90%;
-}
-
-.generated-file-card {
-  width: 100%;
-  max-width: none;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: transparent;
-}
-
-.generated-file-icon {
-  position: relative;
-  width: 30px;
-  height: 34px;
-  flex: 0 0 30px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--panel-alt);
-  font-size: 0;
-}
-
-.generated-file-icon::after {
-  content: "";
-  position: absolute;
-  left: 7px;
-  right: 7px;
-  top: 10px;
-  height: 1px;
-  background: var(--muted);
-  box-shadow:
-    0 5px 0 var(--muted),
-    0 10px 0 var(--muted);
-  opacity: 0.45;
-}
-
-.generated-file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.generated-file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.generated-file-type {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.generated-file-download {
-  flex-shrink: 0;
-  padding: 7px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.generated-file-download:hover {
-  background: var(--panel-alt);
-}
-
-.satisfaction-row {
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  min-height: 26px;
-  margin-top: 7px;
-}
-
-.satisfaction-pending {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-  color: var(--muted);
-  font-size: 11px;
-}
