@@ -150,10 +150,16 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 검색이 안 되면 검색 없이라도 답변은 계속 생성돼야 함).
     Map<String, Object> retrieval;
     try {
+        // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
+        // 본문 최대 1200자(3개면 최대 3600자+)가 프롬프트에 통째로 들어가면서
+        // t3.large CPU에서 generate() 한 번에 9분 가까이 걸리는 문제가 확인됨
+        // (nginx /api/execute 타임아웃 300초를 넘겨 "결과를 생성하지 못했습니다"로
+        // 이어짐). top_k를 3→1로 줄여 프롬프트에 들어가는 검색 결과 자체를 줄임
+        // (generate_hcx.py의 결과당 본문 길이도 1200→400자로 같이 축소).
         retrieval = ai.retrievalExecute(
                 req.finalPrompt(),
                 userId,
-                3,
+                1,
                 conversationHistory);
     } catch (Exception e) {
         retrieval = java.util.Map.of();

@@ -30,8 +30,13 @@ def _build_web_context(web_results: list[dict]) -> str:
         url = str(item.get("url", "")).strip()
         content = str(item.get("content", "")).strip()
 
-        if len(content) > 1200:
-            content = content[:1200]
+        # 2026-08-25: 1200자였을 때 검색결과 3개(top_k=3)까지 합쳐 최대 3600자+가
+        # 프롬프트에 통째로 들어가면서 t3.large CPU에서 generate() 한 번에 9분
+        # 가까이 걸리는 문제가 확인됨 (nginx 5분 타임아웃을 넘겨 실패로 이어짐).
+        # top_k를 1로 줄인 것과 함께, 결과당 본문도 400자로 축소해 프롬프트
+        # 길이 자체를 줄임.
+        if len(content) > 400:
+            content = content[:400]
 
         parts.append(
             f"[웹 검색 결과 {index}]\n"
