@@ -6,7 +6,7 @@ import re
 import torch
 
 from app.schemas.models import GenerateRequest, GenerateResponse
-from app.services.hcx_runtime import HCX_MODEL_LOCK, load_hcx_runtime
+from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
 from app.services.retrieval.retrieval_context import build_internal_context
 
 
@@ -340,7 +340,7 @@ def generate(
 
     inputs = inputs.to(device)
 
-    with HCX_MODEL_LOCK:
+    with hcx_lock(timeout=120):
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,

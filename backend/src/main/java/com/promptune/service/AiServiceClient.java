@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
@@ -267,6 +270,18 @@ public class AiServiceClient {
 
             log("ai-service", "/api/ai/generate", start, "success");
             return result;
+        } catch (HttpServerErrorException e) {
+            log("ai-service", "/api/ai/generate", start, "error");
+            // 2026-08-25: ai-service가 HCX 모델 락을 제한시간 안에 못 얻으면
+            // (동시 요청 겹침) 이제 몇 분씩 기다리게 두지 않고 503으로 빠르게
+            // 알려줌 — 그걸 여기서 명확한 메시지로 다시 감싸서 위로 던짐.
+            if (e.getStatusCode().value() == 503) {
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "AI가 지금 다른 요청을 처리하고 있습니다. 잠시 후 다시 시도해주세요.",
+                        e);
+            }
+            throw e;
         } catch (Exception e) {
             log("ai-service", "/api/ai/generate", start, "error");
             throw e;

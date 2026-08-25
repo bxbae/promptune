@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from contextlib import contextmanager
 from functools import lru_cache
 
 import torch
@@ -12,6 +13,36 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 logger = logging.getLogger(__name__)
 
 HCX_MODEL_LOCK = threading.Lock()
+
+
+class HcxBusyError(RuntimeError):
+    """HCX 모델이 다른 요청을 처리 중이라 제한시간 안에 락을 얻지 못했을 때."""
+
+
+@contextmanager
+def hcx_lock(timeout: float = 120.0):
+    """
+    HCX_MODEL_LOCK을 무한정 blocking으로 기다리지 않고, timeout 안에 못 얻으면
+    HcxBusyError를 던진다.
+
+    2026-08-25: 답변 생성(generate_hcx)뿐 아니라 문맥 재작성(conversation_context),
+    추천(suggest_hcx), 개선(improve_hcx)까지 real HCX를 쓰는 모든 경로가 이
+    락 하나를 공유한다 (CPU 인스턴스 하나에 모델을 한 벌만 올려두는 구조라
+    동시 추론이 안전하지 않아서 의도적으로 직렬화함). 문제는 이전엔 무한정
+    blocking이라, 동시에 여러 요청(특히 테스트 트래픽 + 실사용자)이 겹치면
+    뒤로 밀린 요청이 몇 분씩 조용히 대기하다가 nginx 타임아웃(5분)에야 애매한
+    504/네트워크 오류로 실패했음. 이제는 더 짧게(기본 120초) 실패해서, 호출부가
+    빠르고 명확하게 "지금 바쁘다"고 응답할 수 있게 한다.
+    """
+    acquired = HCX_MODEL_LOCK.acquire(timeout=timeout)
+    if not acquired:
+        raise HcxBusyError(
+            "AI 모델이 다른 요청을 처리하고 있어 제한시간 안에 시작하지 못했습니다."
+        )
+    try:
+        yield
+    finally:
+        HCX_MODEL_LOCK.release()
 
 
 @lru_cache(maxsize=1)

@@ -220,11 +220,21 @@ def generate(req: GenerateRequest):
     used_web_search = bool(web_results)
 
     if USE_REAL_GENERATION:
-        return generate_hcx.generate(
-            req,
-            web_results=web_results,
-            used_web_search=used_web_search,
-        )
+        # 2026-08-25: 동시에 여러 요청이 겹치면 HCX_MODEL_LOCK 대기열에 밀려서
+        # 몇 분씩 조용히 걸리다 nginx 타임아웃(5분)에야 애매하게 실패하던 문제가
+        # 있었음. hcx_lock이 제한시간(120초) 안에 못 얻으면 HcxBusyError를 던지는데,
+        # 그걸 여기서 명확한 503으로 바꿔서 사용자가 훨씬 빨리 "지금 바쁘다"는
+        # 응답을 받도록 함.
+        from app.services.hcx_runtime import HcxBusyError
+
+        try:
+            return generate_hcx.generate(
+                req,
+                web_results=web_results,
+                used_web_search=used_web_search,
+            )
+        except HcxBusyError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return pipeline_mock.generate(
         req,
