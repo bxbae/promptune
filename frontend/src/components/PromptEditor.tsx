@@ -102,6 +102,9 @@ export default function PromptEditor({
     null,
   );
   const [analyzing, setAnalyzing] = useState(false);
+  // analyze API 자체가 실패(500/503/504/timeout/network error)했을 때만 채워짐.
+  // suggestions=[]는 정상 응답이라 이거랑 무관 - 그 경우엔 이 state를 안 건드림.
+  const [analyzeError, setAnalyzeError] = useState(false);
 
   const [result, setResult] = useState("");
   const [sending, setSending] = useState(false);
@@ -124,12 +127,18 @@ export default function PromptEditor({
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
 
-  const activeSuggestion =
-    analysisResult?.suggest?.suggestions.find(
-      (suggestion) => !resolved.has(suggestion.element),
-    ) ?? null;
+  // "현재 처리할 요소"는 AI 추천(suggestions) 존재 여부가 아니라
+  // 부족 요소 목록(targetElements) 기준으로 잡아야 한다.
+  // suggestions=[]는 AI가 hallucination 방지 차 의도적으로 비웠을 수 있는 정상 응답이라,
+  // 그 경우에도 질문/직접입력/건너뛰기는 그대로 보여줘야 함.
+  const targetElements = analysisResult?.recommend?.targetElements ?? [];
+  const activeElement = targetElements.find((element) => !resolved.has(element)) ?? null;
 
-  const activeElement = activeSuggestion?.element ?? null;
+  const activeSuggestion = activeElement
+    ? (analysisResult?.suggest?.suggestions.find(
+        (suggestion) => suggestion.element === activeElement,
+      ) ?? null)
+    : null;
 
   const activeMeta = activeElement
     ? (ELEMENT_UI[activeElement] ?? {
@@ -156,14 +165,16 @@ export default function PromptEditor({
       abortRef.current = null;
     }
 
-    setGate(null);
-    setAnalysisResult(null);
     setOptIdx(0);
     setCustomOpen(false);
     setCustomValue("");
+    // 새로 분석을 시작하니 직전 에러 배너는 일단 내림 (재시도 결과를 기다림)
+    setAnalyzeError(false);
 
     if (!value.trim()) {
       setAnalyzing(false);
+      setGate(null);
+      setAnalysisResult(null);
       return;
     }
 
@@ -188,9 +199,11 @@ export default function PromptEditor({
 
         console.error("프롬프트 분석 실패:", error);
 
+        // 500/503/504/timeout/network error 등 API 자체 실패.
+        // 직전에 알고 있던 analysisResult/gate는 일부러 안 지운다 -
+        // 그래야 사용자가 이미 보고 있던 질문에서 직접입력·건너뛰기를 계속할 수 있음.
         if (abortRef.current === ctrl) {
-          setGate(null);
-          setAnalysisResult(null);
+          setAnalyzeError(true);
         }
       } finally {
         if (abortRef.current === ctrl) {
@@ -497,7 +510,6 @@ export default function PromptEditor({
   }
 
   const gateBlocked = Boolean(gate && !gate.passed);
-  const targetElements = analysisResult?.recommend?.targetElements ?? [];
   const missing = analysisResult?.diagnose?.missing ?? {};
   const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
@@ -592,7 +604,7 @@ export default function PromptEditor({
 
           {/* 밑줄(=지금은 입력창 전체) 바로 위에 뜨는 플로팅 카드.
               .input-wrap이 position:relative라 이 카드는 그 기준으로 절대 위치. */}
-        {activeSuggestion && activeMeta && (
+        {activeElement && activeMeta && (
             <div
               className="ai-suggestion-card"
               role="region"
@@ -774,6 +786,12 @@ export default function PromptEditor({
       )}
 
       {gateBlocked && <div className="gate-block">⚠ {gate?.reason}</div>}
+
+      {analyzeError && (
+        <div className="gate-block">
+          ⚠ AI 추천을 불러오지 못했습니다. 직접 입력하거나 이 요소를 건너뛸 수 있습니다.
+        </div>
+      )}
 
       {result && (
         <div className="result">
