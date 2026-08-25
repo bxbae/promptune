@@ -226,10 +226,16 @@ export default function ChatThreadPage() {
     userMessageId?: string,
   ) {
     setIsGenerating(true);
+    
+    // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
+    const detectedBeforeGen = detectReceiverName(prompt);
+    const matchedProfile = detectedBeforeGen
+      ? receiverProfiles.find((p) => p.receiverName === detectedBeforeGen)
+      : undefined;
 
     try {
       const documentIds = attachments.map((a) => a.id);
-      const res = await execute(prompt, chatSessionId, documentIds);
+      const res = await execute(prompt, chatSessionId, documentIds, matchedProfile?.id);
       const resultText = res?.result?.result ?? JSON.stringify(res);
       setIsGenerating(false);
       const assistantId = generateId();
@@ -375,7 +381,7 @@ export default function ChatThreadPage() {
                       ))}
                     </div>
                   )}
-                <div className="msg-bubble user">{m.content}</div>
+                  <div className="msg-user-line">
                   <div className="msg-user-actions">
                     <button
                       type="button"
@@ -389,7 +395,6 @@ export default function ChatThreadPage() {
                         <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
                       </svg>
                     </button>
-                  </div>
                   {m.failed && (
                     <button
                       type="button"
@@ -405,6 +410,9 @@ export default function ChatThreadPage() {
                       </svg>
                     </button>
                   )}
+                </div>
+                    <div className="msg-bubble user">{m.content}</div>
+                  </div>
                 </div>
               ) : (
                 <div className="msg-assistant">
