@@ -43,7 +43,12 @@ jobs:
               # 경우가 있었음 (2026-08-24) — 재시도 횟수/간격을 늘림.
               for i in $(seq 1 18); do
                 sleep 10
-                if curl -fsS --max-time 5 -o /dev/null https://54-180-115-193.nip.io/; then
+                # 2026-08-24: Elastic IP(3.38.254.149)를 붙이면서 도메인이 바뀜.
+                # (처음 붙이려던 52.79.49.225는 원인 불명의 권한 오류로 실패해서,
+                # 새로 발급한 3.38.254.149로 대신 연결함)
+                # 이전엔 EC2 퍼블릭 IP가 고정이 아니어서(EIP 미연결) 재시작마다
+                # 바뀔 수 있었는데, 지금은 EIP라서 앞으로는 고정됨.
+                if curl -fsS --max-time 5 -o /dev/null https://3-38-254-149.nip.io/; then
                   healthy=true
                   break
                 fi
