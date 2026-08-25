@@ -20,6 +20,7 @@ services:
       # BGE-M3까지 무조건 로드함)까지 같이 켜져 버려서 위험함 — 생성만 별도로 켤 수 있게
       # 명시적으로 선언.
       USE_REAL_GENERATION: "${USE_REAL_GENERATION:-false}"
+      USE_REAL_VALIDATION: "${USE_REAL_VALIDATION:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
       HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
       HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
