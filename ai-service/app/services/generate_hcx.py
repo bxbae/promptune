@@ -344,7 +344,13 @@ def generate(
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=768,
+                # 2026-08-25: GPU 없이 t3.large CPU만으로 순차 생성(greedy)하다 보니
+                # 768토큰 상한까지 채우는 답변(3문단 요약 등)은 nginx 타임아웃을 5분으로
+                # 늘려놔도 체감상 너무 오래 걸려서, 다른 팀원들이 "생성이 안 된다"고
+                # 여기고 새로고침 → 백엔드는 이미 완료·저장해서 새로고침하면 답변이
+                # 나오는 상황이 발생함. 응답 길이 상한을 낮춰 평균 대기시간을 줄임
+                # (모델이 그보다 먼저 끝내면 stop_strings/eos로 더 일찍 멈추는 건 동일).
+                max_new_tokens=512,
                 do_sample=False,
                 eos_token_id=tokenizer.eos_token_id,
                 stop_strings=[
