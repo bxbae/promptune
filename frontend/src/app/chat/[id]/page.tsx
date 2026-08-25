@@ -394,7 +394,7 @@ export default function ChatThreadPage() {
                       ))}
                     </div>
                   )}
-                <div className="msg-bubble user">{m.content}</div>
+                  <div className="msg-user-line">
                   <div className="msg-user-actions">
                     <button
                       type="button"
@@ -408,7 +408,6 @@ export default function ChatThreadPage() {
                         <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
                       </svg>
                     </button>
-                  </div>
                   {m.failed && (
                     <button
                       type="button"
@@ -424,6 +423,9 @@ export default function ChatThreadPage() {
                       </svg>
                     </button>
                   )}
+                </div>
+                    <div className="msg-bubble user">{m.content}</div>
+                  </div>
                 </div>
               ) : (
                 <div className="msg-assistant">
