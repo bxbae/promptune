@@ -272,14 +272,22 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     });
 }
 
-    return Map.of(
-            "taskType", d.taskType(),
-            "needsInternalDocs", "internal_rag".equals(retrieval.get("route")),
-            "retrievalRoute", retrieval.get("route"),
-            "usedInternalRag", retrieval.getOrDefault("used_internal_rag", false),
-            "usedWebSearch", retrieval.getOrDefault("used_web_search", false),
-            "result", result,
-            "promptSessionId", session.getId());
+    // 2026-08-25: retrieval-execute가 실패해서(예: TAVILY_API_KEY 없음) 위에서
+    // fail-open으로 retrieval = Map.of()(빈 맵)가 된 경우, retrieval.get("route")는
+    // null이 됨. java.util.Map.of(...)는 값이 null이면 NullPointerException을
+    // 던지기 때문에, ai-service 호출(diagnose/retrieval-execute/generate/validate/
+    // summarize-title)이 전부 성공한 뒤에도 이 리턴문에서만 500이 나는 버그가 있었음
+    // (chat session 44, 03:47:17 - retrieval-execute가 03:46:30에 실패한 직후 요청).
+    // null을 허용하는 HashMap으로 바꿔서 해결.
+    Map<String, Object> response = new java.util.HashMap<>();
+    response.put("taskType", d.taskType());
+    response.put("needsInternalDocs", "internal_rag".equals(retrieval.get("route")));
+    response.put("retrievalRoute", retrieval.get("route"));
+    response.put("usedInternalRag", retrieval.getOrDefault("used_internal_rag", false));
+    response.put("usedWebSearch", retrieval.getOrDefault("used_web_search", false));
+    response.put("result", result);
+    response.put("promptSessionId", session.getId());
+    return response;
     }
 
     private java.util.List<java.util.Map<String, String>> buildConversationHistory(
