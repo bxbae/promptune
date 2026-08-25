@@ -202,6 +202,58 @@ public class AiServiceClient {
         }
     }
 
+    public Map<String, Object> indexDocument(
+            Long documentId,
+            Long ownerUserId,
+            String fileType,
+            byte[] fileBytes,
+            String filename) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            MultiValueMap<String, Object> body =
+                    new LinkedMultiValueMap<>();
+
+            ByteArrayResource resource =
+                    new ByteArrayResource(fileBytes) {
+                        @Override
+                        public String getFilename() {
+                            return filename;
+                        }
+                    };
+
+            body.add("document_id", documentId);
+            body.add("owner_user_id", ownerUserId);
+            body.add("file_type", fileType);
+            body.add("file", resource);
+
+            Map result = client.post()
+                    .uri("/api/ai/index-document")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            log(
+                    "ai-service",
+                    "/api/ai/index-document",
+                    start,
+                    "success");
+
+            return result;
+
+        } catch (Exception e) {
+            log(
+                    "ai-service",
+                    "/api/ai/index-document",
+                    start,
+                    "error");
+            throw e;
+        }
+    }
+
+
     // Retrieval Router/Orchestrator 연동 (승연님 PR #67) — 내부문서/웹검색 여부까지 통째로 판단·실행
     public Map<String, Object> retrievalExecute(
             String query,
@@ -423,6 +475,52 @@ public class AiServiceClient {
                     start,
                     "error");
 
+            throw e;
+        }
+    }
+
+
+    public ResponseEntity<byte[]> previewDocument(
+            byte[] fileBytes,
+            String filename) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            MultiValueMap<String, Object> body =
+                    new LinkedMultiValueMap<>();
+
+            ByteArrayResource resource =
+                    new ByteArrayResource(fileBytes) {
+                        @Override
+                        public String getFilename() {
+                            return filename;
+                        }
+                    };
+
+            body.add("file", resource);
+
+            ResponseEntity<byte[]> response = client.post()
+                    .uri("/api/ai/documents/preview")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(byte[].class);
+
+            log(
+                    "ai-service",
+                    "/api/ai/documents/preview",
+                    start,
+                    "success");
+
+            return response;
+
+        } catch (Exception e) {
+            log(
+                    "ai-service",
+                    "/api/ai/documents/preview",
+                    start,
+                    "error");
             throw e;
         }
     }

@@ -95,6 +95,19 @@ export async function listDocuments(): Promise<DocumentItem[]> {
   return raw.map(fromRaw);
 }
 
+// 원본 파일 조회
+export async function fetchDocumentContent(id: number): Promise<Blob> {
+  const res = await fetch(`${API}/api/documents/${id}/content`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    throw new Error(`파일 열기 실패: ${res.status}`);
+  }
+
+  return res.blob();
+}
+
 // Update - PATCH /api/documents/{id} - title, description, documentType 수정 가능
 // TODO : 파일 자체 Update (덮어쓰기) 기능 추가 필요
 export async function updateDocument(

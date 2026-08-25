@@ -5,6 +5,7 @@ import {
   uploadDocument,
   updateDocument,
   deleteDocument,
+  fetchDocumentContent,
   DocumentItem,
   DocType,
 } from "@/api/documents";
@@ -89,6 +90,87 @@ export default function FilesPage() {
     }
   }
 
+  async function handleOpen(file: DocumentItem) {
+    const newTab = window.open("about:blank", "_blank");
+
+    if (!newTab) {
+      alert("브라우저에서 팝업을 허용해주세요.");
+      return;
+    }
+
+    try {
+      const blob = await fetchDocumentContent(file.id);
+      const extension = (file.fileType || "").toLowerCase();
+
+      let previewBlob = blob;
+
+      if (extension === "md" || extension === "txt") {
+        const buffer = await blob.arrayBuffer();
+        const text = new TextDecoder("utf-8").decode(buffer);
+
+        const escaped = text.replace(
+          /[&<>"']/g,
+          (char) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[char] || char
+        );
+
+        const html = `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${file.title}</title>
+<style>
+body {
+  margin: 0;
+  padding: 40px;
+  background: #f5f5f5;
+  color: #222;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Noto Sans KR", sans-serif;
+}
+.document {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 48px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+}
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+</style>
+</head>
+<body>
+  <main class="document"><pre>${escaped}</pre></main>
+</body>
+</html>`;
+
+        previewBlob = new Blob(
+          [html],
+          { type: "text/html;charset=UTF-8" }
+        );
+      }
+
+      const url = URL.createObjectURL(previewBlob);
+      newTab.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e: unknown) {
+      newTab.close();
+      alert(e instanceof Error ? e.message : "파일을 열 수 없습니다.");
+    }
+  }
+
   return (
     <div>
       {/* files-header */}
@@ -125,13 +207,22 @@ export default function FilesPage() {
       {!loading && !error && (
         <div className="files-grid">
           {visible.map((file) => (
-            <div className="file-card" key={file.id}>
+            <div
+                className="file-card"
+                key={file.id}
+                onClick={() => {
+                  if (editingId !== file.id) void handleOpen(file);
+                }}
+              >
               <div className="file-thumb">
                 {/* TODO: 카테고리별 배지 색상 구분 원하면 documentType 기준으로 클래스 분기 추가 */}
                 <span className="file-badge">{file.documentType}</span>
                 <button
                   className="file-menu-btn"
-                  onClick={() => setOpenMenuId(openMenuId === file.id ? null : file.id)}
+                  onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuId(openMenuId === file.id ? null : file.id);
+                    }}
                   aria-label="파일 옵션"
                 >
                   <img src="/icons/dots.png" />
@@ -140,7 +231,10 @@ export default function FilesPage() {
                 <FilePreview kind={previewKind(file.fileType)} />
 
                 {openMenuId === file.id && (
-                  <div className="file-menu">
+                  <div
+                      className="file-menu"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                     <button onClick={() => startEdit(file)}>수정</button>
                     <button className="danger" onClick={() => handleDelete(file)}>삭제</button>
                   </div>
@@ -148,7 +242,10 @@ export default function FilesPage() {
               </div>
 
               {editingId === file.id ? (
-                <div className="file-edit-row">
+                <div
+                    className="file-edit-row"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                   <input
                     className="file-edit-input"
                     value={editTitle}
