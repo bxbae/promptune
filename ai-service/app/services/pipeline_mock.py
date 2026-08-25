@@ -38,6 +38,18 @@ def suggest(req: SuggestRequest) -> SuggestResponse:
 # 이 단계는 규칙이라 목업도 실제로 동작한다. 교체 불필요.
 _NUM_RE = re.compile(r"\d+")
 
+# 2026-08-25: validate()의 "원문 숫자 보존" 검사가 "3문단으로", "5가지로" 같은
+# 서식/분량 지시어에 붙은 숫자까지 "반드시 결과에 그대로 남아있어야 하는 사실"로
+# 취급해서, 모델이 정확히 3문단으로 답하고도 본문 어디에도 숫자 "3"이라는
+# 토큰 자체가 없으면(당연히 있을 이유가 없음) rule_ok=False로 판정 → 실제 웹검색
+# 데이터가 없는 요청(TAVILY_API_KEY 없음 등)처럼 답변에 원문 숫자를 그대로 쓸
+# 이유가 없는 경우 특히 자주 오탐 발생 → 재시도까지 실패하면 사용자에게
+# "결과를 생성하지 못했습니다"로 노출됨 (chat 51, 04:23:43 503 재현).
+# 이런 서식 지시어 숫자는 "보존해야 할 사실"이 아니므로 검사 대상에서 제외.
+_FORMAT_INSTRUCTION_NUM_RE = re.compile(
+    r"\d+\s*(?:문단|문장|줄|개|가지|번째|자|단어|페이지|포인트|배|위|점)"
+)
+
 
 def safety_check(req: SafetyRequest) -> SafetyResponse:
     # 원문의 숫자가 추천에서 바뀌거나 사라졌는지 확인
@@ -150,7 +162,10 @@ def improve_prompt(req: ImprovePromptRequest) -> ImprovePromptResponse:
 def validate(req: ValidateRequest) -> ValidateResponse:
     issues = []
     # 규칙: 원문 숫자가 결과에 보존됐는지 (이 부분은 실제 동작)
-    orig_nums = set(_NUM_RE.findall(req.original))
+    # "3문단으로" 같은 서식 지시어 숫자는 보존 대상이 아니므로 먼저 제거하고
+    # 남은(실제 데이터/사실에 해당하는) 숫자만 비교한다.
+    orig_text_for_facts = _FORMAT_INSTRUCTION_NUM_RE.sub("", req.original)
+    orig_nums = set(_NUM_RE.findall(orig_text_for_facts))
     gen_nums = set(_NUM_RE.findall(req.generated))
     facts_preserved = orig_nums.issubset(gen_nums) if orig_nums else True
     if not facts_preserved:
