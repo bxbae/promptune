@@ -5,7 +5,7 @@ import logging
 import torch
 
 from app.schemas.models import ImprovePromptRequest, ImprovePromptResponse
-from app.services.hcx_runtime import HCX_MODEL_LOCK, load_hcx_runtime
+from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
 
 
 logger = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ def improve(req: ImprovePromptRequest) -> ImprovePromptResponse:
         )
         inputs = inputs.to(device)
 
-        with HCX_MODEL_LOCK:
+        with hcx_lock(timeout=60):
             with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,

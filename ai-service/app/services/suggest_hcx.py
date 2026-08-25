@@ -14,7 +14,7 @@ from app.schemas.models import (
 )
 from app.services.diagnose_real import predict_missing
 from app.services.hcx_runtime import (
-    HCX_MODEL_LOCK,
+    hcx_lock,
     load_hcx_runtime,
 )
 from app.services.validation.semantic_validator import (
@@ -394,7 +394,7 @@ def _generate_candidates(
 
     inputs = inputs.to(device)
 
-    with HCX_MODEL_LOCK:
+    with hcx_lock(timeout=60):
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,

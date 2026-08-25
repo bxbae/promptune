@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import torch
 
 from app.schemas.models import ConversationMessage
-from app.services.hcx_runtime import HCX_MODEL_LOCK, load_hcx_runtime
+from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
 
 
 @dataclass(frozen=True)
@@ -142,7 +142,7 @@ def _rewrite_query_with_hcx(
     inputs = inputs.to(device)
     input_length = inputs["input_ids"].shape[1]
 
-    with HCX_MODEL_LOCK:
+    with hcx_lock(timeout=45):
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
