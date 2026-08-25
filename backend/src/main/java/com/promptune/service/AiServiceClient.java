@@ -8,12 +8,14 @@ import com.promptune.domain.ModelUsageLog;
 import com.promptune.repository.ModelUsageLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -322,6 +324,109 @@ public class AiServiceClient {
                 Map.of(),
                 Map.of());
     }
+
+    public ResponseEntity<byte[]> generateDocument(
+            String title,
+            String content,
+            String format,
+            byte[] templateBytes,
+            String templateFilename) {
+
+        if (templateBytes == null || templateBytes.length == 0) {
+            return generateDocument(
+                    title,
+                    content,
+                    format);
+        }
+
+        long start = System.currentTimeMillis();
+
+        try {
+            MultiValueMap<String, Object> body =
+                    new LinkedMultiValueMap<>();
+
+            body.add("title", title);
+            body.add("content", content);
+            body.add("format", format);
+
+            ByteArrayResource templateResource =
+                    new ByteArrayResource(templateBytes) {
+                        @Override
+                        public String getFilename() {
+                            if (templateFilename == null
+                                    || templateFilename.isBlank()) {
+                                return "template";
+                            }
+                            return templateFilename;
+                        }
+                    };
+
+            body.add("template", templateResource);
+
+            ResponseEntity<byte[]> response = client.post()
+                    .uri("/api/ai/documents/generate-template")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(byte[].class);
+
+            log(
+                    "ai-service",
+                    "/api/ai/documents/generate-template",
+                    start,
+                    "success");
+
+            return response;
+
+        } catch (Exception e) {
+            log(
+                    "ai-service",
+                    "/api/ai/documents/generate-template",
+                    start,
+                    "error");
+
+            throw e;
+        }
+    }
+
+
+    public ResponseEntity<byte[]> generateDocument(
+            String title,
+            String content,
+            String format) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            ResponseEntity<byte[]> response = client.post()
+                    .uri("/api/ai/documents/generate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "title", title,
+                            "content", content,
+                            "format", format))
+                    .retrieve()
+                    .toEntity(byte[].class);
+
+            log(
+                    "ai-service",
+                    "/api/ai/documents/generate",
+                    start,
+                    "success");
+
+            return response;
+
+        } catch (Exception e) {
+            log(
+                    "ai-service",
+                    "/api/ai/documents/generate",
+                    start,
+                    "error");
+
+            throw e;
+        }
+    }
+
 
     public Map validate(String original, String generated) {
         long start = System.currentTimeMillis();

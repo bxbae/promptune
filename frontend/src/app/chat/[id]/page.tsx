@@ -9,7 +9,7 @@ import { suggestToneFromJobTitle } from "@/lib/toneMapping";
 import { grantConsent, getConsentStatus } from "@/api/consents";
 import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
-import type { DocumentItem } from "@/api/documents";
+import { generateDocumentFile, type DocumentFormat, type DocumentItem } from "@/api/documents";
 
 interface Message {
   id: string;
@@ -40,6 +40,99 @@ function detectReceiverName(prompt: string): string | null {
 
 // TODO: 목업 - 나중에 백엔드/ai-service 실제 스타일 분석 붙으면 이 배열 자체를 없애고
 // 백엔드가 내려주는 진짜 분석 결과로 교체할 것. 지금은 수신자와 무관하게 항상 같은 문구.
+function buildDocumentGenerationContent(
+  prompt: string,
+  title: string,
+): string {
+  if (/주간\s*업무보고|주간\s*보고/.test(prompt)) {
+    return `${prompt}
+
+구체적인 업무 실적 정보가 제공되지 않았으므로 사실을 임의로 만들지 마세요.
+실제 회사에서 바로 작성할 수 있는 전문적인 주간 업무보고서 양식으로 구성하세요.
+보고기간, 작성부서, 작성자, 금주 주요업무, 업무별 진행현황,
+주요 성과, 이슈 및 리스크, 차주 추진계획, 지원 또는 결정 요청사항을
+명확한 제목, 표, 목록을 적절히 사용하여 구성하세요.
+값을 알 수 없는 항목은 빈칸 또는 작성용 자리로 남겨주세요.`;
+  }
+
+  if (/양식|템플릿/.test(prompt)) {
+    return `${prompt}
+
+구체적인 내용이 제공되지 않았다면 사실을 임의로 만들지 마세요.
+사용자가 바로 내용을 입력할 수 있는 완성도 높은 업무용 ${title} 양식으로 만드세요.
+제목, 기본정보 영역, 핵심 본문 섹션, 표 또는 목록, 작성란을 적절히 구성하세요.
+빈 문서처럼 보이지 않도록 실제 업무에서 사용할 수 있는 구조를 충분히 제공하세요.`;
+  }
+
+  return prompt;
+}
+
+function detectDocumentGenerationRequest(
+  prompt: string,
+): { format: DocumentFormat; title: string } | null {
+  const text = prompt.trim();
+
+  const hasCreateVerb =
+    /(만들어|만들어줘|생성해|생성해줘|작성해|작성해줘)/.test(text);
+
+  const hasDocumentWord =
+    /(보고서|회의록|계획서|제안서|시말서|경위서|사유서|소명서|양식|문서)/.test(text);
+
+  const explicitFile =
+    /(워드|word|docx|pdf|파일|다운로드)/i.test(text);
+
+  const templateRequest =
+    /양식/.test(text) && hasCreateVerb;
+
+  if (
+    !(
+      hasCreateVerb &&
+      hasDocumentWord &&
+      (explicitFile || templateRequest)
+    )
+  ) {
+    return null;
+  }
+
+  let format: DocumentFormat = "pdf";
+
+  if (/(워드|word|docx)/i.test(text)) {
+    format = "docx";
+  } else if (/pdf/i.test(text)) {
+    format = "pdf";
+  } else if (/(양식|템플릿|작성용|수정 가능)/.test(text)) {
+    format = "docx";
+  }
+
+  let title = "PrompTune 생성 문서";
+
+  if (/회의록/.test(text)) {
+    title = "회의록";
+  } else if (/업무\s*보고/.test(text)) {
+    title = "업무보고서";
+  } else if (/보고서/.test(text)) {
+    title = /양식/.test(text)
+      ? "보고서 양식"
+      : "보고서";
+  } else if (/계획서/.test(text)) {
+    title = "계획서";
+  } else if (/제안서/.test(text)) {
+    title = "제안서";
+  } else if (/시말서/.test(text)) {
+    title = "시말서";
+  } else if (/경위서/.test(text)) {
+    title = "경위서";
+  } else if (/사유서/.test(text)) {
+    title = "사유서";
+  } else if (/소명서/.test(text)) {
+    title = "소명서";
+  } else if (/양식/.test(text)) {
+    title = "문서 양식";
+  }
+
+  return { format, title };
+}
+
 const MOCK_STYLE_HINTS = [
   "정중하지만 간결한 사내 업무체",
   "요청사항을 첫 문단에 배치",
@@ -87,6 +180,18 @@ export default function ChatThreadPage() {
   const [satisfaction, setSatisfaction] = useState<Record<string, "good" | "bad">>({});
   // 응답 복사 버튼 - 복사 직후 잠깐 체크 아이콘으로 바뀌었다가 원래대로 돌아옴
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [documentGenerating, setDocumentGenerating] = useState<
+    Record<string, DocumentFormat | null>
+  >({});
+
+  const [generatedDocuments, setGeneratedDocuments] = useState<
+    Record<string, {
+      fileName: string;
+      format: DocumentFormat;
+      blob: Blob;
+    }>
+  >({});
   // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 붙여보내기
   const [quotedMessage, setQuotedMessage] = useState<
     { role: "user" | "assistant"; content: string } | null
@@ -120,9 +225,85 @@ export default function ChatThreadPage() {
     }
   }
 
+  async function generateMessageDocument(
+    m: Message,
+    format: DocumentFormat,
+  ) {
+    const firstLine =
+      m.content
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) ?? "PrompTune 생성 문서";
+
+    const title = firstLine
+      .replace(/^[#*\-\s]+/, "")
+      .slice(0, 40);
+
+    setDocumentGenerating((prev) => ({
+      ...prev,
+      [m.id]: format,
+    }));
+
+    try {
+      const blob = await generateDocumentFile(
+        title,
+        m.content,
+        format,
+      );
+
+      const safeTitle =
+        title.replace(/[\\/:*?"<>|]/g, "_") ||
+        "PrompTune_생성_문서";
+
+      setGeneratedDocuments((prev) => ({
+        ...prev,
+        [m.id]: {
+          fileName: `${safeTitle}.${format}`,
+          format,
+          blob,
+        },
+      }));
+    } catch (e) {
+      alert(
+        e instanceof Error
+          ? e.message
+          : "문서 생성에 실패했습니다."
+      );
+    } finally {
+      setDocumentGenerating((prev) => ({
+        ...prev,
+        [m.id]: null,
+      }));
+    }
+  }
+
+  function downloadGeneratedDocument(m: Message) {
+    const file = generatedDocuments[m.id];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file.blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = file.fileName;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  }
+
   async function rateSatisfaction(m: Message, value: "good" | "bad") {
-    if (!m.promptSessionId || satisfaction[m.id]) return;
-    setSatisfaction((prev) => ({ ...prev, [m.id]: value })); // 낙관적 업데이트
+    if (satisfaction[m.id]) return;
+
+    setSatisfaction((prev) => ({
+      ...prev,
+      [m.id]: value,
+    }));
+
+    if (!m.promptSessionId) return;
+
     try {
       await submitPromptSessionEdit(m.promptSessionId, { satisfaction: value });
     } catch {
@@ -241,6 +422,57 @@ export default function ChatThreadPage() {
     userMessageId?: string,
   ) {
     setIsGenerating(true);
+
+    const documentRequest =
+      detectDocumentGenerationRequest(prompt);
+
+    if (documentRequest) {
+      const assistantId = generateId();
+
+      try {
+        const blob = await generateDocumentFile(
+          documentRequest.title,
+          prompt,
+          documentRequest.format,
+        );
+
+        setGeneratedDocuments((prev) => ({
+          ...prev,
+          [assistantId]: {
+            fileName:
+              `${documentRequest.title}.${documentRequest.format}`,
+            format: documentRequest.format,
+            blob,
+          },
+        }));
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant",
+            content:
+              `요청하신 ${documentRequest.title}을 만들었습니다.`,
+          },
+        ]);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant",
+            content:
+              e instanceof Error
+                ? `문서 생성에 실패했습니다: ${e.message}`
+                : "문서 생성에 실패했습니다.",
+          },
+        ]);
+      } finally {
+        setIsGenerating(false);
+      }
+
+      return;
+    }
 
     // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
     const detectedBeforeGen = detectReceiverName(prompt);
@@ -476,6 +708,31 @@ export default function ChatThreadPage() {
                       </svg>
                     </button>
                   </div>
+
+                      {generatedDocuments[m.id] && (
+                        <div className="generated-file-card">
+                          <div className="generated-file-icon">
+                            📄
+                          </div>
+
+                          <div className="generated-file-info">
+                            <div className="generated-file-name">
+                              {generatedDocuments[m.id].fileName}
+                            </div>
+                            <div className="generated-file-type">
+                              {generatedDocuments[m.id].format.toUpperCase()}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="generated-file-download"
+                            onClick={() => downloadGeneratedDocument(m)}
+                          >
+                            다운로드
+                          </button>
+                        </div>
+                      )}
 
                   {m.promptSessionId != null && (
                     <div className="satisfaction-row">
