@@ -518,6 +518,10 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .attach-chip.sent { background: var(--panel); max-width: 200px; }
 .msg-assistant { max-width: 90%; }
 .msg-sender { font-size: 10px; font-weight: 700; color: var(--accent-soft); letter-spacing: 0.05em; margin-bottom: 6px; }
+.msg-assistant-row {
+  width: fit-content; position: relative; 
+  display: flex; align-items: flex-end; gap: 6px; 
+}
 
 /* 만족도 응답(.msg-assistant)에 마우스를 올렸을 때만 작게 나타남 - 평소엔 화면을 거슬리지 않게 숨김.
   opacity+pointer-events로 숨겨서 항상 같은 공간을 차지 → hover 시 레이아웃이 흔들리지 않음.
@@ -537,7 +541,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .satisfaction-label { font-size: 12px; color: var(--muted); }
 .satisfaction-btn {
   border: none; background: transparent;
-  width: 26px; height: 26px; padding: 0; cursor: pointer;
+  width: 26px; height: 26px; padding: 0; cursor: pointer; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .satisfaction-btn:hover { background: var(--panel-alt); }
@@ -578,7 +582,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 /* 복사 버튼 - 답변 오른쪽 위, 평소엔 숨겨뒀다가 응답에 마우스를 올렸을 때만 나타남 */
 .copy-btn {
   position: absolute; top: 8px; right: 8px;
-  width: 26px; height: 26px; padding: 0;
+  width: 20px; height: 20px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 6px;
   background: var(--panel); color: var(--muted); cursor: pointer;
@@ -590,20 +594,20 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 }
 .copy-btn:hover { background: var(--panel-alt); color: var(--ink); }
 .copy-btn.copied { color: var(--accent); border-color: var(--accent-soft); opacity: 1; }
-.copy-btn svg { width: 14px; height: 14px; }
+.copy-btn svg { width: 10px; height: 10px; }
 
 /* 인용 버튼(응답) - copy-btn 왼쪽에 나란히, 같은 hover 규칙 재사용 */
 .quote-btn {
-  position: absolute; top: 8px; right: 40px;
-  width: 26px; height: 26px; padding: 0;
+  width: 22px; height: 22px; padding: 0; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 6px;
-  background: var(--panel); color: var(--muted); cursor: pointer;
+  border: none; border-radius: 50%;
+  background: var(--panel-alt); color: var(--muted); cursor: pointer;
   opacity: 0; transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
+
 .msg-assistant:hover .quote-btn,
 .quote-btn:focus-visible { opacity: 1; }
-.quote-btn:hover { background: var(--panel-alt); color: var(--ink); }
+.quote-btn:hover { background: var(--panel); color: var(--ink); }
 .quote-btn svg { width: 14px; height: 14px; }
 
 /* 응답 생성 실패 시 뜨는 작은 되돌리기(재시도) 아이콘 - 말풍선과 같은 줄, 왼쪽에 배치 */
@@ -618,9 +622,9 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .user-retry-btn:disabled { opacity: 0.5; cursor: default; }
 .user-retry-btn svg { width: 12px; height: 12px; }
 
-/* 말풍선과 같은 줄, 왼쪽에 붙는 액션 아이콘(재시도·인용) - 세로 여백을 추가로 안 씀 */
+/* 말풍선과 같은 줄, 왼쪽에 붙는 액션 아이콘(재시도·인용) - 하단 정렬, 세로 여백 없이 */
 .msg-user-line { display: flex; align-items: flex-end; gap: 4px; }
-.msg-user-actions { display: flex; flex-direction: column; gap: 4px; }
+.msg-user-actions { display: flex; gap: 4px; }
 
 /* 사용자 메시지 인용 버튼 - hover 시에만 노출 (만족도 버튼과 같은 패턴) */
 .user-quote-btn {
@@ -665,35 +669,6 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   border-radius: 50%; animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* /api/improve 연동 */
-.improve-btn {
-  height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--panel); color: var(--ink); font-size: 12.5px; font-weight: 600;
-  cursor: pointer; margin-right: 8px;
-}
-.improve-btn:disabled { opacity: 0.5; cursor: default; }
-.improve-btn:not(:disabled):hover { background: var(--panel-alt); }
-
-.improve-card {
-  margin-top: 12px; padding: 14px 16px; border: 1px solid var(--accent);
-  background: var(--accent-tint); border-radius: 12px;
-}
-.improve-card-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
-.improve-card-missing { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-.improve-card-preview {
-  font-size: 13.5px; line-height: 1.6; color: var(--ink); background: var(--panel);
-  border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; white-space: pre-wrap;
-}
-.improve-card-actions { display: flex; gap: 8px; }
-.improve-card-apply {
-  height: 32px; padding: 0 14px; border-radius: 8px; border: none;
-  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
-}
-.improve-card-dismiss {
-  height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--panel); color: var(--muted); font-size: 12.5px; cursor: pointer;
-}
 
 /* ---- 파일관리 (/files) ---- */
 .files-header { margin-bottom: 20px; }

@@ -54,9 +54,12 @@ export interface DirectEdit {
 
 interface PromptEditorProps {
   onSubmit?: (
-    text: string,
+    displayText: string,
     directEdits: DirectEdit[],
     sentAttachments: DocumentItem[],
+    // 실제로 AI에 보내는 텍스트(인용 블록·파일만 첨부 시 기본 지시문 포함).
+    // 없으면 displayText를 그대로 전송용으로도 사용.
+    sendText?: string,
   ) => void;
   compact?: boolean;
   disabled?: boolean;
@@ -437,17 +440,21 @@ export default function PromptEditor({
 
   async function onExecute() {
     const typedText = text.trim();
+    const hasDoneAttachments = attachments.some((a) => a.status === "done" && a.doc);
 
-    if (!typedText || sending || disabled) {
+    if ((!typedText && !hasDoneAttachments) || sending || disabled) {
       return;
     }
+
+    // 텍스트 없이 파일만 첨부한 경우, AI가 참고할 기본 지시문을 넣어준다.
+    const baseText = typedText || "첨부된 파일을 참고해서 답변해주세요.";
 
     // 인용된 이전 메시지가 있으면, 입력창에 보이는 텍스트(typedText)는 그대로 두고
     // 실제로 보내는 finalPrompt에만 인용 블록을 앞에 붙인다.
     // AI가 "새 지시"랑 "참고용 인용"을 헷갈리지 않도록 라벨을 명확히 구분해둠.
     const finalPrompt = quotedMessage
-      ? `[인용된 이전 ${quotedMessage.role === "user" ? "내 메시지" : "AI 응답"}]\n${quotedMessage.content}\n\n[위 내용을 참고해서 답변]\n${typedText}`
-      : typedText;
+      ? `[인용된 이전 ${quotedMessage.role === "user" ? "내 메시지" : "AI 응답"}]\n${quotedMessage.content}\n\n[위 내용을 참고해서 답변]\n${baseText}`
+      : baseText;
 
     if (onSubmit) {
       if (submittingRef.current) {
@@ -463,7 +470,7 @@ export default function PromptEditor({
         .map((a) => a.doc as DocumentItem);
 
       try {
-        onSubmit(finalPrompt, [...directEditsRef.current], sentAttachments);
+        onSubmit(typedText, [...directEditsRef.current], sentAttachments, finalPrompt);
         resetEditor();
         onClearQuote?.();
       } finally {
@@ -727,7 +734,11 @@ export default function PromptEditor({
 
             <button
               className="send-btn"
-              disabled={!text.trim() || sending || disabled}
+              disabled={
+                (!text.trim() && !attachments.some((a) => a.status === "done" && a.doc)) ||
+                sending ||
+                disabled
+              }
               onClick={() => {
                 void onExecute();
               }}
