@@ -2,18 +2,32 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# 2026-08-25: 최신 torch(버전 미고정, 기본 PyPI)가 rotary embedding 등 일부 연산에서
+# Triton을 통해 CUDA 커널을 실행 시점에 JIT 컴파일하는데, 이 JIT 컴파일 과정에 C
+# 컴파일러(gcc)가 필요하다. python:3.11-slim 베이스엔 gcc가 없어서 실제 g4dn.xlarge에서
+# 매 생성 요청마다 "RuntimeError: Failed to find C compiler. Please specify via CC
+# environment variable..." 로 500 에러가 재현됨 (torch.cuda.is_available()은 True라
+# GPU 인식 자체엔 문제가 없었고, 실제 추론 시점에만 터짐). gcc를 이미지에 설치해서 해결.
+#
+# 2026-08-25 (2차): gcc만 설치했더니 이번엔 "fatal error: stdlib.h: No such file or
+# directory"로 또 실패 — C 표준 라이브러리 헤더(libc6-dev)가 이 슬림 이미지엔 같이
+# 안 들어와 있었음. libc6-dev를 명시적으로 같이 설치해서 해결.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
 # GPU 테스트용 빌드. CPU 전용(Dockerfile)과 달리 CUDA 지원 torch를 설치한다.
 #
-# 아래 cu121은 예시값이다 — 실제로는 이 이미지를 빌드하는 EC2 인스턴스에서
-# `nvidia-smi`로 확인한 "CUDA Version"에 맞는 인덱스를 골라야 한다
-# (예: CUDA 12.1 -> cu121, CUDA 12.4 -> cu124). 맞지 않으면 torch가 설치는
-# 되지만 torch.cuda.is_available()이 False로 나온다.
-# 전체 목록: https://pytorch.org/get-started/locally/
-RUN pip install --no-cache-dir \
-    torch==2.12.1 \
-    --index-url https://download.pytorch.org/whl/cu121
+# 2026-08-25: 이전엔 torch==2.12.1 을 cu121(CUDA 12.1) 전용 인덱스에서 고정 설치했는데,
+# PyTorch가 새 CUDA 인덱스(cu124/cu126/...)를 낼 때마다 오래된 cuXXX 인덱스는 더 이상
+# 새 torch 버전을 올려주지 않아서(cu121은 2.5.1까지만 존재) 빌드가 깨짐 — 실제로
+# g4dn.xlarge에서 "No matching distribution found for torch==2.12.1" 로 재현됨.
+# 특정 cuXXX 인덱스 + 버전을 직접 고정하는 대신, 기본 PyPI에서 받는다. 최근 torch
+# 배포판은 필요한 CUDA 런타임 라이브러리(nvidia-cublas-cu12 등)를 의존성으로 같이
+# 받아오므로, 호스트의 NVIDIA 드라이버(nvidia-smi로 확인한 CUDA Version 이하만
+# 지원되면 충분 — 드라이버는 하위 호환됨)만 맞으면 별도 인덱스 지정이 필요 없다.
+RUN pip install --no-cache-dir torch
 
 RUN pip install --no-cache-dir -r requirements.txt
 
