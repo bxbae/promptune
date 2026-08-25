@@ -28,6 +28,7 @@ SECRET_KEYS=(
   NAVER_CLIENT_SECRET
   MICROSOFT_CLIENT_SECRET
   MICROSOFT_TOKEN_KEY
+  HF_TOKEN
 )
 
 if ! command -v aws >/dev/null 2>&1; then

@@ -27,6 +27,9 @@ public class Document {
     @Column(name = "document_type")
     private String documentType;   // DocumentType enum 값 중 하나 (POLICY/TEMPLATE/GUIDE/REPORT/OTHER)
 
+    @Column(name = "prompt_session_id")
+    private Long promptSessionId;  // 이 문서가 첨부된 채팅 메시지. 파일관리 탭 업로드는 null.
+
     protected Document() {}
 
     public Document(Long ownerUserId, String title, String s3Key, String fileType) {
@@ -47,4 +50,6 @@ public class Document {
     public void setDescription(String description) { this.description = description; }
     public String getDocumentType() { return documentType; }
     public void setDocumentType(String documentType) { this.documentType = documentType; }
+    public Long getPromptSessionId() { return promptSessionId; }
+    public void setPromptSessionId(Long promptSessionId) { this.promptSessionId = promptSessionId; }
 }

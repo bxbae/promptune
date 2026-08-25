@@ -48,17 +48,16 @@ export async function analyze(
 }
 
 // 11번: 실행
-// TODO : 이번 메시지에 첨부된 문서 id들. 백엔드 ExecuteRequest에 documentIds 필드가
-// 추가되면(형기님 작업 예정) 이 값으로 Document ↔ PromptSession이 연결된다.
 export async function execute(
   finalPrompt: string,
   chatSessionId?: number,
   documentIds?: number[],
+  receiverProfileId?: number,
 ) {
   const res = await fetch(`${API}/api/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ finalPrompt, chatSessionId, documentIds }),
+    body: JSON.stringify({ finalPrompt, chatSessionId, documentIds, receiverProfileId }),
   });
   if (!res.ok) throw new Error(`실행 실패: ${res.status}`);
   return res.json();
