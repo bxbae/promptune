@@ -9,12 +9,23 @@ import { suggestToneFromJobTitle } from "@/lib/toneMapping";
 import { grantConsent, getConsentStatus } from "@/api/consents";
 import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
+import type { DocumentItem } from "@/api/documents";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   promptSessionId?: number;
+  // TODO: 백엔드 /messages 응답에 첨부문서가 포함되면
+  // 지난 대화를 다시 열었을 때도 여기 채워지도록 history 로딩부에 매핑 추가
+  attachments?: DocumentItem[];
+  // 실패한 응답에만 채워짐. "재전송" 버튼이 이 payload로 runAssistant를 다시 호출.
+  failed?: boolean;
+  retryPayload?: {
+    prompt: string;
+    directEdits: DirectEdit[];
+    attachments: DocumentItem[];
+  };
 }
 
 // TODO: 정식 파이프라인 붙으면 수정
@@ -75,6 +86,14 @@ export default function ChatThreadPage() {
   const [satisfaction, setSatisfaction] = useState<Record<string, "good" | "bad">>({});
   // 응답 복사 버튼 - 복사 직후 잠깐 체크 아이콘으로 바뀌었다가 원래대로 돌아옴
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 붙여보내기
+  const [quotedMessage, setQuotedMessage] = useState<
+    { role: "user" | "assistant"; content: string } | null
+  >(null);
+
+  function quoteMessage(m: Message) {
+    setQuotedMessage({ role: m.role, content: m.content });
+  }
 
   async function copyMessage(m: Message) {
     try {
@@ -158,10 +177,15 @@ export default function ChatThreadPage() {
       const stored = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
       if (stored) {
-        // /chat/page.tsx가 { text, directEdits } JSON으로 저장
-        const { text: firstPrompt, directEdits } = JSON.parse(stored) as { text: string; directEdits: DirectEdit[] };
-        setMessages([{ id: generateId(), role: "user", content: firstPrompt }]);
-        runAssistant(firstPrompt, directEdits);
+        // /chat/page.tsx가 { text, directEdits, attachments } JSON으로 저장
+        const { text: firstPrompt, directEdits, attachments } = JSON.parse(stored) as {
+          text: string;
+          directEdits: DirectEdit[];
+          attachments?: DocumentItem[];
+        };
+        const userMessageId = generateId();
+        setMessages([{ id: userMessageId, role: "user", content: firstPrompt, attachments }]);
+        runAssistant(firstPrompt, directEdits, attachments ?? [], userMessageId);
       }
       router.replace(`/chat/${chatSessionId}`);
     }
@@ -208,7 +232,12 @@ export default function ChatThreadPage() {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isGenerating]);
 
-  async function runAssistant(prompt: string, directEdits: DirectEdit[] = []) {
+  async function runAssistant(
+    prompt: string,
+    directEdits: DirectEdit[] = [],
+    attachments: DocumentItem[] = [],
+    userMessageId?: string,
+  ) {
     setIsGenerating(true);
 
     // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
@@ -218,7 +247,8 @@ export default function ChatThreadPage() {
       : undefined;
 
     try {
-      const res = await execute(prompt, chatSessionId, matchedProfile?.id);
+      const documentIds = attachments.map((a) => a.id);
+      const res = await execute(prompt, chatSessionId, documentIds, matchedProfile?.id);
       const resultText = res?.result?.result ?? JSON.stringify(res);
       setIsGenerating(false);
       const assistantId = generateId();
@@ -267,17 +297,61 @@ export default function ChatThreadPage() {
     } catch {
       setIsGenerating(false);
       setMessages((prev) => [
-        ...prev,
-        { id: generateId(), role: "assistant", content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요." },
+        ...prev.map((x) =>
+          userMessageId && x.id === userMessageId
+            ? { ...x, failed: true, retryPayload: { prompt, directEdits, attachments } }
+            : x,
+        ),
+        {
+          id: generateId(),
+          role: "assistant",
+          content: "결과를 생성하지 못했습니다. 잠시 후 다시 시도해주세요.",
+        },
       ]);
     }
   }
 
-  function handleSubmit(text: string, directEdits: DirectEdit[]) {
+  // 실패했던 프롬프트를 같은 payload로 다시 시도.
+  // 이 프롬프트 바로 다음에 붙어있던 실패 안내 메시지들만 지우고,
+  // user 메시지의 failed 표시는 낙관적으로 먼저 지운 뒤 재요청한다.
+  function retryMessage(m: Message) {
+    if (isGenerating || !m.retryPayload) return;
+
+    setMessages((prev) => {
+      const idx = prev.findIndex((x) => x.id === m.id);
+      if (idx === -1) return prev;
+
+      const next = [...prev];
+      next[idx] = { ...next[idx], failed: false };
+
+      let removeCount = 0;
+      for (let i = idx + 1; i < next.length; i++) {
+        if (next[i].role === "assistant" && !next[i].promptSessionId) {
+          removeCount++;
+        } else {
+          break;
+        }
+      }
+      if (removeCount > 0) {
+        next.splice(idx + 1, removeCount);
+      }
+
+      return next;
+    });
+
+    const { prompt, directEdits, attachments } = m.retryPayload;
+    runAssistant(prompt, directEdits, attachments, m.id);
+  }
+
+  function handleSubmit(text: string, directEdits: DirectEdit[], attachments: DocumentItem[]) {
     if (isGenerating) return;
     setPendingConsent(null); // 새 메시지 보내면 이전 턴의 동의 카드는 정리
-    setMessages((prev) => [...prev, { id: generateId(), role: "user", content: text }]);
-    runAssistant(text, directEdits);
+    const userMessageId = generateId();
+    setMessages((prev) => [
+      ...prev,
+      { id: userMessageId, role: "user", content: text, attachments },
+    ]);
+    runAssistant(text, directEdits, attachments, userMessageId);
   }
 
   const hasThread = messages.length > 0;
@@ -310,12 +384,64 @@ export default function ChatThreadPage() {
           {messages.map((m) => (
             <div className={`msg-row ${m.role}`} key={m.id}>
               {m.role === "user" ? (
+                <div className="msg-user-col">
+                  {m.attachments && m.attachments.length > 0 && (
+                    <div className="msg-attach-row">
+                      {m.attachments.map((doc) => (
+                        <span className="attach-chip sent" key={doc.id} title={doc.title}>
+                          <span className="attach-chip-name">{doc.title}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 <div className="msg-bubble user">{m.content}</div>
+                  <div className="msg-user-actions">
+                    <button
+                      type="button"
+                      className="user-quote-btn"
+                      onClick={() => quoteMessage(m)}
+                      aria-label="이 메시지 인용"
+                      title="이 메시지를 인용해서 다시 질문하기"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 14 4 9 9 4" />
+                        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                      </svg>
+                    </button>
+                  </div>
+                  {m.failed && (
+                    <button
+                      type="button"
+                      className="user-retry-btn"
+                      onClick={() => retryMessage(m)}
+                      disabled={isGenerating}
+                      aria-label="다시 시도"
+                      title="응답 생성에 실패했어요. 다시 시도하려면 클릭하세요."
+                    >
+                      재시도<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="1 4 1 10 7 10" />
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="msg-assistant">
-                  <div className="msg-sender">PROMPTUNE</div>
+                  <div className="msg-sender">PrompTune</div>
                   <div className="msg-bubble assistant">
                     {m.content}
+                    <button
+                      type="button"
+                      className="quote-btn"
+                      onClick={() => quoteMessage(m)}
+                      aria-label="이 응답 인용"
+                      title="이 응답을 인용해서 다시 질문하기"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 14 4 9 9 4" />
+                        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                      </svg>
+                    </button>
                     <button
                       type="button"
                       className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
@@ -430,6 +556,8 @@ export default function ChatThreadPage() {
         compact
         placeholder="다음 프롬프트를 입력하세요"
         chatSessionId={chatSessionId}
+        quotedMessage={quotedMessage}
+        onClearQuote={() => setQuotedMessage(null)}
       />
     </div>
   )

@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  analyze,
-  execute,
-  recordBehaviorAction,
-  type AnalyzeResponse,
-} from "@/lib/api";
+import { analyze, execute, recordBehaviorAction, type AnalyzeResponse } from "@/lib/api";
 import { uploadDocument, type DocumentItem } from "@/api/documents";
 
 interface ElementUiMeta {
@@ -58,11 +53,18 @@ export interface DirectEdit {
 }
 
 interface PromptEditorProps {
-  onSubmit?: (text: string, directEdits: DirectEdit[]) => void;
+  onSubmit?: (
+    text: string,
+    directEdits: DirectEdit[],
+    sentAttachments: DocumentItem[],
+  ) => void;
   compact?: boolean;
   disabled?: boolean;
   placeholder?: string;
   chatSessionId?: number;
+  // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 참고시킬 때 사용.
+  quotedMessage?: { role: "user" | "assistant"; content: string } | null;
+  onClearQuote?: () => void;
 }
 
 type AttachmentState = {
@@ -78,6 +80,8 @@ export default function PromptEditor({
   disabled = false,
   placeholder,
   chatSessionId,
+  quotedMessage,
+  onClearQuote,
 }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
@@ -105,6 +109,9 @@ export default function PromptEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
+  // 한글 (조합형 입력) 중 Enter로 오전송되는 것 방지 플래그.
+  // macOS IME는 마지막 글자 확정 전에 keydown(Enter)이 먼저 발생할 수 있어서 조합이 끝났는지 여기서 직접 추적.
+  const isComposingRef = useRef(false);
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
@@ -114,16 +121,12 @@ export default function PromptEditor({
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
 
-  const targetElements = analysisResult?.recommend?.targetElements ?? [];
+  const activeSuggestion =
+    analysisResult?.suggest?.suggestions.find(
+      (suggestion) => !resolved.has(suggestion.element),
+    ) ?? null;
 
-  const activeElement =
-    targetElements.find((element) => !resolved.has(element)) ?? null;
-
-  const activeSuggestion = activeElement
-    ? (analysisResult?.suggest?.suggestions.find(
-        (suggestion) => suggestion.element === activeElement,
-      ) ?? null)
-    : null;
+  const activeElement = activeSuggestion?.element ?? null;
 
   const activeMeta = activeElement
     ? (ELEMENT_UI[activeElement] ?? {
@@ -329,6 +332,14 @@ export default function PromptEditor({
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
+      // 한글 등 조합 중(예: 마지막 글자가 아직 확정 안 됨)인 Enter는 전송 트리거로 취급하지 않는다.
+      // ref와 nativeEvent.isComposing을 둘 다 체크하는 이유:
+      // 브라우저별로 "조합 확정 순간의 Enter"에 isComposing 값이 다르게 찍히는 경우가 있어서
+      // 하나만 믿으면 여전히 새는 케이스가 생김.
+      if (isComposingRef.current || e.nativeEvent.isComposing) {
+        return;
+      }
+
       e.preventDefault();
       void onExecute();
     }
@@ -425,11 +436,18 @@ export default function PromptEditor({
   }
 
   async function onExecute() {
-    const finalPrompt = text.trim();
+    const typedText = text.trim();
 
-    if (!finalPrompt || sending || disabled) {
+    if (!typedText || sending || disabled) {
       return;
     }
+
+    // 인용된 이전 메시지가 있으면, 입력창에 보이는 텍스트(typedText)는 그대로 두고
+    // 실제로 보내는 finalPrompt에만 인용 블록을 앞에 붙인다.
+    // AI가 "새 지시"랑 "참고용 인용"을 헷갈리지 않도록 라벨을 명확히 구분해둠.
+    const finalPrompt = quotedMessage
+      ? `[인용된 이전 ${quotedMessage.role === "user" ? "내 메시지" : "AI 응답"}]\n${quotedMessage.content}\n\n[위 내용을 참고해서 답변]\n${typedText}`
+      : typedText;
 
     if (onSubmit) {
       if (submittingRef.current) {
@@ -438,9 +456,16 @@ export default function PromptEditor({
 
       submittingRef.current = true;
 
+      // resetEditor()가 attachments를 지우기 전에, 업로드가 끝난 파일만 추려서 넘긴다.
+      // (업로드 중/실패 상태는 doc이 없어서 제외)
+      const sentAttachments = attachments
+        .filter((a) => a.status === "done" && a.doc)
+        .map((a) => a.doc as DocumentItem);
+
       try {
-        onSubmit(finalPrompt, [...directEditsRef.current]);
+        onSubmit(finalPrompt, [...directEditsRef.current], sentAttachments);
         resetEditor();
+        onClearQuote?.();
       } finally {
         setTimeout(() => {
           submittingRef.current = false;
@@ -455,6 +480,7 @@ export default function PromptEditor({
     try {
       const response = await execute(finalPrompt);
       setResult(response?.result?.result ?? JSON.stringify(response));
+      onClearQuote?.();
     } catch (error) {
       console.error("프롬프트 실행 실패:", error);
       setResult("요청 실행 중 오류가 발생했습니다.");
@@ -464,6 +490,7 @@ export default function PromptEditor({
   }
 
   const gateBlocked = Boolean(gate && !gate.passed);
+  const targetElements = analysisResult?.recommend?.targetElements ?? [];
   const missing = analysisResult?.diagnose?.missing ?? {};
   const typoCount = analysisResult?.diagnose?.typos?.length ?? 0;
 
@@ -474,6 +501,24 @@ export default function PromptEditor({
       )}
 
       <div className="composer-box">
+        {quotedMessage && (
+          <div className="quote-preview">
+            <div className="quote-preview-body">
+              <span className="quote-preview-label">
+                {quotedMessage.role === "user" ? "내 메시지 인용" : "AI 응답 인용"}
+              </span>
+              <span className="quote-preview-text">{quotedMessage.content}</span>
+            </div>
+            <button
+              type="button"
+              className="quote-preview-close"
+              onClick={() => onClearQuote?.()}
+              aria-label="인용 취소"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div
           className={`input-wrap ${isDragOver ? "drag-over" : ""}`}
           onDragEnter={(e) => {
@@ -510,6 +555,12 @@ export default function PromptEditor({
               setText(value);
               scheduleAnalyze(value);
             }}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+            }}
             onKeyDown={onKeyDown}
             onScroll={(e) => {
               // 캡(maxHeight)에 도달해 내부 스크롤이 생기면
@@ -534,7 +585,7 @@ export default function PromptEditor({
 
           {/* 밑줄(=지금은 입력창 전체) 바로 위에 뜨는 플로팅 카드.
               .input-wrap이 position:relative라 이 카드는 그 기준으로 절대 위치. */}
-          {activeElement && activeMeta && (
+        {activeSuggestion && activeMeta && (
             <div
               className="ai-suggestion-card"
               role="region"

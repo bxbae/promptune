@@ -48,11 +48,16 @@ export async function analyze(
 }
 
 // 11번: 실행
-export async function execute(finalPrompt: string, chatSessionId?: number, receiverProfileId?: number) {
+export async function execute(
+  finalPrompt: string,
+  chatSessionId?: number,
+  documentIds?: number[],
+  receiverProfileId?: number,
+) {
   const res = await fetch(`${API}/api/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ finalPrompt, chatSessionId, receiverProfileId }),
+    body: JSON.stringify({ finalPrompt, chatSessionId, documentIds, receiverProfileId }),
   });
   if (!res.ok) throw new Error(`실행 실패: ${res.status}`);
   return res.json();
