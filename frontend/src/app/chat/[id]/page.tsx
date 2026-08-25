@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
-import { getChatMessages } from "@/api/chatSessions";
+import { getChatMessages, MessageAttachment } from "@/api/chatSessions";
 import { listReceiverProfiles, upsertReceiverProfile, ReceiverProfile } from "@/api/receiverProfiles";
 import { microsoftMembers } from "@/lib/microsoft";
 import { suggestToneFromJobTitle } from "@/lib/toneMapping";
@@ -16,9 +16,10 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   promptSessionId?: number;
-  // TODO: 백엔드 /messages 응답에 첨부문서가 포함되면
-  // 지난 대화를 다시 열었을 때도 여기 채워지도록 history 로딩부에 매핑 추가
-  attachments?: DocumentItem[];
+  // 방금 보낸 메시지는 DocumentItem[](업로드 응답), 지난 대화 다시 불러온 메시지는
+  // MessageAttachment[](백엔드 /messages 응답)이 들어옴. 렌더링엔 id/title만 쓰여서
+  // DocumentItem이 구조적으로 MessageAttachment를 만족하므로 타입 호환됨.
+  attachments?: MessageAttachment[];
   // 실패한 응답에만 채워짐. "재전송" 버튼이 이 payload로 runAssistant를 다시 호출.
   failed?: boolean;
   retryPayload?: {
@@ -79,7 +80,7 @@ export default function ChatThreadPage() {
   useEffect(() => {
     listReceiverProfiles()
       .then(setReceiverProfiles)
-      .catch(() => {}); // 실패해도 채팅 자체는 그대로 진행 (동의 카드만 안 뜸)
+      .catch(() => { }); // 실패해도 채팅 자체는 그대로 진행 (동의 카드만 안 뜸)
   }, []);
 
   // 만족도(👍/👎) - 메시지 id별로 선택 상태 기록 (한 번 누르면 고정, 재선택 불가 - 스토리보드 기준)
@@ -177,15 +178,16 @@ export default function ChatThreadPage() {
       const stored = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
       if (stored) {
-        // /chat/page.tsx가 { text, directEdits, attachments } JSON으로 저장
-        const { text: firstPrompt, directEdits, attachments } = JSON.parse(stored) as {
+        // /chat/page.tsx가 { text, sendText, directEdits, attachments } JSON으로 저장
+        const { text: displayText, sendText, directEdits, attachments } = JSON.parse(stored) as {
           text: string;
+          sendText?: string;
           directEdits: DirectEdit[];
           attachments?: DocumentItem[];
         };
         const userMessageId = generateId();
-        setMessages([{ id: userMessageId, role: "user", content: firstPrompt, attachments }]);
-        runAssistant(firstPrompt, directEdits, attachments ?? [], userMessageId);
+        setMessages([{ id: userMessageId, role: "user", content: displayText.trim(), attachments }]);
+        runAssistant(sendText ?? displayText, directEdits, attachments ?? [], userMessageId);
       }
       router.replace(`/chat/${chatSessionId}`);
     }
@@ -203,7 +205,7 @@ export default function ChatThreadPage() {
         if (cancelled) return;
         const loaded: Message[] = history.flatMap((m) => {
           const pair: Message[] = [];
-          if (m.prompt) pair.push({ id: `hist-${m.id}-user`, role: "user", content: m.prompt });
+          if (m.prompt) pair.push({ id: `hist-${m.id}-user`, role: "user", content: m.prompt, attachments: m.attachments });
           if (m.aiResponse) pair.push({ id: `hist-${m.id}-assistant`, role: "assistant", content: m.aiResponse, promptSessionId: m.id });
           return pair;
         });
@@ -343,15 +345,20 @@ export default function ChatThreadPage() {
     runAssistant(prompt, directEdits, attachments, m.id);
   }
 
-  function handleSubmit(text: string, directEdits: DirectEdit[], attachments: DocumentItem[]) {
+  function handleSubmit(
+    displayText: string,
+    directEdits: DirectEdit[],
+    attachments: DocumentItem[],
+    sendText?: string,
+  ) {
     if (isGenerating) return;
     setPendingConsent(null); // 새 메시지 보내면 이전 턴의 동의 카드는 정리
     const userMessageId = generateId();
     setMessages((prev) => [
       ...prev,
-      { id: userMessageId, role: "user", content: text, attachments },
+      { id: userMessageId, role: "user", content: displayText.trim(), attachments },
     ]);
-    runAssistant(text, directEdits, attachments, userMessageId);
+    runAssistant(sendText ?? displayText, directEdits, attachments, userMessageId);
   }
 
   const hasThread = messages.length > 0;
@@ -394,44 +401,68 @@ export default function ChatThreadPage() {
                       ))}
                     </div>
                   )}
-                  <div className="msg-user-line">
-                  <div className="msg-user-actions">
-                    <button
-                      type="button"
-                      className="user-quote-btn"
-                      onClick={() => quoteMessage(m)}
-                      aria-label="이 메시지 인용"
-                      title="이 메시지를 인용해서 다시 질문하기"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 14 4 9 9 4" />
-                        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
-                      </svg>
-                    </button>
-                  {m.failed && (
-                    <button
-                      type="button"
-                      className="user-retry-btn"
-                      onClick={() => retryMessage(m)}
-                      disabled={isGenerating}
-                      aria-label="다시 시도"
-                      title="응답 생성에 실패했어요. 다시 시도하려면 클릭하세요."
-                    >
-                      재시도<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="1 4 1 10 7 10" />
-                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                      </svg>
-                    </button>
+                  {(m.content || m.failed) && (
+                    <div className="msg-user-line">
+                      <div className="msg-user-actions">
+                        {m.content && (
+                          <button
+                            type="button"
+                            className="user-quote-btn"
+                            onClick={() => quoteMessage(m)}
+                            aria-label="이 메시지 인용"
+                            title="이 메시지를 인용해서 다시 질문하기"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="9 14 4 9 9 4" />
+                              <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                            </svg>
+                          </button>
+                        )}
+                        {m.failed && (
+                          <button
+                            type="button"
+                            className="user-retry-btn"
+                            onClick={() => retryMessage(m)}
+                            disabled={isGenerating}
+                            aria-label="다시 시도"
+                            title="응답 생성에 실패했어요. 다시 시도하려면 클릭하세요."
+                          >
+                            재시도<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="1 4 1 10 7 10" />
+                              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      {m.content && <div className="msg-bubble user">{m.content}</div>}
+                    </div>
                   )}
-                </div>
-                    <div className="msg-bubble user">{m.content}</div>
-                  </div>
                 </div>
               ) : (
                 <div className="msg-assistant">
                   <div className="msg-sender">PrompTune</div>
-                  <div className="msg-bubble assistant">
-                    {m.content}
+                  <div className="msg-assistant-row">
+                    <div className="msg-bubble assistant">
+                      {m.content}
+                      <button
+                        type="button"
+                        className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
+                        onClick={() => copyMessage(m)}
+                        aria-label="응답 복사"
+                        title={copiedId === m.id ? "복사됨" : "복사하기"}
+                      >
+                        {copiedId === m.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                     <button
                       type="button"
                       className="quote-btn"
@@ -443,24 +474,6 @@ export default function ChatThreadPage() {
                         <polyline points="9 14 4 9 9 4" />
                         <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
                       </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
-                      onClick={() => copyMessage(m)}
-                      aria-label="응답 복사"
-                      title={copiedId === m.id ? "복사됨" : "복사하기"}
-                    >
-                      {copiedId === m.id ? (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      )}
                     </button>
                   </div>
 
