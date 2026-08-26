@@ -1,6 +1,9 @@
 import sys
 import types
 import unittest
+from datetime import datetime
+
+from app.services.retrieval.date_resolver import KST
 
 # 2026-08-26: generate_hcx가 모듈 최상단에서 `import torch`와
 # `from app.services.hcx_runtime import hcx_lock, load_hcx_runtime`를 하는데,
@@ -76,7 +79,7 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
     참고자료를 우선" 규칙이 반드시 포함돼야 한다.
     """
 
-    def _prompt(self, web_results):
+    def _prompt(self, web_results, now=None):
         req = GenerateRequest(
             prompt="이강인 축구선수에 대해 알려줘",
             task_type="report",
@@ -86,7 +89,7 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
             preference={},
             history=[],
         )
-        return _build_system_prompt(req, web_results)
+        return _build_system_prompt(req, web_results, now=now)
 
     def test_includes_relevance_check_rule(self):
         prompt = self._prompt([])
@@ -139,6 +142,56 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
         prompt = self._prompt([])
         self.assertIn("[숫자](출처 URL)", prompt)
         self.assertIn("지어내지 마라", prompt)
+
+
+class BuildSystemPromptDateGroundingTest(unittest.TestCase):
+    """
+    2026-08-26: "이강인 소속과 프로필" 답변에 실제 오늘 날짜(2026년)와 무관한
+    "2024년 2월 기준"이 등장한 사례가 확인됨 - 시스템 프롬프트 어디에도 오늘
+    날짜를 알려주는 부분이 없어서, 모델이 사전 지식 속 임의 시점을 기준으로
+    삼은 것으로 보임. date_resolver.resolve_relative_dates(query, now=None)와
+    동일하게 now를 주입 가능하게 만들어 테스트를 결정론적으로 고정한다.
+    """
+
+    def _prompt(self, now):
+        req = GenerateRequest(
+            prompt="이강인 소속과 프로필을 알려줘",
+            task_type="report",
+            documents=[],
+            web_results=[],
+            user_context={},
+            preference={},
+            history=[],
+        )
+        return _build_system_prompt(req, [], now=now)
+
+    def test_includes_todays_date_grounding_sentence(self):
+        now = datetime(2026, 8, 26, 15, 0, tzinfo=KST)
+        prompt = self._prompt(now)
+        self.assertIn("오늘 날짜는 2026년 8월 26일이다", prompt)
+        self.assertIn("임의로 '기준 시점'이라고 답하지 마라", prompt)
+
+    def test_date_grounding_reflects_injected_now_not_a_hardcoded_year(self):
+        # 2024년 기준이 하드코딩된 게 아니라 실제로 now 파라미터를 반영하는지
+        # 확인한다 - 날짜가 바뀌면 프롬프트도 그에 맞춰 바뀌어야 한다.
+        now = datetime(2027, 1, 3, 9, 0, tzinfo=KST)
+        prompt = self._prompt(now)
+        self.assertIn("오늘 날짜는 2027년 1월 3일이다", prompt)
+        self.assertNotIn("2026년 8월 26일", prompt)
+
+    def test_recency_rule_references_todays_date(self):
+        now = datetime(2026, 8, 26, 15, 0, tzinfo=KST)
+        prompt = self._prompt(now)
+        self.assertIn("'최근', '최신', '요즘' 소식을 요청받으면", prompt)
+        self.assertIn("2026년 8월 26일) 기준으로 판단하라", prompt)
+
+    def test_defaults_to_real_current_time_when_now_not_given(self):
+        # now를 안 넘기면(실제 운영 경로) datetime.now(KST) 기준 연도가 프롬프트에
+        # 들어가야 한다 - 최소한 하드코딩된 과거 연도(2024)가 나오지 않는지만
+        # 확인한다(테스트 실행 시점의 정확한 날짜까지 고정하지 않기 위함).
+        prompt = self._prompt(None)
+        self.assertIn("오늘 날짜는", prompt)
+        self.assertNotIn("2024년 2월 기준", prompt)
 
 
 if __name__ == "__main__":

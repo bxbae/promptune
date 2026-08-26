@@ -11,7 +11,7 @@ from app.schemas.models import (
 )
 from app.services import pipeline_mock
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
-from app.services.retrieval.tavily_search import search_web
+from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
 from app.services.retrieval.search_query_cleanup import build_search_query
@@ -202,6 +202,15 @@ def execute_retrieval(
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
+        # 2026-08-26: "최근"/"최신" 같은 시점 표현은 search_query_cleanup.py의
+        # 불용구 제거(패치 13, 예: "최근 골 소식과 관련해서" 전체를 stock
+        # phrase로 지움) 이후에는 검색어에서 이미 사라져 있을 수 있다. 그래서
+        # "최근 소식은 일주일 이내 기사로 한정" 판정은 정제 전 원문
+        # effective_query에 대해 먼저 하고, 그 결과(time_range)만 정제된
+        # 검색어와 함께 넘긴다.
+        recent_only = is_recency_query(effective_query)
+        time_range = "week" if recent_only else None
+
         search_query = resolve_relative_dates(
             build_search_query(effective_query)
         )
@@ -213,6 +222,7 @@ def execute_retrieval(
         results = search_web(
             search_query,
             max_results=web_top_k,
+            time_range=time_range,
         )
 
         # 2026-08-26: "이강인 소속과 프로필" 질의가 검색어 정리(패치 13) 이후
@@ -223,6 +233,7 @@ def execute_retrieval(
         # route/검색어/실제 검색 결과를 남긴다 - 동작에는 영향 없음(순수 로깅).
         print(
             f"[Retrieval] route={route!r} search_query={search_query!r} "
+            f"time_range={time_range!r} "
             f"results={[(r.get('title'), r.get('url')) for r in results]}"
         )
 
