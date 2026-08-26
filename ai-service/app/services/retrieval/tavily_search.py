@@ -9,7 +9,7 @@ from tavily import TavilyClient
 # 출처 품질을 통제할 수 있음. 팀이 코드 배포 없이 도메인 목록을 조정할 수
 # 있도록 환경변수로 뺐고, 값이 없으면 네이버뉴스 기본값을 씀(요청대로
 # "네이버 뉴스로 한정").
-_DEFAULT_TRUSTED_DOMAINS = ["news.naver.com"]
+_DEFAULT_TRUSTED_DOMAINS = ["news.naver.com", "ytn.co.kr", "imnews.imbc.com"]
 
 # 2026-08-26: 위 도메인 제한을 배포한 직후 "오늘 삼성 주가"에 실제와 전혀
 # 다른 가격(약 90,000원, 실제로는 261,500원)을 자신 있게 답하는 회귀가
@@ -22,6 +22,12 @@ _DEFAULT_TRUSTED_DOMAINS = ["news.naver.com"]
 # 원래 목적(무관한 기사 혼입 방지)과 별개로 애초에 topic="finance"
 # 자체가 금융 데이터 소스로 좁혀 나오므로 추가 제한이 오히려 결과 자체를
 # 0건으로 만들 위험이 큼.
+#
+# 2026-08-26: 뉴스 경로가 news.naver.com 하나로만 좁혀져 있어서 "방탄소년단
+# 최근 이슈"(그래미 보이콧 관련 기사가 안 붙음), "침착맨"/"리센느" 요약
+# 요청(관련 기사가 아예 없거나 무관한 내용으로 답함) 같은 사례가 확인됨 -
+# 사용자가 직접 "YTN 뉴스나 MBC 뉴스도 링크에 포함해달라"고 요청함. 신뢰
+# 도메인을 늘리면 같은 인물/이슈를 다루는 기사를 찾을 확률이 올라간다.
 _FINANCE_MARKERS = [
     "주가", "주식", "환율", "시세", "지수", "코스피", "코스닥",
     "비트코인", "종가", "시가총액", "증시",
@@ -43,6 +49,10 @@ def _is_finance_query(query: str) -> bool:
 _PROFILE_MARKERS = [
     "프로필", "약력", "소속", "선수", "감독", "가수", "배우", "인물",
     "유튜버", "단장", "코치", "아이돌", "뮤지션",
+    # 2026-08-26: "정치인"/"인플루언서"류 인물 요청도 프로필 경로(위키백과/
+    # 나무위키 등 최신 정보가 갱신되는 백과사전 소스)를 타야 한다는 사용자
+    # 요청에 따라 추가.
+    "정치인", "인플루언서", "크리에이터", "코미디언", "국회의원",
 ]
 
 # 2026-08-26: 처음엔 "선수/축구/올림픽" 같은 키워드가 있을 때만 olympics.com을,
@@ -58,6 +68,20 @@ _PROFILE_MARKERS = [
 # 도메인을 전부 후보에 넣는다.
 _PROFILE_BASE_DOMAINS = [
     "ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com",
+]
+
+# 2026-08-26: "다른 유튜버를 검색해보니 검색 결과가 음악인으로 잘못 나온다"는
+# 사용자 리포트가 확인됨 - 위 문단의 "항상 4개 도메인 전부"는 카테고리를
+# 모를 때(마커가 전혀 없을 때)는 여전히 맞지만, 질의에 "유튜버"/"정치인"/
+# "인플루언서"처럼 음악인·체육인이 아니라는 게 명시된 경우까지 grammy.com/
+# olympics.com을 검색 후보에 넣으면, 이름이 일부만 겹치는 무관한 음악인/
+# 체육인 문서가 섞여 들어와 모델이 인물을 혼동하는 사례가 생긴다. 이런
+# 명시적 비-음악/비-체육 인물은 사용자가 요청한 대로 "언론사 인터뷰 +
+# 위키백과"를 근거로 삼는다 - grammy/olympics 대신 신뢰 뉴스 도메인
+# (_trusted_domains(), 환경변수로 조정 가능)을 후보에 넣는다.
+_NON_MUSIC_SPORTS_PROFILE_MARKERS = [
+    "유튜버", "정치인", "인플루언서", "크리에이터", "코미디언",
+    "국회의원", "시장", "장관", "대통령", "아나운서", "기자",
 ]
 
 # 2026-08-26: namu.wiki 검색 결과 제목이 "이강인 (r444 판)"처럼 특정 리비전
@@ -80,7 +104,16 @@ def _is_profile_query(query: str) -> bool:
     return any(marker in text for marker in _PROFILE_MARKERS)
 
 
+def _is_non_music_sports_profile_query(query: str) -> bool:
+    text = query.lower()
+    return any(marker in text for marker in _NON_MUSIC_SPORTS_PROFILE_MARKERS)
+
+
 def _profile_domains(query: str) -> list[str]:
+    if _is_non_music_sports_profile_query(query):
+        return list(
+            dict.fromkeys(["ko.wikipedia.org", "namu.wiki"] + _trusted_domains())
+        )
     return list(_PROFILE_BASE_DOMAINS)
 
 

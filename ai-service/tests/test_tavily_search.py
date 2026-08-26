@@ -26,9 +26,15 @@ class TrustedDomainsTest(unittest.TestCase):
         else:
             os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original
 
-    def test_defaults_to_naver_news_when_unset(self):
+    def test_defaults_to_naver_ytn_mbc_news_when_unset(self):
+        # 2026-08-26: 사용자가 "YTN 뉴스나 MBC 뉴스도 링크에 포함해달라"고
+        # 요청함 - 네이버뉴스 하나로만 좁혔을 때 방탄소년단 최근 이슈(그래미
+        # 보이콧)/침착맨/리센느 같은 질의의 관련 기사를 놓치는 사례가 확인됨.
         os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
-        self.assertEqual(_trusted_domains(), ["news.naver.com"])
+        self.assertEqual(
+            _trusted_domains(),
+            ["news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
 
     def test_reads_comma_separated_custom_list(self):
         os.environ["TAVILY_TRUSTED_DOMAINS"] = "news.naver.com, reuters.com , cnbc.com"
@@ -69,7 +75,10 @@ class SearchWebTest(unittest.TestCase):
 
         self.assertEqual(results, [{"title": "t", "url": "u", "content": "c"}])
         _, kwargs = mock_client.search.call_args
-        self.assertEqual(kwargs["include_domains"], ["news.naver.com"])
+        self.assertEqual(
+            kwargs["include_domains"],
+            ["news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
         self.assertEqual(kwargs["topic"], "news")
         self.assertEqual(kwargs["max_results"], 3)
 
@@ -144,7 +153,10 @@ class SearchWebTest(unittest.TestCase):
 
         first_kwargs = mock_client.search.call_args_list[0].kwargs
         second_kwargs = mock_client.search.call_args_list[1].kwargs
-        self.assertEqual(first_kwargs["include_domains"], ["news.naver.com"])
+        self.assertEqual(
+            first_kwargs["include_domains"],
+            ["news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
         self.assertNotIn("include_domains", second_kwargs)
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
@@ -344,8 +356,94 @@ class ProfileQueryDomainsTest(unittest.TestCase):
 
         _, kwargs = mock_client.search.call_args
         self.assertEqual(kwargs["topic"], "news")
-        self.assertEqual(kwargs["include_domains"], ["news.naver.com"])
+        self.assertEqual(
+            kwargs["include_domains"],
+            ["news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
         self.assertEqual(mock_client.search.call_count, 1)
+
+
+class NonMusicSportsProfileDomainsTest(unittest.TestCase):
+    """
+    2026-08-26: "다른 유튜버를 검색해보니 검색 결과가 음악인으로 잘못 나온다"는
+    사용자 리포트가 확인됨 - "유튜버"/"정치인"/"인플루언서"처럼 음악인·체육인이
+    아니라는 게 질의에 명시된 경우, grammy.com/olympics.com에 이름이 일부만
+    겹치는 무관한 인물 문서가 섞여 들어와 모델이 인물을 혼동한 것으로 보임.
+    사용자가 요청한 대로 "언론사 인터뷰 + 위키백과"를 근거로 삼도록 이런
+    질의는 grammy/olympics 대신 신뢰 뉴스 도메인을 후보에 넣는다.
+    """
+
+    def setUp(self):
+        self._original_key = os.environ.get("TAVILY_API_KEY")
+        os.environ["TAVILY_API_KEY"] = "test-key"
+        self._original_domains = os.environ.get("TAVILY_TRUSTED_DOMAINS")
+        os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+
+    def tearDown(self):
+        if self._original_key is None:
+            os.environ.pop("TAVILY_API_KEY", None)
+        else:
+            os.environ["TAVILY_API_KEY"] = self._original_key
+        if self._original_domains is None:
+            os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+        else:
+            os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_youtuber_profile_query_excludes_music_and_sports_domains(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "어느 유튜버", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("어느 유튜버의 프로필을 알려줘", max_results=3)
+
+        _, kwargs = mock_client.search.call_args
+        self.assertEqual(
+            kwargs["include_domains"],
+            ["ko.wikipedia.org", "namu.wiki", "news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_politician_profile_query_excludes_music_and_sports_domains(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "어느 정치인", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("어느 정치인의 약력을 알려줘", max_results=3)
+
+        _, kwargs = mock_client.search.call_args
+        self.assertNotIn("grammy.com", kwargs["include_domains"])
+        self.assertNotIn("olympics.com", kwargs["include_domains"])
+        self.assertIn("ko.wikipedia.org", kwargs["include_domains"])
+        self.assertIn("namu.wiki", kwargs["include_domains"])
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_athlete_profile_query_still_includes_music_and_sports_domains(
+        self, mock_client_cls
+    ):
+        # 회귀 방지: 음악인/체육인 마커가 있거나 마커가 아예 없는 프로필
+        # 질의는 여전히 grammy.com/olympics.com을 포함해야 한다(패치 16).
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "이강인", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("이강인 소속과 프로필을 알려줘", max_results=3)
+
+        _, kwargs = mock_client.search.call_args
+        self.assertEqual(
+            kwargs["include_domains"],
+            ["ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com"],
+        )
 
 
 class IsRecencyQueryTest(unittest.TestCase):
