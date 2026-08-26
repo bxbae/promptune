@@ -2,7 +2,11 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.services.retrieval.tavily_search import _trusted_domains, search_web
+from app.services.retrieval.tavily_search import (
+    _trusted_domains,
+    is_recency_query,
+    search_web,
+)
 
 
 class TrustedDomainsTest(unittest.TestCase):
@@ -342,6 +346,127 @@ class ProfileQueryDomainsTest(unittest.TestCase):
         self.assertEqual(kwargs["topic"], "news")
         self.assertEqual(kwargs["include_domains"], ["news.naver.com"])
         self.assertEqual(mock_client.search.call_count, 1)
+
+
+class IsRecencyQueryTest(unittest.TestCase):
+    """
+    2026-08-26: "최근 소식은 오늘 기준 일주일 이내 기사를 기준으로 삼아달라"는
+    사용자 요청에 따라, 이 마커 판정 함수가 retrieval_orchestrator.py에서
+    검색어 정제(불용구 제거) *이전*의 원문 질의에 대해 호출된다. 정제 이후에는
+    "최근 골 소식과 관련해서" 같은 문구 자체가 이미 지워져 있을 수 있어
+    정제 후 문자열로 판정하면 항상 False가 나온다 - 그래서 이 함수 자체의
+    동작만 독립적으로 고정한다.
+    """
+
+    def test_detects_common_recency_markers(self):
+        for query in [
+            "이강인 최근 소식 알려줘",
+            "오늘 삼성 주가를 안내해줘",
+            "어제 lg 트윈스 경기 결과 알려줘",
+            "지금 이강인 소속팀이 어디야",
+            "요즘 이강인 근황이 궁금해",
+            "방금 나온 뉴스 알려줘",
+            "이강인 최신 이슈가 뭐야",
+            "이강인의 현재 소속을 알려줘",
+        ]:
+            with self.subTest(query=query):
+                self.assertTrue(is_recency_query(query))
+
+    def test_does_not_flag_queries_without_recency_markers(self):
+        for query in [
+            "이강인 소속과 프로필을 알려줘",
+            "그럼 이 문서를 3문단으로 요약해줘",
+            "LG 트윈스 단장님의 이름과 약력을 안내해줘",
+        ]:
+            with self.subTest(query=query):
+                self.assertFalse(is_recency_query(query))
+
+    def test_empty_query_is_not_recency(self):
+        self.assertFalse(is_recency_query(""))
+
+
+class SearchWebTimeRangeTest(unittest.TestCase):
+    """
+    2026-08-26: "최근" 소식 요청에 몇 달~몇 년 전 기사까지 섞여 나온 사례가
+    확인됨 - search_web()이 time_range를 받으면 Tavily search()에 그대로
+    실려 나가는지, 받지 않으면(None) 아예 파라미터를 안 붙이는지(기존 동작
+    보존) 둘 다 고정한다.
+    """
+
+    def setUp(self):
+        self._original_key = os.environ.get("TAVILY_API_KEY")
+        os.environ["TAVILY_API_KEY"] = "test-key"
+        self._original_domains = os.environ.get("TAVILY_TRUSTED_DOMAINS")
+        os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+
+    def tearDown(self):
+        if self._original_key is None:
+            os.environ.pop("TAVILY_API_KEY", None)
+        else:
+            os.environ["TAVILY_API_KEY"] = self._original_key
+        if self._original_domains is None:
+            os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+        else:
+            os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_news_query_passes_time_range_through(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("어제 lg 트윈스 경기 결과 알려줘", max_results=3, time_range="week")
+
+        _, kwargs = mock_client.search.call_args
+        self.assertEqual(kwargs["time_range"], "week")
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_profile_query_passes_time_range_through(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "이강인", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("이강인 소속과 프로필을 알려줘", max_results=3, time_range="week")
+
+        _, kwargs = mock_client.search.call_args
+        self.assertEqual(kwargs["time_range"], "week")
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_no_time_range_param_when_not_requested(self, mock_client_cls):
+        # 기존 호출부(orchestrator가 time_range를 안 넘기는 경우 등)의 동작을
+        # 그대로 보존한다 - time_range를 안 주면 Tavily 호출에 그 키 자체가
+        # 없어야 한다(값이 None으로라도 붙으면 Tavily가 이를 어떻게 처리할지
+        # 불명확하므로 아예 생략).
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("어제 lg 트윈스 경기 결과 알려줘", max_results=3)
+
+        _, kwargs = mock_client.search.call_args
+        self.assertNotIn("time_range", kwargs)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_finance_query_ignores_time_range(self, mock_client_cls):
+        # 시세류는 topic="finance" 자체가 이미 최신 데이터 소스로 좁혀져
+        # 있으므로, 실수로 time_range가 전달돼도 무시한다(추가 제약으로
+        # 결과가 0건이 되는 회귀를 막기 위함).
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "261,500원"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("오늘 삼성 주가를 안내해줘", max_results=3, time_range="week")
+
+        _, kwargs = mock_client.search.call_args
+        self.assertNotIn("time_range", kwargs)
 
 
 if __name__ == "__main__":

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 
 import torch
 
 from app.schemas.models import GenerateRequest, GenerateResponse
 from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
+from app.services.retrieval.date_resolver import KST
 from app.services.retrieval.retrieval_context import build_internal_context
 
 
@@ -483,7 +485,20 @@ def _build_prompt(
 def _build_system_prompt(
     req: GenerateRequest,
     web_results: list[dict],
+    now: datetime | None = None,
 ) -> str:
+    # 2026-08-26: "이강인 프로필" 질의 답변에 "2024년 2월 기준"처럼 실제 오늘
+    # 날짜(2026년)와 무관한 임의의 연도가 등장하는 사례가 확인됨. 시스템
+    # 프롬프트 어디에도 오늘 날짜를 알려주는 부분이 없어서, 모델이 사전 지식에
+    # 남아있는 훈련 데이터 시점의 날짜를 "기준 시점"으로 잘못 골라 쓴 것으로
+    # 보임. date_resolver.py의 KST/now 패턴을 그대로 재사용해 실제 날짜를
+    # 프롬프트에 명시하고, 테스트에서 결정론적으로 검증할 수 있도록 now를
+    # 주입 가능한 파라미터로 둔다(date_resolver.resolve_relative_dates와 동일 패턴).
+    if now is None:
+        now = datetime.now(KST)
+
+    today_str = f"{now.year}년 {now.month}월 {now.day}일"
+
     web_context = _build_web_context(web_results)
     user_context = _build_user_context(req.user_context)
     preference_context = _build_preference_context(req.preference)
@@ -491,6 +506,10 @@ def _build_system_prompt(
     parts = [
         "너는 PrompTune의 대화형 업무 AI 어시스턴트다.",
         "현재 사용자의 의도를 가장 우선해서 수행한다.",
+        "",
+        f"오늘 날짜는 {today_str}이다. '오늘'/'최근'/'현재'/'지금'처럼 시점을 나타내는 "
+        "표현은 이 날짜를 기준으로 판단하라. 사전 지식에 남아있는 다른 연도나 날짜를 "
+        "임의로 '기준 시점'이라고 답하지 마라.",
         "",
         "대화 규칙:",
         "1. 사용자가 직접 제공한 사실은 이 대화의 사실로 받아들여라.",
@@ -513,6 +532,7 @@ def _build_system_prompt(
         "18. 프로필 항목을 정리할 때는 참고자료에 있는 사실을 최대한 빠짐없이 반영하라 - 이름/소속만 짧게 쓰고 끝내지 말고, 참고자료에 나온 생년월일/출신지/신체정보/등번호/이전 소속 이력/최근 활동 등 확인 가능한 모든 항목을 포함하라. 참고자료에 없는 항목만 생략하고, 있는 항목을 임의로 생략해 답을 짧게 만들지 마라.",
         "19. 참고자료에 없는 항목은 아예 언급하지 마라 - 빈칸을 채우려고 추측하지 마라.",
         "20. 프로필처럼 여러 참고자료를 종합해 답할 때는, 문장이나 항목 끝에 그 사실이 어느 출처에서 나왔는지 '[숫자](출처 URL)' 형식으로 표시하라. 여러 출처가 같은 사실을 뒷받침하면 쉼표로 여러 개를 나열해도 된다. [웹 검색 결과]에 실제로 있는 URL만 쓰고, 없는 URL을 지어내지 마라.",
+        f"21. '최근', '최신', '요즘' 소식을 요청받으면 위에서 알려준 오늘 날짜({today_str}) 기준으로 판단하라. [웹 검색 결과]가 실제로 오늘 날짜에 가까운 내용인지 확인할 수 없다면 임의의 과거 시점을 '기준'이라고 못 박지 말고, 참고자료에 날짜가 명시된 경우에만 그 날짜를 인용하라.",
     ]
 
     if web_context != "없음":

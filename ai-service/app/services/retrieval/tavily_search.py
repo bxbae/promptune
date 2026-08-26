@@ -84,6 +84,24 @@ def _profile_domains(query: str) -> list[str]:
     return list(_PROFILE_BASE_DOMAINS)
 
 
+# 2026-08-26: "최근 골 소식과 관련해서" 같은 요청에 몇 달~몇 년 전 기사가 섞여
+# 나와도 검색 결과 개수만 맞으면 그대로 근거로 쓰이는 문제가 확인됨 - 사용자가
+# 명시적으로 "최근 소식은 오늘 기준 일주일 이내 기사로 한정해달라"고 요청함.
+# Tavily search()의 time_range 파라미터('day'|'week'|'month'|'year')로 결과
+# 자체를 그 기간 안으로 제한할 수 있다. 이 마커는 search_query_cleanup.py가
+# 검색어를 정제(불용구 제거)하기 전의 원문 질의(effective_query)에 대해
+# retrieval_orchestrator.py에서 판정해야 한다 - 정제 이후에는 "최근 골 소식과
+# 관련해서" 같은 문구 자체가 이미 지워져 있어 여기서 판정하면 항상 False가 된다.
+_RECENCY_MARKERS = [
+    "오늘", "어제", "지금", "현재", "최근", "최신", "요즘", "방금",
+]
+
+
+def is_recency_query(query: str) -> bool:
+    text = (query or "").lower()
+    return any(marker in text for marker in _RECENCY_MARKERS)
+
+
 def _trusted_domains() -> list[str]:
     raw = os.getenv("TAVILY_TRUSTED_DOMAINS")
     if raw is None:
@@ -95,7 +113,7 @@ def _trusted_domains() -> list[str]:
     return domains
 
 
-def _run_search(client, query, max_results, topic, include_domains):
+def _run_search(client, query, max_results, topic, include_domains, time_range=None):
     search_kwargs = dict(
         query=query,
         search_depth="basic",
@@ -108,13 +126,16 @@ def _run_search(client, query, max_results, topic, include_domains):
     if include_domains:
         search_kwargs["include_domains"] = include_domains
 
+    if time_range:
+        search_kwargs["time_range"] = time_range
+
     response = client.search(**search_kwargs)
     results = response.get("results", [])
 
     return [r for r in results if not _is_stale_wiki_revision(r)]
 
 
-def search_web(query, max_results=5):
+def search_web(query, max_results=5, time_range=None):
     if not query.strip():
         raise ValueError("검색어가 비어 있습니다.")
 
@@ -126,6 +147,9 @@ def search_web(query, max_results=5):
     query = query.strip()
 
     if _is_finance_query(query):
+        # 시세류 질의는 항상 "오늘/지금" 기준 최신값이 필요하므로 time_range를
+        # 별도로 받지 않는다 - topic="finance" 자체가 이미 최신 시세 데이터
+        # 소스로 좁혀져 있어 추가 제한이 오히려 결과를 0건으로 만들 위험이 크다.
         return _run_search(
             client, query, max_results,
             topic="finance",
@@ -142,6 +166,7 @@ def search_web(query, max_results=5):
             client, query, max_results,
             topic="general",
             include_domains=profile_domains,
+            time_range=time_range,
         )
 
         # 위키백과/나무위키/종목별 공식 사이트에 아예 문서가 없는 인물일 수도
@@ -152,6 +177,7 @@ def search_web(query, max_results=5):
                 client, query, max_results,
                 topic="general",
                 include_domains=None,
+                time_range=time_range,
             )
 
         return results
@@ -168,6 +194,7 @@ def search_web(query, max_results=5):
         client, query, max_results,
         topic="news",
         include_domains=trusted_domains,
+        time_range=time_range,
     )
 
     # 2026-08-26: "LG 트윈스 단장님의 이름과 약력을 안내해줘" 같은 질의에서
@@ -182,6 +209,7 @@ def search_web(query, max_results=5):
             client, query, max_results,
             topic="news",
             include_domains=None,
+            time_range=time_range,
         )
 
     return results
