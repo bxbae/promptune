@@ -42,11 +42,20 @@ def execute_retrieval(
 
     effective_query = conversation.query
 
-    route = (
-        conversation.route_override
-        if conversation.route_override is not None
-        else classify_ml_retrieval_route(effective_query)
-    )
+    # 2026-08-26: 이 메시지에 사용자가 직접 문서를 첨부했으면(document_ids),
+    # 질의 텍스트가 어떻든 무조건 internal_rag로 보낸다 - ML 라우터/대화
+    # 맥락 기반 override보다도 우선한다. "DOCX 첨부하고 '이게 무슨
+    # 내용이야?'"처럼 질문 자체엔 "문서"/"파일" 같은 단어가 전혀 없어서
+    # ml_router._is_explicit_internal_rag()도 못 잡고 ML도 no_retrieval로
+    # 잘못 보내던 사례가 있었음 - 첨부라는 명시적인 사용자 행동(UI에서
+    # 파일을 붙인 것) 자체가 텍스트 패턴 매칭보다 훨씬 신뢰할 수 있는
+    # internal_rag 신호라 최우선으로 둔다.
+    if req.document_ids:
+        route = "internal_rag"
+    elif conversation.route_override is not None:
+        route = conversation.route_override
+    else:
+        route = classify_ml_retrieval_route(effective_query)
 
     documents = []
     web_results: list[WebSearchResult] = []
@@ -65,6 +74,7 @@ def execute_retrieval(
             query=effective_query,
             owner_user_id=req.owner_user_id,
             top_k=req.top_k,
+            document_ids=req.document_ids,
         )
         result = (
             retrieve(retrieve_req)
