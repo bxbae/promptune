@@ -146,6 +146,34 @@ def _trusted_domains() -> list[str]:
     return domains
 
 
+# 2026-08-26: patch 21로 "침착맨에대해" 같은 검색어를 "침착맨" 단일 토큰으로
+# 정리한 뒤에도 완전히 지어낸 답변이 재현됨. docker logs로 실제 Tavily
+# 응답을 확인한 결과, 신뢰 도메인 제한(topic="news", time_range="week")
+# 검색이 "0건"이 아니라 "결과는 있지만 관련성 점수(score)가 0.12/0.046으로
+# 사실상 무관한" 기사(YTN 오늘의 운세, 무관한 감독 인터뷰)를 반환했음 -
+# topic="news"는 도메인/기간 제약 안에서 진짜 매칭이 없어도 빈 리스트 대신
+# "그나마 가장 가까운" 기사를 돌려주는 것으로 보인다. 그래서 기존 "결과가
+# 0건이면 다음 단계로" 폴백 조건(if not results)이 트리거되지 않고, 정답이
+# 있는 위키백과 폴백까지 도달하지 못했다. Tavily 응답의 score 필드(이미
+# [Retrieval] 로그에 쓰고 있음)로 "사실상 무관함"을 판정해서, 그런 경우도
+# 다음 단계로 넘어가게 한다.
+#
+# score 필드가 아예 없는 응답(테스트 픽스처 등 - 실제 Tavily 응답에는
+# 항상 있음)은 이 판정에서 제외해 기존 동작을 그대로 보존한다 - 즉 이
+# 검사는 "score가 있는데 낮을 때"만 개입하고, "score를 모를 때"는 예전
+# 처럼 결과를 그대로 신뢰한다.
+_LOW_RELEVANCE_SCORE_THRESHOLD = 0.3
+
+
+def _has_low_relevance_score(item: dict) -> bool:
+    score = item.get("score")
+    return isinstance(score, (int, float)) and score < _LOW_RELEVANCE_SCORE_THRESHOLD
+
+
+def _all_low_relevance(results: list) -> bool:
+    return bool(results) and all(_has_low_relevance_score(r) for r in results)
+
+
 def _run_search(client, query, max_results, topic, include_domains, time_range=None):
     search_kwargs = dict(
         query=query,
@@ -237,7 +265,7 @@ def search_web(query, max_results=5, time_range=None):
     # 방지)은 결과가 여러 개 있을 때 그중 나쁜 걸 거르는 것이지, 결과
     # 자체를 아예 없애려는 게 아니므로 - 제한된 검색이 0건이면 제한 없이
     # 한 번 더 시도한다.
-    if not results and trusted_domains:
+    if (not results or _all_low_relevance(results)) and trusted_domains:
         results = _run_search(
             client, query, max_results,
             topic="news",
@@ -259,7 +287,7 @@ def search_web(query, max_results=5, time_range=None):
     # 도메인(위키백과/나무위키 + 신뢰 뉴스)으로 한 번 더 시도한다.
     # time_range는 여기서 빼는데, 인물 개요/약력 자체는 "최근 1주일"에
     # 얽매일 이유가 없고 오히려 결과를 0건으로 만들 위험만 커지기 때문이다.
-    if not results:
+    if not results or _all_low_relevance(results):
         results = _run_search(
             client, query, max_results,
             topic="general",
