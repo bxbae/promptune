@@ -139,6 +139,8 @@ def execute_retrieval(
             else classify_ml_retrieval_route(effective_query)
         )
 
+    print(f"[Retrieval] route={route!r} effective_query={effective_query!r}")
+
     documents = []
     web_results: list[WebSearchResult] = []
 
@@ -211,6 +213,17 @@ def execute_retrieval(
         results = search_web(
             search_query,
             max_results=web_top_k,
+        )
+
+        # 2026-08-26: "이강인 소속과 프로필" 질의가 검색어 정리(패치 13) 이후
+        # 오히려 손흥민/조규성처럼 완전히 무관한 인물의 결과가 섞여 들어오는
+        # 회귀가 재현됐는데, search_web()이 반환한 실제 title/url을 확인할
+        # 방법이 로그에 전혀 없어서(이 파일에 로깅 자체가 없었음) 매번 답변
+        # 텍스트만 보고 추측해야 했다. docker logs로 바로 원인을 볼 수 있게
+        # route/검색어/실제 검색 결과를 남긴다 - 동작에는 영향 없음(순수 로깅).
+        print(
+            f"[Retrieval] route={route!r} search_query={search_query!r} "
+            f"results={[(r.get('title'), r.get('url')) for r in results]}"
         )
 
         web_results = [
