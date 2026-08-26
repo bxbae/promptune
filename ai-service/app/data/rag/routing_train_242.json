@@ -1234,5 +1234,37 @@
   {
     "query": "어제 환율이 얼마였는지 알려줘.\n추가로 필요한 정보: 친근하게, 간결하게, 전문용어는 빼고",
     "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "오늘 강남 아파트 시세 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "지금 서울 아파트 매매가 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "현재 전세 시세 얼마야",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "오늘 부동산 정책 발표 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "최근 집값 동향 알려줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "요즘 아파트값 오르고 있는지 찾아줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "최신 청약 경쟁률 뉴스 정리해줘",
+    "expected_route": "external_or_realtime"
+  },
+  {
+    "query": "요즘 뜨는 부동산 정책 알려줘",
+    "expected_route": "external_or_realtime"
   }
 ]

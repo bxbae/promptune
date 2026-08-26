@@ -49,6 +49,31 @@ class ClassifyMlRetrievalRouteTest(unittest.TestCase):
             "no_retrieval",
         )
 
+    def test_stock_queries_route_to_realtime_search(self):
+        # 2026-08-26: 이 카테고리는 원래 학습 데이터에도 있어서 이전부터
+        # 잘 되고 있었음 - 회귀 방지용으로 고정.
+        for query in ("지금 삼성전자 주가 알려줘", "삼성전자 주가 알려줘"):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    classify_ml_retrieval_route(query), "external_or_realtime"
+                )
+
+    def test_real_estate_query_does_not_fall_back_to_internal_rag(self):
+        # 2026-08-26: "요즘 뜨는 부동산 정책 알려줘"가 internal_rag로
+        # 잘못 분류돼(학습 데이터에 부동산 카테고리가 아예 없었음) 사내
+        # 문서에서만 찾다가 아무것도 못 찾고 끝나는 문제가 있었음 - 스포츠
+        # 경기결과와 동일한 부류의 버그.
+        for query in (
+            "요즘 뜨는 부동산 정책 알려줘",
+            "오늘 강남 아파트 시세 알려줘",
+            "최근 집값 동향 알려줘",
+            "현재 전세 시세 얼마야",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    classify_ml_retrieval_route(query), "external_or_realtime"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
