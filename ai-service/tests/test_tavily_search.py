@@ -190,7 +190,7 @@ class ProfileQueryDomainsTest(unittest.TestCase):
             os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
-    def test_athlete_profile_query_uses_wikipedia_namuwiki_and_olympics(
+    def test_athlete_profile_query_uses_all_four_profile_domains(
         self, mock_client_cls
     ):
         mock_client = MagicMock()
@@ -205,7 +205,7 @@ class ProfileQueryDomainsTest(unittest.TestCase):
         self.assertEqual(kwargs["topic"], "general")
         self.assertEqual(
             kwargs["include_domains"],
-            ["ko.wikipedia.org", "namu.wiki", "olympics.com"],
+            ["ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com"],
         )
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
@@ -221,7 +221,29 @@ class ProfileQueryDomainsTest(unittest.TestCase):
         _, kwargs = mock_client.search.call_args
         self.assertEqual(
             kwargs["include_domains"],
-            ["ko.wikipedia.org", "namu.wiki", "grammy.com"],
+            ["ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com"],
+        )
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_profile_query_without_category_keyword_still_includes_all_domains(
+        self, mock_client_cls
+    ):
+        # 2026-08-26: "이강인 소속과 프로필을 알려줘"처럼 "선수"/"축구" 같은
+        # 직업 카테고리 단어가 전혀 없는 프로필 질의에서 olympics.com이
+        # 빠져서 결과가 부실해지는 사례가 반복 확인됨 - 카테고리 추측 없이
+        # 항상 4개 도메인 전부 후보에 넣도록 고쳤다.
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "이강인", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("이강인 소속과 프로필을 알려줘", max_results=3)
+
+        _, kwargs = mock_client.search.call_args
+        self.assertEqual(
+            kwargs["include_domains"],
+            ["ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com"],
         )
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
@@ -249,9 +271,58 @@ class ProfileQueryDomainsTest(unittest.TestCase):
         self.assertEqual(first_kwargs["topic"], "general")
         self.assertEqual(
             first_kwargs["include_domains"],
-            ["ko.wikipedia.org", "namu.wiki", "olympics.com"],
+            ["ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com"],
         )
         self.assertNotIn("include_domains", second_kwargs)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_stale_wiki_revision_results_are_filtered_out(
+        self, mock_client_cls
+    ):
+        # 2026-08-26: "이강인 소속과 프로필" 검색 결과에 "이강인 (r444 판)",
+        # "이강인 (r297 판)"처럼 예전 리비전 스냅샷(발렌시아 CF 시절 등,
+        # 현재 소속이 반영 안 됨)이 섞여 들어와 답변이 오래된 정보로
+        # 후퇴한 사례가 확인됨 - 이런 스냅샷 결과는 걸러야 한다.
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [
+                {"title": "이강인 (r444 판) - 나무위키", "url": "u1", "content": "c1"},
+                {"title": "이강인 (r297 판) - 나무위키", "url": "u2", "content": "c2"},
+                {"title": "이강인 - 나무위키", "url": "u3", "content": "c3"},
+            ]
+        }
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("이강인 소속과 프로필을 알려줘", max_results=3)
+
+        self.assertEqual(
+            results,
+            [{"title": "이강인 - 나무위키", "url": "u3", "content": "c3"}],
+        )
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_all_stale_wiki_revisions_trigger_unrestricted_fallback(
+        self, mock_client_cls
+    ):
+        # 필터링 결과 0건이 되면(전부 예전 리비전이면), 기존 "0건이면 무제한
+        # 재시도" 폴백이 그대로 이어받아야 한다.
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            {
+                "results": [
+                    {"title": "이강인 (r444 판)", "url": "u1", "content": "c1"},
+                ]
+            },
+            {"results": [{"title": "이강인 최신", "url": "u2", "content": "c2"}]},
+        ]
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("이강인 소속과 프로필을 알려줘", max_results=3)
+
+        self.assertEqual(
+            results, [{"title": "이강인 최신", "url": "u2", "content": "c2"}]
+        )
+        self.assertEqual(mock_client.search.call_count, 2)
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
     def test_non_profile_query_is_unaffected(self, mock_client_cls):

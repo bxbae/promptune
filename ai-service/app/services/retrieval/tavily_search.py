@@ -1,4 +1,5 @@
 import os
+import re
 from tavily import TavilyClient
 
 # 2026-08-26: "침착맨 몇살이야?" 같은 질의에서 관련성 약한 결과(예: 은퇴 준비
@@ -44,18 +45,34 @@ _PROFILE_MARKERS = [
     "유튜버", "단장", "코치", "아이돌", "뮤지션",
 ]
 
-_ATHLETE_MARKERS = [
-    "선수", "축구", "야구", "농구", "배구", "골프", "올림픽", "국가대표",
-    "단장", "감독", "구단",
+# 2026-08-26: 처음엔 "선수/축구/올림픽" 같은 키워드가 있을 때만 olympics.com을,
+# "가수/배우" 등이 있을 때만 grammy.com을 추가하는 방식이었는데, "이강인
+# 소속과 프로필을 알려줘"처럼 인물의 직업을 나타내는 단어가 아예 없는(이름 +
+# "소속"/"프로필"뿐인) 질의가 흔해서 olympics.com이 빠지고 결과가 부실해지는
+# 사례가 반복 확인됨. 문구가 조금만 달라져도(예: "3문단으로" -> "3문장으로",
+# "최근 이슈" -> "최근 골 소식") 키워드 매칭이 계속 깨지는 패턴이 이번 세션
+# 내내 반복됐던 걸 보면, 카테고리를 문구로 추측하는 방식 자체가 근본적으로
+# 약함. include_domains는 "이 안에서만 찾아라"는 제약일 뿐이라 관련 없는
+# 도메인을 넣어도 결과가 나빠지지 않으므로(그 도메인에 해당 인물 문서가
+# 없으면 그냥 안 나올 뿐), 프로필 질의면 카테고리 추측 없이 항상 4개
+# 도메인을 전부 후보에 넣는다.
+_PROFILE_BASE_DOMAINS = [
+    "ko.wikipedia.org", "namu.wiki", "olympics.com", "grammy.com",
 ]
 
-_MUSIC_FILM_MARKERS = [
-    "가수", "배우", "영화", "드라마", "아이돌", "뮤지션", "그룹", "솔로",
-]
+# 2026-08-26: namu.wiki 검색 결과 제목이 "이강인 (r444 판)"처럼 특정 리비전
+# 번호를 달고 오는 경우가 확인됨 - 발렌시아 CF 시절 등 예전 스냅샷이라 현재
+# 소속(아틀레티코 마드리드)이 반영 안 된 문서였음. 최신 문서 대신 이런 과거
+# 리비전 스냅샷이 섞여 들어오면 답변이 다시 오래된 정보로 후퇴하므로,
+# 이런 리비전 스냅샷 결과는 아예 제외하고(현재 페이지가 따로 있으면 그걸
+# 쓰고, 없으면 아래 "0건이면 무제한 재시도" 폴백이 대신 처리한다).
+_STALE_WIKI_REVISION_TITLE_RE = re.compile(r"\(r\d+\s*판\)")
 
-# 위키백과/나무위키는 인물 종류와 무관하게 항상 포함 - 계속 갱신되는
-# 백과사전이라 "현재 소속팀"처럼 시간에 따라 바뀌는 사실에 특히 안정적임.
-_PROFILE_BASE_DOMAINS = ["ko.wikipedia.org", "namu.wiki"]
+
+def _is_stale_wiki_revision(item: dict) -> bool:
+    return bool(
+        _STALE_WIKI_REVISION_TITLE_RE.search(item.get("title") or "")
+    )
 
 
 def _is_profile_query(query: str) -> bool:
@@ -64,16 +81,7 @@ def _is_profile_query(query: str) -> bool:
 
 
 def _profile_domains(query: str) -> list[str]:
-    text = query.lower()
-    domains = list(_PROFILE_BASE_DOMAINS)
-
-    if any(marker in text for marker in _ATHLETE_MARKERS):
-        domains.append("olympics.com")
-
-    if any(marker in text for marker in _MUSIC_FILM_MARKERS):
-        domains.append("grammy.com")
-
-    return domains
+    return list(_PROFILE_BASE_DOMAINS)
 
 
 def _trusted_domains() -> list[str]:
@@ -101,8 +109,9 @@ def _run_search(client, query, max_results, topic, include_domains):
         search_kwargs["include_domains"] = include_domains
 
     response = client.search(**search_kwargs)
+    results = response.get("results", [])
 
-    return response.get("results", [])
+    return [r for r in results if not _is_stale_wiki_revision(r)]
 
 
 def search_web(query, max_results=5):
