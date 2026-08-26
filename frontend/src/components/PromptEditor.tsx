@@ -147,8 +147,8 @@ export default function PromptEditor({
 
   const activeSuggestion = activeElement
     ? (analysisResult?.suggest?.suggestions.find(
-        (suggestion) => suggestion.element === activeElement,
-      ) ?? null)
+      (suggestion) => suggestion.element === activeElement,
+    ) ?? null)
     : null;
 
   const activeMeta = activeElement
@@ -158,7 +158,7 @@ export default function PromptEditor({
     })
     : null;
 
-    const activeOptions = activeSuggestion
+  const activeOptions = activeSuggestion
     ? [activeSuggestion.primary, ...activeSuggestion.alternatives].filter(
       (option, index, array) =>
         option.trim().length > 0 && array.indexOf(option) === index,
@@ -168,11 +168,11 @@ export default function PromptEditor({
   // 다듬기 카드에서 텍스트에 등장하는 순서대로 정렬된 placeholder 목록
   const orderedPlaceholders: PlaceholderSuggestion[] = improveResult
     ? splitTextByPlaceholders(text, improveResult.placeholders)
-        .filter(
-          (seg): seg is { type: "placeholder"; content: string; data: PlaceholderSuggestion } =>
-            seg.type === "placeholder"
-        )
-        .map((seg) => seg.data)
+      .filter(
+        (seg): seg is { type: "placeholder"; content: string; data: PlaceholderSuggestion } =>
+          seg.type === "placeholder"
+      )
+      .map((seg) => seg.data)
     : [];
 
   const scheduleAnalyze = useCallback((value: string) => {
@@ -498,14 +498,28 @@ export default function PromptEditor({
         return;
       }
 
-      if (activePlaceholderIndex !== null) {
+      if (activePlaceholderIndex !== null && !placeholderCustomOpen) {
         const activePh = orderedPlaceholders[activePlaceholderIndex];
         const options = activePh ? [activePh.primary, ...activePh.alternatives] : [];
 
         if (e.key === "Tab") {
           e.preventDefault();
+          if (!activePh) return;
+
+          if (placeholderOptIdx === options.length) {
+            // 직접입력 슬롯
+            setPlaceholderCustomOpen(true);
+            return;
+          }
+
+          if (placeholderOptIdx === options.length + 1) {
+            // 건너뛰기 슬롯
+            removePlaceholder(activePh);
+            return;
+          }
+
           const chosen = options[placeholderOptIdx];
-          if (activePh && chosen) {
+          if (chosen) {
             applyPlaceholderSuggestion(activePh, chosen);
           }
           return;
@@ -519,23 +533,33 @@ export default function PromptEditor({
           return;
         }
 
-        if (e.key === "ArrowDown" && options.length > 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           e.preventDefault();
-          setPlaceholderOptIdx((i) => Math.min(options.length - 1, i + 1));
-          return;
-        }
-
-        if (e.key === "ArrowUp" && options.length > 0) {
-          e.preventDefault();
-          setPlaceholderOptIdx((i) => Math.max(0, i - 1));
+          // 옵션(0~N-1) + 직접입력(N) + 건너뛰기(N+1) 를 순환
+          const total = options.length + 2;
+          const delta = e.key === "ArrowDown" ? 1 : -1;
+          setPlaceholderOptIdx((index) => (index + delta + total) % total);
           return;
         }
       }
     }
 
-    if (activeSuggestion && !customOpen) {
+    if (activeElement && !customOpen) {
       if (e.key === "Tab") {
         e.preventDefault();
+
+        if (optIdx === activeOptions.length) {
+          // 직접입력 슬롯 - 입력창 열기 (실제 확정은 입력창 자체 onKeyDown의 Enter가 처리)
+          setCustomOpen(true);
+          return;
+        }
+
+        if (optIdx === activeOptions.length + 1) {
+          // 건너뛰기 슬롯
+          skipActiveSuggestion();
+          return;
+        }
+
         const option = activeOptions[optIdx];
         if (option) {
           applySuggestion(option);
@@ -549,15 +573,12 @@ export default function PromptEditor({
         return;
       }
 
-      if (e.key === "ArrowDown" && activeOptions.length > 0) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        setOptIdx((index) => Math.min(activeOptions.length - 1, index + 1));
-        return;
-      }
-
-      if (e.key === "ArrowUp" && activeOptions.length > 0) {
-        e.preventDefault();
-        setOptIdx((index) => Math.max(0, index - 1));
+        // 옵션(0~N-1) + 직접입력(N) + 건너뛰기(N+1) 를 순환
+        const total = activeOptions.length + 2;
+        const delta = e.key === "ArrowDown" ? 1 : -1;
+        setOptIdx((index) => (index + delta + total) % total);
         return;
       }
     }
@@ -795,6 +816,24 @@ export default function PromptEditor({
             onCompositionEnd={() => {
               isComposingRef.current = false;
             }}
+            onBlur={(e) => {
+              // 카드(질문)가 떠 있는데 버튼 아닌 영역 클릭 등으로 포커스가 빠지면
+              // 방향키 탐색(onKeyDown)이 textarea 포커스가 있어야만 동작해서 그 순간 멈춰버림.
+              // 실시간 카드(activeElement)·다듬기 카드(activePlaceholderIndex) 둘 다 커버.
+              // activeSuggestion이 아니라 activeElement 기준 - 추천이 비어있어도(직접입력/건너뛰기만
+              // 있는 카드) 동일하게 포커스를 지켜줘야 함.
+              // 직접입력 칸(popup-custom-input)에 포커스를 넘기는 중이면 그건 그대로 둬야 하니 제외.
+              const shouldKeepFocus =
+                (activeElement && !customOpen) ||
+                (activePlaceholderIndex !== null && !placeholderCustomOpen);
+
+              if (shouldKeepFocus) {
+                const target = e.currentTarget;
+                setTimeout(() => {
+                  if (!customOpen && !placeholderCustomOpen) target.focus();
+                }, 0);
+              }
+            }}
             onKeyDown={onKeyDown}
             onScroll={(e) => {
               // 캡(maxHeight)에 도달해 내부 스크롤이 생기면
@@ -858,9 +897,9 @@ export default function PromptEditor({
                 };
                 const options = suggestion
                   ? [suggestion.primary, ...suggestion.alternatives].filter(
-                      (option, index, array) =>
-                        option.trim().length > 0 && array.indexOf(option) === index,
-                    )
+                    (option, index, array) =>
+                      option.trim().length > 0 && array.indexOf(option) === index,
+                  )
                   : [];
 
                 return (
@@ -875,10 +914,10 @@ export default function PromptEditor({
                       left: 0,
                       width: "100%",
                       transform: `translateX(${offset * 26}px) translateY(${Math.abs(offset) * -6}px) scale(${1 - Math.abs(offset) * 0.05})`,
-                      opacity: isActive ? 1 : 0.35,
+                      filter: isActive ? "none" : "blur(2.5px)",
                       zIndex: 10 - Math.abs(offset),
                       pointerEvents: isActive ? "auto" : "none",
-                      transition: "transform 0.2s ease, opacity 0.2s ease",
+                      transition: "transform 0.2s ease, filter 0.2s ease",
                       maxHeight: "38vh",
                       overflowY: "auto",
                     }}
@@ -910,13 +949,14 @@ export default function PromptEditor({
                     {isActive && (!customOpen ? (
                       <button
                         type="button"
-                        className="popup-custom-btn"
+                        className={`popup-custom-btn input-style ${optIdx === activeOptions.length ? "active" : ""}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setCustomOpen(true);
                         }}
+                        onMouseEnter={() => setOptIdx(activeOptions.length)}
                       >
-                        직접 입력
+                        Tab으로 직접 입력
                       </button>
                     ) : (
                       <input
@@ -925,6 +965,17 @@ export default function PromptEditor({
                         value={customValue}
                         onChange={(e) => setCustomValue(e.target.value)}
                         onKeyDown={(e) => {
+                          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setCustomOpen(false);
+                            setCustomValue("");
+                            const total = activeOptions.length + 2;
+                            const delta = e.key === "ArrowDown" ? 1 : -1;
+                            setOptIdx((index) => (index + delta + total) % total);
+                            textareaRef.current?.focus();
+                            return;
+                          }
+
                           e.stopPropagation();
 
                           if (e.key === "Enter") {
@@ -945,11 +996,12 @@ export default function PromptEditor({
                     {isActive && (
                       <button
                         type="button"
-                        className="popup-custom-btn"
+                        className={`popup-custom-btn ${optIdx === activeOptions.length + 1 ? "active" : ""}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           skipActiveSuggestion();
                         }}
+                        onMouseEnter={() => setOptIdx(activeOptions.length + 1)}
                       >
                         이 요소는 건너뛰기
                       </button>
@@ -960,11 +1012,12 @@ export default function PromptEditor({
             </div>
           )}
 
-{improveResult && activePlaceholderIndex !== null && orderedPlaceholders.length > 0 && (
-             <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: 0, zIndex: 100, width: "min(320px, 100%)" }}>
+          {improveResult && activePlaceholderIndex !== null && orderedPlaceholders.length > 0 && (
+            <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: 0, zIndex: 100, width: "min(320px, 100%)" }}>
               {orderedPlaceholders.map((ph, idx) => {
                 const offset = idx - activePlaceholderIndex;
                 const isActive = offset === 0;
+                const options = [ph.primary, ...ph.alternatives];
                 return (
                   <div
                     key={ph.placeholderText}
@@ -977,10 +1030,10 @@ export default function PromptEditor({
                       left: 0,
                       width: "100%",
                       transform: `translateX(${offset * 26}px) translateY(${Math.abs(offset) * -6}px) scale(${1 - Math.abs(offset) * 0.05})`,
-                      opacity: isActive ? 1 : 0.35,
+                      filter: isActive ? "none" : "blur(2.5px)",
                       zIndex: 10 - Math.abs(offset),
                       pointerEvents: isActive ? "auto" : "none",
-                      transition: "transform 0.2s ease, opacity 0.2s ease",
+                      transition: "transform 0.2s ease, filter 0.2s ease",
                       maxHeight: "38vh",
                       overflowY: "auto",
                     }}
@@ -994,7 +1047,7 @@ export default function PromptEditor({
                       {ELEMENT_UI[ph.element]?.question ?? "어떤 내용을 추가할까요?"}
                     </div>
 
-                    {[ph.primary, ...ph.alternatives].map((option, i2) => (
+                    {options.map((option, i2) => (
                       <button
                         key={`${ph.element}-${i2}`}
                         type="button"
@@ -1014,13 +1067,14 @@ export default function PromptEditor({
                     {isActive && (!placeholderCustomOpen ? (
                       <button
                         type="button"
-                        className="popup-custom-btn"
+                        className={`popup-custom-btn input-style ${placeholderOptIdx === options.length ? "active" : ""}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setPlaceholderCustomOpen(true);
                         }}
+                        onMouseEnter={() => setPlaceholderOptIdx(options.length)}
                       >
-                        직접 입력
+                        Tab으로 직접 입력
                       </button>
                     ) : (
                       <input
@@ -1029,6 +1083,17 @@ export default function PromptEditor({
                         value={placeholderCustomValue}
                         onChange={(e) => setPlaceholderCustomValue(e.target.value)}
                         onKeyDown={(e) => {
+                          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setPlaceholderCustomOpen(false);
+                            setPlaceholderCustomValue("");
+                            const total = options.length + 2;
+                            const delta = e.key === "ArrowDown" ? 1 : -1;
+                            setPlaceholderOptIdx((index) => (index + delta + total) % total);
+                            textareaRef.current?.focus();
+                            return;
+                          }
+
                           e.stopPropagation();
 
                           if (e.key === "Enter") {
@@ -1054,11 +1119,12 @@ export default function PromptEditor({
                     {isActive && (
                       <button
                         type="button"
-                        className="popup-custom-btn"
+                        className={`popup-custom-btn ${placeholderOptIdx === options.length + 1 ? "active" : ""}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           removePlaceholder(ph);
                         }}
+                        onMouseEnter={() => setPlaceholderOptIdx(options.length + 1)}
                       >
                         이 요소는 건너뛰기
                       </button>
@@ -1123,16 +1189,12 @@ export default function PromptEditor({
               <img src="/icons/plus-muted.png" alt="" />
             </button>
 
-            <button className="icon-btn" type="button" title="링크 (미구현)">
-              <img src="/icons/link.png" alt="" />
-            </button>
-
             <button
               type="button"
               title="프롬프트 다듬기"
               disabled={improving || !text.trim()}
               onClick={() => void onImprove()}
-              style={{ padding: "4px 10px", borderRadius: 6, whiteSpace: "nowrap", fontSize: 13 }}
+              className="trim-btn"
             >
               {improving ? "다듬는 중…" : "다듬기"}
             </button>
@@ -1142,7 +1204,7 @@ export default function PromptEditor({
                 type="button"
                 title="다듬기 이전으로 되돌리기"
                 onClick={onRevertImprove}
-                style={{ padding: "4px 10px", borderRadius: 6, whiteSpace: "nowrap", fontSize: 13 }}
+                className="trim-btn"
               >
                 되돌리기
               </button>
