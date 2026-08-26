@@ -32,6 +32,50 @@ def _is_finance_query(query: str) -> bool:
     return any(marker in text for marker in _FINANCE_MARKERS)
 
 
+# 2026-08-26: "이강인 축구선수 프로필/소속" 질의가 검색어 정제(0009) 이후로는
+# 관련 있는 기사를 찾긴 하는데도, 정작 답변은 나무위키의 오래된 문단(발렌시아
+# CF 시절)이나 근거 없는 수치(체중 90kg, 생년월일 2003년 등 - 실제는 66kg,
+# 2001년생)를 섞어 냄. 사용자가 직접 "선수는 올림픽 사이트, 가수/배우는
+# 그래미 사이트를 기준으로" 요청함 - 위키백과/나무위키처럼 최신 정보가
+# 계속 갱신되는 백과사전류 + 종목별 공식/권위 사이트를 신뢰 도메인으로 쓰면
+# news.naver.com류 개별 보도 기사보다 최신 프로필 정보가 안정적으로 잡힌다.
+_PROFILE_MARKERS = [
+    "프로필", "약력", "소속", "선수", "감독", "가수", "배우", "인물",
+    "유튜버", "단장", "코치", "아이돌", "뮤지션",
+]
+
+_ATHLETE_MARKERS = [
+    "선수", "축구", "야구", "농구", "배구", "골프", "올림픽", "국가대표",
+    "단장", "감독", "구단",
+]
+
+_MUSIC_FILM_MARKERS = [
+    "가수", "배우", "영화", "드라마", "아이돌", "뮤지션", "그룹", "솔로",
+]
+
+# 위키백과/나무위키는 인물 종류와 무관하게 항상 포함 - 계속 갱신되는
+# 백과사전이라 "현재 소속팀"처럼 시간에 따라 바뀌는 사실에 특히 안정적임.
+_PROFILE_BASE_DOMAINS = ["ko.wikipedia.org", "namu.wiki"]
+
+
+def _is_profile_query(query: str) -> bool:
+    text = query.lower()
+    return any(marker in text for marker in _PROFILE_MARKERS)
+
+
+def _profile_domains(query: str) -> list[str]:
+    text = query.lower()
+    domains = list(_PROFILE_BASE_DOMAINS)
+
+    if any(marker in text for marker in _ATHLETE_MARKERS):
+        domains.append("olympics.com")
+
+    if any(marker in text for marker in _MUSIC_FILM_MARKERS):
+        domains.append("grammy.com")
+
+    return domains
+
+
 def _trusted_domains() -> list[str]:
     raw = os.getenv("TAVILY_TRUSTED_DOMAINS")
     if raw is None:
@@ -78,6 +122,30 @@ def search_web(query, max_results=5):
             topic="finance",
             include_domains=None,
         )
+
+    if _is_profile_query(query):
+        # topic="news"가 아니라 "general"을 쓴다 - 위키백과/나무위키 문서는
+        # Tavily 기준 "뉴스" 콘텐츠가 아니라서, topic="news"로 두면
+        # include_domains에 넣어도 결과 자체가 안 나올 위험이 있다.
+        profile_domains = _profile_domains(query)
+
+        results = _run_search(
+            client, query, max_results,
+            topic="general",
+            include_domains=profile_domains,
+        )
+
+        # 위키백과/나무위키/종목별 공식 사이트에 아예 문서가 없는 인물일 수도
+        # 있으므로(예: 인지도가 낮은 인물), 결과가 0건이면 도메인 제한 없이
+        # 한 번 더 시도한다 - 아래 뉴스 경로의 폴백과 동일한 원칙.
+        if not results:
+            results = _run_search(
+                client, query, max_results,
+                topic="general",
+                include_domains=None,
+            )
+
+        return results
 
     # 2026-08-25(원 커밋): 스포츠 경기 결과처럼 시간에 민감한 질의에서
     # "프리뷰/예측" 기사가 "결과" 기사보다 검색어와 더 유사하다는 이유로
