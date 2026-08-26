@@ -91,8 +91,11 @@ class SearchWebTest(unittest.TestCase):
 
         search_web("아무 질의", max_results=3)
 
-        _, kwargs = mock_client.search.call_args
-        self.assertNotIn("include_domains", kwargs)
+        # 신뢰 도메인 제한이 꺼져 있으면 첫 번째(뉴스 경로) 호출에는
+        # include_domains가 아예 안 붙어야 한다 - 결과가 끝까지 0건이면
+        # 아래(NewsPathWikiFallbackTest)에서 검증하는 위키 폴백으로 이어진다.
+        first_kwargs = mock_client.search.call_args_list[0].kwargs
+        self.assertNotIn("include_domains", first_kwargs)
 
     @patch("app.services.retrieval.tavily_search.TavilyClient")
     def test_finance_query_uses_finance_topic_without_domain_restriction(
@@ -173,6 +176,90 @@ class SearchWebTest(unittest.TestCase):
         search_web("아무 뉴스 질의", max_results=3)
 
         self.assertEqual(mock_client.search.call_count, 1)
+
+
+class NewsPathWikiFallbackTest(unittest.TestCase):
+    """
+    2026-08-26: "침착맨에 대해 요약해줘"처럼 프로필 마커(프로필/약력/소속/
+    유튜버/정치인 등)가 전혀 없는 인물 요약 요청이 뉴스 경로로 들어왔는데,
+    topic="news" 제한(신뢰 도메인 + time_range) 안에 그 인물을 다루는 최근
+    보도가 하나도 없어서 웹 검색 결과 0건인 채로 생성이 진행되고, HCX가
+    완전히 지어낸 인물 정보로 답하는 사례가 확인됨. 최신 뉴스가 없다고
+    위키백과/나무위키 같은 기본 정보까지 없는 건 아니므로, 뉴스 경로의
+    모든 시도가 0건이면 마지막으로 위키백과/나무위키 + 신뢰 뉴스로 한 번 더
+    시도한다.
+    """
+
+    def setUp(self):
+        self._original_key = os.environ.get("TAVILY_API_KEY")
+        os.environ["TAVILY_API_KEY"] = "test-key"
+        self._original_domains = os.environ.get("TAVILY_TRUSTED_DOMAINS")
+        os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+
+    def tearDown(self):
+        if self._original_key is None:
+            os.environ.pop("TAVILY_API_KEY", None)
+        else:
+            os.environ["TAVILY_API_KEY"] = self._original_key
+        if self._original_domains is None:
+            os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+        else:
+            os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_falls_back_to_wikipedia_when_all_news_attempts_are_empty(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            {"results": []},  # 1차: 뉴스 + 신뢰 도메인
+            {"results": []},  # 2차: 뉴스 + 무제한
+            {"results": [{"title": "침착맨 - 나무위키", "url": "u3", "content": "c3"}]},
+        ]
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("침착맨에대해 요약해줘 최근 이슈와 관련해", max_results=3)
+
+        self.assertEqual(
+            results,
+            [{"title": "침착맨 - 나무위키", "url": "u3", "content": "c3"}],
+        )
+        self.assertEqual(mock_client.search.call_count, 3)
+
+        third_kwargs = mock_client.search.call_args_list[2].kwargs
+        self.assertEqual(third_kwargs["topic"], "general")
+        self.assertEqual(
+            third_kwargs["include_domains"],
+            ["ko.wikipedia.org", "namu.wiki", "news.naver.com", "ytn.co.kr", "imnews.imbc.com"],
+        )
+        self.assertNotIn("time_range", third_kwargs)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_no_wiki_fallback_call_when_news_path_has_results(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("어제 lg 트윈스 경기 결과 알려줘", max_results=3)
+
+        self.assertEqual(mock_client.search.call_count, 1)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_still_empty_after_wiki_fallback_returns_empty_list(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {"results": []}
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("정말 아무 정보도 없는 질의", max_results=3)
+
+        self.assertEqual(results, [])
+        self.assertEqual(mock_client.search.call_count, 3)
 
 
 class ProfileQueryDomainsTest(unittest.TestCase):

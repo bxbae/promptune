@@ -245,4 +245,27 @@ def search_web(query, max_results=5, time_range=None):
             time_range=time_range,
         )
 
+    # 2026-08-26: "침착맨에 대해 요약해줘"(프로필/유튜버/정치인 같은 마커가
+    # 전혀 없는 인물 요약 요청)가 위 뉴스 경로로 들어왔는데, topic="news" +
+    # time_range="week" 제한 안에 해당 인물을 다루는 최근 보도가 하나도
+    # 없어서 웹 검색 결과 0건인 채로 생성이 진행되고, HCX가 완전히 지어낸
+    # 인물 정보(실제와 무관한 데뷔 연도·오디션 우승 이력 등)로 답하는 사례가
+    # 확인됨. "유튜버"/"인플루언서"/"정치인"처럼 사용자가 카테고리를 직접
+    # 말해줘도 질의 문장 자체엔 그 단어가 없는 경우가 흔해서("침착맨에 대해
+    # 요약해줘"에는 "유튜버"가 없음) 마커 목록을 아무리 늘려도 이 경우를 다
+    # 잡을 수 없다 - 대신 "최근 뉴스가 없다"는 사실 자체를 신호로 삼는다.
+    # 최신 보도가 없다고 해서 위키백과/나무위키 같은 기본 인물 정보까지
+    # 없는 건 아니므로, 뉴스 경로가 완전히 빈손이면 마지막으로 프로필
+    # 도메인(위키백과/나무위키 + 신뢰 뉴스)으로 한 번 더 시도한다.
+    # time_range는 여기서 빼는데, 인물 개요/약력 자체는 "최근 1주일"에
+    # 얽매일 이유가 없고 오히려 결과를 0건으로 만들 위험만 커지기 때문이다.
+    if not results:
+        results = _run_search(
+            client, query, max_results,
+            topic="general",
+            include_domains=list(
+                dict.fromkeys(["ko.wikipedia.org", "namu.wiki"] + trusted_domains)
+            ),
+        )
+
     return results
