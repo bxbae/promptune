@@ -299,7 +299,37 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     response.put("usedWebSearch", retrieval.getOrDefault("used_web_search", false));
     response.put("result", result);
     response.put("promptSessionId", session.getId());
+    // 2026-08-26: 클라이언트(크롬 확장 등)에서 "출처 더보기"로 실제 검색된
+    // 기사 링크를 보여줄 수 있도록, 웹검색 결과에서 title/url만 추려서
+    // 함께 내려준다 (content 본문은 프롬프트용이라 클라이언트에는 불필요).
+    response.put("sources", buildSources(webResults));
     return response;
+    }
+
+    private java.util.List<java.util.Map<String, String>> buildSources(
+            java.util.List<java.util.Map<String, Object>> webResults) {
+        if (webResults == null || webResults.isEmpty()) {
+            return java.util.List.of();
+        }
+
+        java.util.LinkedHashMap<String, java.util.Map<String, String>> byUrl =
+                new java.util.LinkedHashMap<>();
+
+        for (java.util.Map<String, Object> item : webResults) {
+            Object urlObj = item.get("url");
+            String url = urlObj != null ? urlObj.toString().trim() : "";
+            if (url.isEmpty() || byUrl.containsKey(url)) {
+                continue;
+            }
+            Object titleObj = item.get("title");
+            String title = titleObj != null ? titleObj.toString().trim() : "";
+            java.util.Map<String, String> source = new java.util.HashMap<>();
+            source.put("title", title.isEmpty() ? url : title);
+            source.put("url", url);
+            byUrl.put(url, source);
+        }
+
+        return new java.util.ArrayList<>(byUrl.values());
     }
 
     private java.util.List<java.util.Map<String, String>> buildConversationHistory(
