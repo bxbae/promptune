@@ -28,23 +28,54 @@ public class S3StorageService {
 
     // documents/{userId}/{uuid}-{원본파일명} 형태의 key로 업로드하고, 그 key를 반환한다.
     // (원본 파일명은 그대로 두면 경로에 못 쓰는 문자가 섞일 수 있어 영숫자/일부 기호 외엔 _로 치환)
-    public String uploadDocument(Long userId, MultipartFile file) {
-        String original = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
-        String safeName = original.replaceAll("[^a-zA-Z0-9._-]", "_");
-        String key = "documents/" + userId + "/" + UUID.randomUUID() + "-" + safeName;
+    public String uploadDocument(
+            Long userId,
+            MultipartFile file) {
+
+        String original = file.getOriginalFilename() == null
+                ? "file"
+                : file.getOriginalFilename();
 
         try {
-            s3Client.putObject(
-                    PutObjectRequest.builder()
-                            .bucket(documentsBucket)
-                            .key(key)
-                            .contentType(file.getContentType())
-                            .build(),
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize())
-            );
+            return uploadDocument(
+                    userId,
+                    original,
+                    file.getContentType(),
+                    file.getBytes());
         } catch (IOException e) {
-            throw new UncheckedIOException("S3 업로드 실패: " + e.getMessage(), e);
+            throw new UncheckedIOException(
+                    "업로드 파일 읽기 실패: " + e.getMessage(),
+                    e);
         }
+    }
+
+    public String uploadDocument(
+            Long userId,
+            String originalFilename,
+            String contentType,
+            byte[] content) {
+
+        String original =
+                originalFilename == null ? "file" : originalFilename;
+
+        String safeName =
+                original.replaceAll("[^a-zA-Z0-9._-]", "_");
+
+        String key = "documents/"
+                + userId
+                + "/"
+                + UUID.randomUUID()
+                + "-"
+                + safeName;
+
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(documentsBucket)
+                        .key(key)
+                        .contentType(contentType)
+                        .build(),
+                RequestBody.fromBytes(content));
+
         return key;
     }
 

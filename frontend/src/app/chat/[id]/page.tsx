@@ -11,11 +11,22 @@ import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
 import { generateDocumentFile, type DocumentFormat, type DocumentItem } from "@/api/documents";
 
+interface MessageSource {
+  title: string;
+  url: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   promptSessionId?: number;
+  // /api/execute 응답의 sources(웹검색으로 실제 참고한 기사 title/url) -
+  // 2026-08-26: 크롬 확장 프로그램의 "출처 더보기"와 동일한 데이터를
+  // 웹 채팅에도 보여주기 위해 추가. 지난 대화를 다시 불러올 때는 채워지지
+  // 않음(백엔드가 prompt_session에 sources를 저장하지 않아서 - 방금 생성된
+  // 응답에만 있음).
+  sources?: MessageSource[];
   // 방금 보낸 메시지는 DocumentItem[](업로드 응답), 지난 대화 다시 불러온 메시지는
   // MessageAttachment[](백엔드 /messages 응답)이 들어옴. 렌더링엔 id/title만 쓰여서
   // DocumentItem이 구조적으로 MessageAttachment를 만족하므로 타입 호환됨.
@@ -407,7 +418,13 @@ export default function ChatThreadPage() {
       setIsGenerating(false);
       setMessages((prev) => [
         ...prev,
-        { id: assistantId, role: "assistant", content: resultText, promptSessionId: res?.promptSessionId },
+        {
+          id: assistantId,
+          role: "assistant",
+          content: resultText,
+          promptSessionId: res?.promptSessionId,
+          sources: Array.isArray(res?.sources) ? res.sources : undefined,
+        },
       ]);
 
       // "직접 입력"으로 해결한 요소 = 직접수정. response_edits에 기록.
@@ -592,67 +609,83 @@ export default function ChatThreadPage() {
               ) : (
                 <div className="msg-assistant">
                   <div className="msg-sender">PrompTune</div>
-                  <div className="msg-assistant-row">
-                    <div className="msg-bubble assistant">
-                      {m.content}
+                  <div className="msg-assistant-response">
+                    <div className="msg-assistant-row">
+                      <div className="msg-bubble assistant">
+                        {m.content}
+                        <button
+                          type="button"
+                          className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
+                          onClick={() => copyMessage(m)}
+                          aria-label="응답 복사"
+                          title={copiedId === m.id ? "복사됨" : "복사하기"}
+                        >
+                          {copiedId === m.id ? (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
-                        onClick={() => copyMessage(m)}
-                        aria-label="응답 복사"
-                        title={copiedId === m.id ? "복사됨" : "복사하기"}
+                        className="quote-btn"
+                        onClick={() => quoteMessage(m)}
+                        aria-label="이 응답 인용"
+                        title="이 응답을 인용해서 다시 질문하기"
                       >
-                        {copiedId === m.id ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 14 4 9 9 4" />
+                          <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                        </svg>
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="quote-btn"
-                      onClick={() => quoteMessage(m)}
-                      aria-label="이 응답 인용"
-                      title="이 응답을 인용해서 다시 질문하기"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 14 4 9 9 4" />
-                        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
-                      </svg>
-                    </button>
-                  </div>
 
-                      {generatedDocuments[m.id] && (
-                        <div className="generated-file-card">
-                          <div className="generated-file-icon">
-                            📄
-                          </div>
+                    {m.sources && m.sources.length > 0 && (
+                      <details className="msg-sources">
+                        <summary>출처 더보기 ({m.sources.length})</summary>
+                        <ul>
+                          {m.sources.map((src) => (
+                            <li key={src.url}>
+                              <a href={src.url} target="_blank" rel="noopener noreferrer">
+                                {src.title || src.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
 
-                          <div className="generated-file-info">
-                            <div className="generated-file-name">
-                              {generatedDocuments[m.id].fileName}
-                            </div>
-                            <div className="generated-file-type">
-                              {generatedDocuments[m.id].format.toUpperCase()}
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="generated-file-download"
-                            onClick={() => downloadGeneratedDocument(m)}
-                          >
-                            다운로드
-                          </button>
+                    {generatedDocuments[m.id] && (
+                      <div className="generated-file-card">
+                        <div className="generated-file-icon">
+                          📄
                         </div>
-                      )}
 
+                        <div className="generated-file-info">
+                          <div className="generated-file-name">
+                            {generatedDocuments[m.id].fileName}
+                          </div>
+                          <div className="generated-file-type">
+                            {generatedDocuments[m.id].format.toUpperCase()}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="generated-file-download"
+                          onClick={() => downloadGeneratedDocument(m)}
+                        >
+                          다운로드
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {m.promptSessionId != null && (
                     <div className="satisfaction-row">
                       {satisfaction[m.id] ? (

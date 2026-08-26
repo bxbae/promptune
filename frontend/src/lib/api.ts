@@ -47,6 +47,30 @@ export async function analyze(
   return res.json();
 }
 
+// "다듬기" 버튼 - HCX가 문장 전체를 재작성, 부족한 요소는 placeholder로 표시되어 반환됨
+export interface PlaceholderSuggestion {
+  element: string;
+  placeholderText: string;
+  primary: string;
+  alternatives: string[];
+}
+
+export interface ImproveResponse {
+  improvedPrompt: string;
+  usedFallback: boolean;
+  placeholders: PlaceholderSuggestion[];
+}
+
+export async function improve(text: string): Promise<ImproveResponse> {
+  const res = await fetch(`${API}/api/improve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`다듬기 실패: ${res.status}`);
+  return res.json();
+}
+
 // 11번: 실행
 export async function execute(
   finalPrompt: string,

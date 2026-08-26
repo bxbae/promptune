@@ -99,6 +99,16 @@ public class PipelineDtos {
                         DiagnoseResult diagnose,
                         PromptRuleResult promptRule,
                         String improvedPrompt,
-                        boolean usedFallback) {
+                        boolean usedFallback,
+                        List<PlaceholderSuggestion> placeholders) {
+        }
+
+        // improvedPrompt 안에 실제로 남아있는 placeholder마다, 그 자리를 채울 실제 후보 문구.
+        // placeholderText는 improvedPrompt 안에서 이 문구를 찾아 밑줄 긋는 용도(프론트에서 문자열 검색).
+        public record PlaceholderSuggestion(
+                        String element,
+                        String placeholderText,
+                        String primary,
+                        List<String> alternatives) {
         }
 }

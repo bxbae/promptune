@@ -7,7 +7,6 @@ from functools import lru_cache
 import numpy as np
 import psycopg
 import torch
-from FlagEmbedding import BGEM3FlagModel
 
 from app.schemas.models import Document, RetrieveRequest, RetrieveResponse
 from app.services.retrieval.retrieval_rule import apply_retrieval_rule
@@ -47,7 +46,11 @@ def bge_runtime_config() -> dict[str, object]:
 
 
 @lru_cache(maxsize=1)
-def get_model() -> BGEM3FlagModel:
+def get_model():
+    # BGE/transformers/torch는 실제 embedding 요청이 들어올 때만 로드한다.
+    # Router/unit test처럼 retrieval 모듈만 import하는 경로에서
+    # 무거운 ML runtime import가 발생하지 않게 한다.
+    from FlagEmbedding import BGEM3FlagModel
     config = bge_runtime_config()
     print(
         f"[RAG] loading model: {MODEL_NAME} "

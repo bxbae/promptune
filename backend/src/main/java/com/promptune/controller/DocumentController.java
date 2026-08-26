@@ -8,7 +8,10 @@ import com.promptune.repository.UserRepository;
 import com.promptune.service.AiServiceClient;
 import com.promptune.service.S3StorageService;
 import com.promptune.service.DocumentTemplateResolver;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -16,6 +19,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.CodingErrorAction;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.time.LocalDateTime;
@@ -64,14 +74,32 @@ public class DocumentController {
                 ? file.getOriginalFilename()
                 : title;
         String fileType = extractExtension(file.getOriginalFilename());
+        byte[] uploadContent =
+                normalizeUploadedContent(fileType, file);
 
-        if (fileType == null || !List.of("pdf", "docx", "txt", "md").contains(fileType)) {
+        if (fileType == null
+                || !List.of("pdf", "docx", "txt", "md").contains(fileType)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "현재 AI 문서 분석은 PDF, DOCX, TXT, MD 형식만 지원합니다.");
         }
 
-        String s3Key = s3StorageService.uploadDocument(user.getId(), file);
+        String originalFilename =
+                file.getOriginalFilename() == null
+                        ? "file"
+                        : file.getOriginalFilename();
+
+        String uploadContentType =
+                List.of("md", "txt").contains(
+                        fileType.toLowerCase(Locale.ROOT))
+                        ? "text/plain;charset=UTF-8"
+                        : file.getContentType();
+
+        String s3Key = s3StorageService.uploadDocument(
+                user.getId(),
+                originalFilename,
+                uploadContentType,
+                uploadContent);
 
         Document document = new Document(user.getId(), resolvedTitle, s3Key, fileType);
         document.setDescription(description);
@@ -86,7 +114,12 @@ public class DocumentController {
         try {
             java.util.Map<String, Object> indexResult =
                     aiServiceClient.indexDocument(
-                            document.getId(), user.getId(), fileType, file);
+                            document.getId(),
+                            user.getId(),
+                            fileType,
+                            uploadContent,
+                            originalFilename);
+
             applyIndexResult(document, indexResult);
         } catch (Exception e) {
             document.setIndexStatus("FAILED");
@@ -242,7 +275,7 @@ public class DocumentController {
         try {
             byte[] bytes = s3StorageService.download(document.getS3Key());
             java.util.Map<String, Object> indexResult =
-                    aiServiceClient.indexDocumentBytes(
+                    aiServiceClient.indexDocument(
                             document.getId(),
                             user.getId(),
                             document.getFileType(),
@@ -256,6 +289,106 @@ public class DocumentController {
         }
 
         return documentRepository.save(document);
+    }
+
+    @GetMapping("/{id}/content")
+    public ResponseEntity<byte[]> getDocumentContent(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        User user = currentUser(authentication);
+
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "문서를 찾을 수 없습니다."));
+
+        if (!document.getOwnerUserId().equals(user.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "본인 문서만 열람할 수 있습니다.");
+        }
+
+        byte[] content =
+                s3StorageService.download(document.getS3Key());
+
+        String extension = document.getFileType() == null
+                ? ""
+                : document.getFileType().toLowerCase(Locale.ROOT);
+
+        String filename = document.getTitle();
+
+        if (filename == null || filename.isBlank()) {
+            filename = "document";
+        }
+
+        if (!extension.isBlank()
+                && !filename.toLowerCase(Locale.ROOT)
+                        .endsWith("." + extension)) {
+            filename += "." + extension;
+        }
+
+        boolean officeFile = List.of(
+                "doc", "docx",
+                "xls", "xlsx",
+                "ppt", "pptx"
+        ).contains(extension);
+
+        if (officeFile) {
+            ResponseEntity<byte[]> preview =
+                    aiServiceClient.previewDocument(
+                            content,
+                            filename);
+
+            byte[] pdf = preview.getBody();
+
+            if (pdf == null || pdf.length == 0) {
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "문서 미리보기 변환 결과가 비어 있습니다.");
+            }
+
+            int dot = filename.lastIndexOf(".");
+            String previewFilename = dot > 0
+                    ? filename.substring(0, dot) + ".pdf"
+                    : filename + ".pdf";
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(
+                            HttpHeaders.CONTENT_DISPOSITION,
+                            ContentDisposition.inline()
+                                    .filename(
+                                            previewFilename,
+                                            StandardCharsets.UTF_8)
+                                    .build()
+                                    .toString())
+                    .body(pdf);
+        }
+
+        MediaType contentType;
+
+        if ("md".equals(extension) || "txt".equals(extension)) {
+            content = normalizeTextToUtf8(content);
+            contentType = MediaType.parseMediaType(
+                    "text/plain;charset=UTF-8");
+        } else {
+            contentType = MediaTypeFactory
+                    .getMediaType(filename)
+                    .orElse(MediaType.APPLICATION_OCTET_STREAM);
+        }
+
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline()
+                                .filename(
+                                        filename,
+                                        StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .body(content);
     }
 
     @GetMapping
@@ -301,6 +434,86 @@ public class DocumentController {
         documentRepository.deleteById(id);  // document_chunks는 ON DELETE CASCADE로 자동 같이 삭제됨
         s3StorageService.delete(document.getS3Key());  // S3 객체도 같이 정리
         return ResponseEntity.ok().build();
+    }
+
+    private byte[] normalizeUploadedContent(
+            String fileType,
+            MultipartFile file) {
+
+        try {
+            byte[] content = file.getBytes();
+            String extension = fileType == null
+                    ? ""
+                    : fileType.toLowerCase(Locale.ROOT);
+
+            if (List.of("md", "txt").contains(extension)) {
+                return normalizeTextToUtf8(content);
+            }
+
+            return content;
+
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                    "업로드 파일 읽기 실패: " + e.getMessage(),
+                    e);
+        }
+    }
+
+    private byte[] normalizeTextToUtf8(byte[] content) {
+        if (content.length >= 3
+                && content[0] == (byte) 0xEF
+                && content[1] == (byte) 0xBB
+                && content[2] == (byte) 0xBF) {
+            return Arrays.copyOfRange(
+                    content,
+                    3,
+                    content.length);
+        }
+
+        boolean utf16Bom =
+                content.length >= 2
+                && (
+                    (
+                        content[0] == (byte) 0xFF
+                        && content[1] == (byte) 0xFE
+                    )
+                    || (
+                        content[0] == (byte) 0xFE
+                        && content[1] == (byte) 0xFF
+                    )
+                );
+
+        if (utf16Bom) {
+            String text = new String(
+                    content,
+                    StandardCharsets.UTF_16);
+            return text.getBytes(StandardCharsets.UTF_8);
+        }
+
+        if (isValidUtf8(content)) {
+            return content;
+        }
+
+        String text = new String(
+                content,
+                Charset.forName("MS949"));
+
+        return text.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private boolean isValidUtf8(byte[] content) {
+        try {
+            StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(content));
+
+            return true;
+
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private User currentUser(Authentication authentication) {

@@ -202,26 +202,29 @@ public class AiServiceClient {
         }
     }
 
-    public Map<String, Object> indexDocumentBytes(
+    public Map<String, Object> indexDocument(
             Long documentId,
             Long ownerUserId,
             String fileType,
-            byte[] bytes,
+            byte[] fileBytes,
             String filename) {
 
         long start = System.currentTimeMillis();
 
         try {
-            ByteArrayResource resource = new ByteArrayResource(bytes) {
-                @Override
-                public String getFilename() {
-                    return filename == null || filename.isBlank()
-                            ? "document." + fileType
-                            : filename;
-                }
-            };
+            MultiValueMap<String, Object> body =
+                    new LinkedMultiValueMap<>();
 
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            ByteArrayResource resource =
+                    new ByteArrayResource(fileBytes) {
+                        @Override
+                        public String getFilename() {
+                            return filename == null || filename.isBlank()
+                                    ? "document." + fileType
+                                    : filename;
+                        }
+                    };
+
             body.add("document_id", documentId);
             body.add("owner_user_id", ownerUserId);
             body.add("file_type", fileType);
@@ -234,13 +237,24 @@ public class AiServiceClient {
                     .retrieve()
                     .body(Map.class);
 
-            log("ai-service", "/api/ai/index-document", start, "success");
+            log(
+                    "ai-service",
+                    "/api/ai/index-document",
+                    start,
+                    "success");
+
             return result;
+
         } catch (Exception e) {
-            log("ai-service", "/api/ai/index-document", start, "error");
+            log(
+                    "ai-service",
+                    "/api/ai/index-document",
+                    start,
+                    "error");
             throw e;
         }
     }
+
 
     // Retrieval Router/Orchestrator 연동 (승연님 PR #67) — 내부문서/웹검색 여부까지 통째로 판단·실행
     public Map<String, Object> retrievalExecute(
@@ -253,12 +267,18 @@ public class AiServiceClient {
         long start = System.currentTimeMillis();
 
         try {
-            Map<String, Object> body = new java.util.HashMap<>();
+            Map<String, Object> body =
+                    new java.util.HashMap<>();
+
             body.put("query", query);
             body.put("owner_user_id", ownerUserId);
             body.put("top_k", topK);
-            body.put("history", history == null ? List.of() : history);
-            body.put("document_ids", documentIds == null ? List.of() : documentIds);
+            body.put(
+                    "history",
+                    history == null ? List.of() : history);
+            body.put(
+                    "document_ids",
+                    documentIds == null ? List.of() : documentIds);
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
@@ -480,6 +500,52 @@ public class AiServiceClient {
                     start,
                     "error");
 
+            throw e;
+        }
+    }
+
+
+    public ResponseEntity<byte[]> previewDocument(
+            byte[] fileBytes,
+            String filename) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            MultiValueMap<String, Object> body =
+                    new LinkedMultiValueMap<>();
+
+            ByteArrayResource resource =
+                    new ByteArrayResource(fileBytes) {
+                        @Override
+                        public String getFilename() {
+                            return filename;
+                        }
+                    };
+
+            body.add("file", resource);
+
+            ResponseEntity<byte[]> response = client.post()
+                    .uri("/api/ai/documents/preview")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(byte[].class);
+
+            log(
+                    "ai-service",
+                    "/api/ai/documents/preview",
+                    start,
+                    "success");
+
+            return response;
+
+        } catch (Exception e) {
+            log(
+                    "ai-service",
+                    "/api/ai/documents/preview",
+                    start,
+                    "error");
             throw e;
         }
     }

@@ -121,7 +121,11 @@ class RetrieveRequest(BaseModel):
     query: str
     owner_user_id: int
     top_k: int = 3
-    # 현재/이전 대화에서 특정 문서가 확정된 경우 해당 문서들 안에서만 검색한다.
+    # 2026-08-26: 이 메시지에 사용자가 직접 첨부한 문서 id 목록. 채워져 있으면
+    # query와의 의미 유사도 검색 대신 이 문서들의 내용을 그대로 가져온다 -
+    # "DOCX 첨부하고 '이게 무슨 내용이야?' 라고 물으면 이전 대화 내용으로
+    # 엉뚱하게 답하는" 문제의 원인이 여기 있었음(문서 id가 retrieval까지
+    # 전달된 적이 없어서 매번 순수 의미 유사도 검색만 하고 있었음).
     document_ids: list[int] = Field(default_factory=list)
 
 
@@ -208,8 +212,9 @@ class RetrievalExecuteRequest(BaseModel):
     owner_user_id: int | None = None
     top_k: int = 3
     history: list[ConversationMessage] = Field(default_factory=list)
-    # 현재 첨부파일 또는 대화 문맥에서 복원된 이전 첨부파일 id.
-    # 값이 있으면 ML Router보다 internal_rag를 우선한다.
+    # 2026-08-26: RetrieveRequest.document_ids와 동일한 목적 - 이 메시지에
+    # 직접 첨부된 문서가 있으면 라우팅 판단(ML)보다 우선해서 internal_rag로
+    # 보내고, 그 문서들의 내용을 그대로 가져온다.
     document_ids: list[int] = Field(default_factory=list)
 
 

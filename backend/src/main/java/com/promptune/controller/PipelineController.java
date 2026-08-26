@@ -276,11 +276,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     try {
         // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
         // 본문 최대 1200자(3개면 최대 3600자+)가 프롬프트에 통째로 들어가면서
-        // t3.large CPU에서 generate() 한 번에 9분 가까이 걸리는 문제가 확인됨
-        // (nginx /api/execute 타임아웃 300초를 넘겨 "결과를 생성하지 못했습니다"로
-        // 이어짐). Tavily는 ai-service에서 1건으로 제한하고, 내부 RAG는 첨부문서의
-        // 특정 질의를 위해 최대 4개 chunk를 사용할 수 있게 분리한다.
-        // (generate_hcx.py의 웹 결과당 본문 길이는 400자 제한 유지).
+        // 내부문서는 최대 4개 chunk를 사용한다.
+        // Web 검색 결과 수는 ai-service에서 별도로 최대 3건으로 제한한다.
+        // 현재 첨부/활성/파일관리에서 resolve된 실제 document ID를 반드시 전달한다.
         retrieval = ai.retrievalExecute(
                 req.finalPrompt(),
                 userId,
@@ -477,7 +475,36 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                     .filter(java.util.Objects::nonNull)
                     .distinct()
                     .toList());
+
+    // Web 검색 결과의 실제 출처를 클라이언트에서도 확인할 수 있게 유지한다.
+    response.put("sources", buildSources(webResults));
     return response;
+    }
+
+    private java.util.List<java.util.Map<String, String>> buildSources(
+            java.util.List<java.util.Map<String, Object>> webResults) {
+        if (webResults == null || webResults.isEmpty()) {
+            return java.util.List.of();
+        }
+
+        java.util.LinkedHashMap<String, java.util.Map<String, String>> byUrl =
+                new java.util.LinkedHashMap<>();
+
+        for (java.util.Map<String, Object> item : webResults) {
+            Object urlObj = item.get("url");
+            String url = urlObj != null ? urlObj.toString().trim() : "";
+            if (url.isEmpty() || byUrl.containsKey(url)) {
+                continue;
+            }
+            Object titleObj = item.get("title");
+            String title = titleObj != null ? titleObj.toString().trim() : "";
+            java.util.Map<String, String> source = new java.util.HashMap<>();
+            source.put("title", title.isEmpty() ? url : title);
+            source.put("url", url);
+            byUrl.put(url, source);
+        }
+
+        return new java.util.ArrayList<>(byUrl.values());
     }
 
     private java.util.List<java.util.Map<String, String>> buildConversationHistory(

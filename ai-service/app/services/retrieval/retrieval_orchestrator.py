@@ -13,6 +13,8 @@ from app.services import pipeline_mock
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
+from app.services.retrieval.date_resolver import resolve_relative_dates
+from app.services.retrieval.search_query_cleanup import build_search_query
 
 # app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
 # (거길 직접 import하면 순환참조라 동일 로직을 복제함)
@@ -24,11 +26,10 @@ USE_REAL_RETRIEVAL = (
     == "true"
 )
 
-if USE_REAL_RETRIEVAL:
-    from app.services.retrieval.rag_retriever import (
-        retrieve,
-        retrieve_document_overview,
-    )
+from app.services.retrieval.rag_retriever import (
+    retrieve,
+    retrieve_document_overview,
+)
 
 
 _OVERVIEW_MARKERS = (
@@ -199,11 +200,17 @@ def execute_retrieval(
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
-        # 내부 RAG 품질을 위해 top_k를 4 정도로 써도 Tavily 결과가 다시 커지지 않게
-        # 웹은 현재 1건으로 제한한다.
+        search_query = resolve_relative_dates(
+            build_search_query(effective_query)
+        )
+
+        # 내부 RAG top_k와 Web 검색 결과 수를 분리한다.
+        # 내부문서는 4개 chunk까지 사용할 수 있지만 Web은 최대 3건만 전달한다.
+        web_top_k = min(max(int(req.top_k), 1), 3)
+
         results = search_web(
-            effective_query,
-            max_results=1,
+            search_query,
+            max_results=web_top_k,
         )
 
         web_results = [

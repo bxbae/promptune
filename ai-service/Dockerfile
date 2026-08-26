@@ -4,6 +4,8 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
     fonts-noto-cjk \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
