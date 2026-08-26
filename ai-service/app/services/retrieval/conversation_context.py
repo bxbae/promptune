@@ -64,7 +64,11 @@ def _build_history_text(
 def _find_recent_document_reference(
     history: list[ConversationMessage],
 ) -> str | None:
-    pattern = re.compile(
+    attachment_pattern = re.compile(
+        r"title=([^/\n]+?\.(?:pdf|docx|doc|xlsx|xls|pptx|txt|md))",
+        flags=re.IGNORECASE,
+    )
+    generic_pattern = re.compile(
         r'([^\s"\'<>]+?\.(?:pdf|docx|doc|xlsx|xls|pptx|txt|md))',
         flags=re.IGNORECASE,
     )
@@ -75,10 +79,15 @@ def _find_recent_document_reference(
         if not content:
             continue
 
-        matches = pattern.findall(content)
+        attachment_matches = attachment_pattern.findall(content)
 
-        if matches:
-            return matches[-1].rstrip(".,!?)]}").strip()
+        if attachment_matches:
+            return attachment_matches[-1].rstrip(".,!?)]}").strip()
+
+        generic_matches = generic_pattern.findall(content)
+
+        if generic_matches:
+            return generic_matches[-1].rstrip(".,!?)]}").strip()
 
     return None
 
@@ -90,6 +99,9 @@ def _replace_document_reference(
     markers = (
         "그 문서",
         "그 파일",
+        "그 이력서",
+        "그 보고서",
+        "거기서",
         "해당 문서",
         "해당 파일",
         "아까 문서",
@@ -173,6 +185,9 @@ def _rewrite_query_with_hcx(
         "그 회사",
         "그 문서",
         "그 파일",
+        "그 이력서",
+        "그 보고서",
+        "거기서",
         "그 프로젝트",
         "그 사람",
         "그거",
@@ -262,6 +277,9 @@ def resolve_conversation_retrieval(
     contextual_internal_markers = (
         "그 문서",
         "그 파일",
+        "그 이력서",
+        "그 보고서",
+        "거기서",
         "해당 문서",
         "해당 파일",
         "아까 문서",
@@ -310,6 +328,12 @@ def resolve_conversation_retrieval(
     )
 
     followup_markers = (
+        "거기서",
+        "무슨 내용",
+        "내용이야",
+        "내용 알려",
+        "프로젝트만",
+        "경력만",
         "그거",
         "그걸",
         "그것",

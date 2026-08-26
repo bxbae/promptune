@@ -29,6 +29,67 @@ if not logger.handlers:
 HCX_MODEL_LOCK = threading.Lock()
 
 
+def _resolve_hcx_device(requested: str) -> str:
+    value = (requested or "auto").strip().lower()
+
+    if value == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
+    if value.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"HF_HCX_DEVICE={value} but CUDA is not available"
+        )
+
+    if value not in {"cpu", "cuda", "cuda:0"} and not value.startswith("cuda:"):
+        raise RuntimeError(f"지원하지 않는 HF_HCX_DEVICE 값입니다: {value}")
+
+    return value
+
+
+def _resolve_hcx_dtype(device: str, requested: str):
+    value = (requested or "auto").strip().lower()
+
+    if value == "auto":
+        # T4에서는 float16이 가장 현실적인 선택이다. CPU에서는 float32를 유지한다.
+        return torch.float16 if device.startswith("cuda") else torch.float32
+
+    aliases = {
+        "float32": torch.float32,
+        "fp32": torch.float32,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+    }
+
+    if value not in aliases:
+        raise RuntimeError(f"지원하지 않는 HF_HCX_DTYPE 값입니다: {value}")
+
+    dtype = aliases[value]
+    if not device.startswith("cuda") and dtype != torch.float32:
+        logger.warning(
+            "Non-CUDA HCX runtime requested dtype=%s; falling back to float32",
+            value,
+        )
+        return torch.float32
+
+    return dtype
+
+
+def hcx_runtime_config() -> dict[str, str]:
+    requested_device = os.getenv("HF_HCX_DEVICE", "auto")
+    device = _resolve_hcx_device(requested_device)
+    dtype = _resolve_hcx_dtype(
+        device,
+        os.getenv("HF_HCX_DTYPE", "auto"),
+    )
+    return {
+        "requested_device": requested_device,
+        "device": device,
+        "dtype": str(dtype).replace("torch.", ""),
+    }
+
+
 class HcxBusyError(RuntimeError):
     """HCX 모델이 다른 요청을 처리 중이라 제한시간 안에 락을 얻지 못했을 때."""
 
@@ -67,16 +128,13 @@ def load_hcx_runtime():
     )
 
     token = os.getenv("HF_TOKEN")
-    device = os.getenv("HF_HCX_DEVICE", "cpu").strip().lower()
+    config = hcx_runtime_config()
+    device = config["device"]
+    dtype = _resolve_hcx_dtype(device, os.getenv("HF_HCX_DTYPE", "auto"))
 
     if not token:
         raise RuntimeError(
             "HF_TOKEN is required when real HyperCLOVA X mode is enabled"
-        )
-
-    if device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError(
-            "HF_HCX_DEVICE=cuda but CUDA is not available"
         )
 
     # 2026-08-25: CPU vs GPU 벤치마크에서 "모델 로딩 시간"을 "생성 시간"과
@@ -93,6 +151,7 @@ def load_hcx_runtime():
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         token=token,
+        torch_dtype=dtype,
     )
 
     model.to(device)
@@ -101,9 +160,10 @@ def load_hcx_runtime():
     load_elapsed = time.monotonic() - load_start
 
     logger.info(
-        "Loaded shared HCX model=%s device=%s load_seconds=%.2f",
+        "Loaded shared HCX model=%s device=%s dtype=%s load_seconds=%.2f",
         model_name,
         device,
+        str(dtype).replace("torch.", ""),
         load_elapsed,
     )
 

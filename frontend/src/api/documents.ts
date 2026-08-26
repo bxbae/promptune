@@ -42,6 +42,9 @@ export interface DocumentItem {
   documentType: DocType; // 항상 한글로 노출 (원본 응답은 영문 enum, 여기서 변환)
   s3Key: string | null;
   fileType: string | null;
+  indexStatus?: "UPLOADED" | "INDEXING" | "TEXT_READY" | "READY" | "FAILED";
+  indexError?: string | null;
+  indexedAt?: string | null;
 }
 
 // 백엔드가 실제로 내려주는 원본 형태 (documentType이 영문 enum)
@@ -128,6 +131,21 @@ export async function updateDocument(
     const errBody = await res.json().catch(() => null);
     throw new Error(errBody?.error || `수정 실패: ${res.status}`);
   }
+  const raw: RawDocumentItem = await res.json();
+  return fromRaw(raw);
+}
+
+export async function reindexDocument(id: number): Promise<DocumentItem> {
+  const res = await fetch(`${API}/api/documents/${id}/reindex`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || body?.message || `재인덱싱 실패: ${res.status}`);
+  }
+
   const raw: RawDocumentItem = await res.json();
   return fromRaw(raw);
 }

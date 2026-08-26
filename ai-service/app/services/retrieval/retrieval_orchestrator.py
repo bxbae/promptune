@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from app.schemas.models import (
     RetrievalExecuteRequest,
@@ -25,38 +26,118 @@ USE_REAL_RETRIEVAL = (
     == "true"
 )
 
-# /retrieve 엔드포인트와 동일하게, real 모드일 때만 실제 BGE-M3 임베딩 모델을
-# 쓰는 rag_retriever를 로드한다. 예전엔 이 플래그 체크 없이 항상 real 모델을
-# 불러서, mock 모드로 설정해도 internal_rag 라우트에서 매번 BGE-M3를 로드하려다
-# 메모리 부족(OOM)으로 ai-service가 죽는 문제가 있었음 (2026-08-24).
-if USE_REAL_RETRIEVAL:
-    from app.services.retrieval.rag_retriever import retrieve
+from app.services.retrieval.rag_retriever import (
+    retrieve,
+    retrieve_document_overview,
+)
+
+
+_OVERVIEW_MARKERS = (
+    "무슨 내용",
+    "어떤 내용",
+    "내용이야",
+    "내용 알려",
+    "전체 내용",
+    "전체내용",
+    "전체 요약",
+    "전체요약",
+    "문서 요약",
+    "파일 요약",
+    "요약해줘",
+    "요약해 줘",
+    "읽어줘",
+    "읽어 줘",
+    "핵심 내용",
+    "핵심내용",
+    "각 항목",
+    "각항목",
+    "전체 항목",
+    "항목들",
+    "구성 항목",
+    "목차",
+)
+
+
+_DOCUMENT_TRANSFORM_MARKERS = (
+    "보고서로 만들어",
+    "문서로 만들어",
+    "파일로 만들어",
+    "pdf로 만들어",
+    "워드로 만들어",
+    "word로 만들어",
+    "docx로 만들어",
+    "양식으로 만들어",
+    "템플릿으로 만들어",
+)
+
+
+def _is_document_transform_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    return any(
+        marker in text
+        for marker in _DOCUMENT_TRANSFORM_MARKERS
+    )
+
+
+def _is_document_overview_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    return any(marker in text for marker in _OVERVIEW_MARKERS)
+
+
+def _clean_document_followup_query(query: str) -> str:
+    """특정 document_id가 확정된 뒤에는 지시대명사 노이즈를 최소화한다."""
+    text = str(query or "").strip()
+
+    replacements = (
+        "거기서",
+        "그 문서에서",
+        "그 파일에서",
+        "해당 문서에서",
+        "해당 파일에서",
+        "그 문서",
+        "그 파일",
+        "그 이력서",
+        "그 보고서",
+        "아까 문서",
+        "아까 파일",
+        "전에 올린 문서",
+        "전에 올린 파일",
+    )
+
+    for marker in replacements:
+        text = text.replace(marker, " ")
+
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or query
 
 
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
-    conversation = resolve_conversation_retrieval(
-        query=req.query,
-        history=req.history,
+    document_ids = list(
+        dict.fromkeys(
+            int(x)
+            for x in req.document_ids
+            if x is not None and int(x) > 0
+        )
     )
 
-    effective_query = conversation.query
-
-    # 2026-08-26: 이 메시지에 사용자가 직접 문서를 첨부했으면(document_ids),
-    # 질의 텍스트가 어떻든 무조건 internal_rag로 보낸다 - ML 라우터/대화
-    # 맥락 기반 override보다도 우선한다. "DOCX 첨부하고 '이게 무슨
-    # 내용이야?'"처럼 질문 자체엔 "문서"/"파일" 같은 단어가 전혀 없어서
-    # ml_router._is_explicit_internal_rag()도 못 잡고 ML도 no_retrieval로
-    # 잘못 보내던 사례가 있었음 - 첨부라는 명시적인 사용자 행동(UI에서
-    # 파일을 붙인 것) 자체가 텍스트 패턴 매칭보다 훨씬 신뢰할 수 있는
-    # internal_rag 신호라 최우선으로 둔다.
-    if req.document_ids:
+    # Backend가 현재 첨부/이전 첨부를 실제 document_id로 확정해서 보낸 경우에는
+    # 대화 텍스트를 다시 HCX로 추정할 필요가 없다. ID가 가장 강한 사실(source of truth)이다.
+    if document_ids:
         route = "internal_rag"
-    elif conversation.route_override is not None:
-        route = conversation.route_override
+        effective_query = _clean_document_followup_query(req.query)
     else:
-        route = classify_ml_retrieval_route(effective_query)
+        conversation = resolve_conversation_retrieval(
+            query=req.query,
+            history=req.history,
+        )
+        effective_query = conversation.query
+        route = (
+            conversation.route_override
+            if conversation.route_override is not None
+            else classify_ml_retrieval_route(effective_query)
+        )
 
     documents = []
     web_results: list[WebSearchResult] = []
@@ -66,50 +147,70 @@ def execute_retrieval(
 
     # 1. 내부문서 검색
     if route == "internal_rag":
+        # 실제 첨부/내부문서를 요청했는데 retrieval flag가 꺼져 있으면 mock 문서로
+        # 조용히 대체하면 안 된다. 사용자가 올린 파일을 못 읽은 사실을 숨기는 대신
+        # 설정 오류를 즉시 드러내야 잘못된 문서 답변을 원천 차단할 수 있다.
+        if not USE_REAL_RETRIEVAL:
+            raise ValueError(
+                "내부 문서 분석에는 USE_REAL_RETRIEVAL=true가 필요합니다."
+            )
+
         if req.owner_user_id is None:
             raise ValueError(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
             )
 
-        retrieve_req = RetrieveRequest(
-            query=effective_query,
-            owner_user_id=req.owner_user_id,
-            top_k=req.top_k,
-            document_ids=req.document_ids,
-        )
-        result = (
-            retrieve(retrieve_req)
-            if USE_REAL_RETRIEVAL
-            else pipeline_mock.retrieve(retrieve_req)
-        )
+        if (
+            document_ids
+            and (
+                _is_document_overview_query(req.query)
+                or _is_document_transform_query(req.query)
+            )
+            and USE_REAL_RETRIEVAL
+        ):
+            # "이거 무슨 내용이야?" / 전체 요약은 semantic Top-1이 아니라
+            # document chunk를 원래 순서대로 읽는다.
+            result = retrieve_document_overview(
+                owner_user_id=req.owner_user_id,
+                document_ids=document_ids,
+            )
+        else:
+            retrieve_req = RetrieveRequest(
+                query=effective_query,
+                owner_user_id=req.owner_user_id,
+                top_k=req.top_k,
+                document_ids=document_ids,
+            )
+
+            result = (
+                retrieve(retrieve_req)
+                if USE_REAL_RETRIEVAL
+                else pipeline_mock.retrieve(retrieve_req)
+            )
+
+            if document_ids and not USE_REAL_RETRIEVAL:
+                result.documents = [
+                    doc
+                    for doc in result.documents
+                    if doc.document_id in document_ids
+                ]
 
         documents = result.documents
         used_internal_rag = bool(documents)
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
-        # 2026-08-26: PrompTune의 "8요소" 다듬기 기능이 붙인 어조/분량/대상/
-        # 제약 지시문("나에게", "3문단으로", "친근하게", "숫자는 꼭 포함해서" 등)
-        # 까지 검색어에 그대로 섞여 들어가면, Tavily가 엉뚱한 결과(무관한
-        # 스포츠 프리뷰, 정치 기사 등)를 상위로 올리는 사례가 확인됨 - "이강인
-        # 축구선수" 검색에 아틀레티코 마드리드 훈련 기사 1건과 무관한 하키/
-        # 축구 프리뷰 2건이 섞이거나, "침착맨" 검색이 완전히 무관한 정치 기사
-        # 1건뿐이었던 사례. 검색어에는 이 지시문을 제거한 버전만 쓰고, 답변
-        # 생성에 쓰는 effective_query/finalPrompt 원문은 건드리지 않는다.
-        #
-        # 2026-08-26: "어제"/"오늘" 같은 상대 날짜 표현이 그대로 Tavily에
-        # 넘어가면 검색엔진이 어느 날짜인지 특정 못 해서(예: "어제 lg 트윈스
-        # 경기 결과" -> 실제로는 다른 날짜/다른 상대팀 경기 내용이 섞여
-        # 들어옴) 사실과 다른 답이 나오는 문제가 있었음. 검색어에만
-        # 실제 날짜를 덧붙여서 보정한다(라우팅 판단에 쓰는 effective_query
-        # 자체는 안 건드림 - date_resolver.py 상단 설명 참고).
         search_query = resolve_relative_dates(
             build_search_query(effective_query)
         )
 
+        # 내부 RAG top_k와 Web 검색 결과 수를 분리한다.
+        # 내부문서는 4개 chunk까지 사용할 수 있지만 Web은 최대 3건만 전달한다.
+        web_top_k = min(max(int(req.top_k), 1), 3)
+
         results = search_web(
             search_query,
-            max_results=req.top_k,
+            max_results=web_top_k,
         )
 
         web_results = [
@@ -122,15 +223,6 @@ def execute_retrieval(
         ]
 
         used_web_search = bool(web_results)
-
-    # user_context:
-    #   현재 여기서는 MS Graph를 직접 호출하지 않고 route만 반환한다.
-    #
-    # no_retrieval:
-    #   검색하지 않는다.
-    #
-    # not_rag_or_restricted:
-    #   검색하지 않는다.
 
     return RetrievalExecuteResponse(
         route=route,

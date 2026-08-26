@@ -131,6 +131,15 @@ export default function PromptEditor({
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
+  // 파일을 선택한 즉시 전송 버튼을 누를 수 있게 하되, 실제 전송은
+  // 업로드/인덱싱이 끝난 뒤 진행한다.
+  // 기존 구현은 status=done일 때만 전송 버튼을 활성화해서 업로드가
+  // 오래 걸리면 사용자가 텍스트를 입력해야만 보낼 수 있는 것처럼 보였다.
+  const uploadTasksRef = useRef<Map<string, Promise<DocumentItem | null>>>(
+    new Map(),
+  );
+  const uploadedDocsRef = useRef<Map<string, DocumentItem>>(new Map());
+
   // 파일 드래그앤드롭 (input-wrap 전체가 드롭존).
   // dragCounterRef: input-wrap 안 자식(textarea/overlay/popup 등) 경계를
   // 넘나들 때마다 발생하는 dragEnter/dragLeave로 isDragOver가 깜빡이는 것을 방지.
@@ -614,7 +623,6 @@ export default function PromptEditor({
     }
 
     const files = Array.from(fileList);
-    const descriptionAtAttach = text.trim() || undefined;
 
     for (const file of files) {
       const key = `${file.name}-${Date.now()}-${Math.random()
@@ -626,39 +634,68 @@ export default function PromptEditor({
         { key, name: file.name, status: "uploading" },
       ]);
 
-      try {
-        const doc = await uploadDocument(
-          file,
-          file.name,
-          "기타",
-          descriptionAtAttach,
-        );
+      // 업로드를 여기서 await하지 않는다. 여러 파일은 병렬로 올리고,
+      // 사용자가 먼저 전송을 눌렀다면 onExecute()가 이 Promise를 기다린다.
+      const task = uploadDocument(
+        file,
+        file.name,
+        "기타",
+        undefined,
+      )
+        .then((doc) => {
+          if (
+            doc.indexStatus &&
+            !["READY", "TEXT_READY"].includes(doc.indexStatus)
+          ) {
+            throw new Error(
+              doc.indexStatus === "FAILED"
+                ? `파일 분석에 실패했습니다: ${doc.indexError || file.name}`
+                : `파일이 아직 분석 준비 중입니다: ${file.name}`,
+            );
+          }
 
-        setAttachments((prev) =>
-          prev.map((attachment) =>
-            attachment.key === key
-              ? { ...attachment, status: "done", doc }
-              : attachment,
-          ),
-        );
-      } catch (error) {
-        console.error("문서 업로드 실패:", error);
-        setAttachments((prev) =>
-          prev.map((attachment) =>
-            attachment.key === key
-              ? { ...attachment, status: "error" }
-              : attachment,
-          ),
-        );
-      }
+          uploadedDocsRef.current.set(key, doc);
+
+          setAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.key === key
+                ? { ...attachment, status: "done", doc }
+                : attachment,
+            ),
+          );
+
+          return doc;
+        })
+        .catch((error) => {
+          console.error("문서 업로드 실패:", error);
+
+          setAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.key === key
+                ? { ...attachment, status: "error" }
+                : attachment,
+            ),
+          );
+
+          return null;
+        })
+        .finally(() => {
+          uploadTasksRef.current.delete(key);
+        });
+
+      uploadTasksRef.current.set(key, task);
     }
 
+    // 같은 파일을 다시 선택해도 onChange가 다시 발생하도록 즉시 초기화한다.
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }
 
   function removeAttachment(key: string) {
+    uploadedDocsRef.current.delete(key);
+    uploadTasksRef.current.delete(key);
+
     setAttachments((prev) =>
       prev.filter((attachment) => attachment.key !== key),
     );
@@ -685,63 +722,107 @@ export default function PromptEditor({
     setAnalysisResult(null);
     setAnalyzing(false);
     setAttachments([]);
+    uploadTasksRef.current.clear();
+    uploadedDocsRef.current.clear();
   }
 
   async function onExecute() {
     const typedText = text.trim();
-    const hasDoneAttachments = attachments.some((a) => a.status === "done" && a.doc);
+    const selectedAttachments = [...attachments];
+    const hasSelectedAttachments = selectedAttachments.length > 0;
+    const hasUploadCandidate = selectedAttachments.some(
+      (attachment) => attachment.status !== "error",
+    );
 
-    if ((!typedText && !hasDoneAttachments) || sending || disabled) {
+    // 파일을 막 선택해서 아직 uploading이어도 전송 요청 자체는 허용한다.
+    // 실제 onSubmit은 아래에서 해당 업로드 Promise가 끝난 뒤 호출된다.
+    if (
+      (!typedText && !hasUploadCandidate) ||
+      sending ||
+      disabled ||
+      submittingRef.current
+    ) {
       return;
     }
 
-    // 텍스트 없이 파일만 첨부한 경우, AI가 참고할 기본 지시문을 넣어준다.
-    const baseText = typedText || "첨부된 파일을 참고해서 답변해주세요.";
+    // 실패한 첨부를 조용히 빼고 텍스트만 보내면 사용자는 파일도 전달된
+    // 것으로 오해한다. 실패 파일은 제거/재첨부하기 전까지 전송하지 않는다.
+    if (selectedAttachments.some((attachment) => attachment.status === "error")) {
+      window.alert(
+        "첨부파일 업로드에 실패했습니다. 실패한 파일을 제거한 뒤 다시 첨부해주세요.",
+      );
+      return;
+    }
 
-    // 인용된 이전 메시지가 있으면, 입력창에 보이는 텍스트(typedText)는 그대로 두고
-    // 실제로 보내는 finalPrompt에만 인용 블록을 앞에 붙인다.
-    // AI가 "새 지시"랑 "참고용 인용"을 헷갈리지 않도록 라벨을 명확히 구분해둠.
-    const finalPrompt = quotedMessage
-      ? `[인용된 이전 ${quotedMessage.role === "user" ? "내 메시지" : "AI 응답"}]\n${quotedMessage.content}\n\n[위 내용을 참고해서 답변]\n${baseText}`
-      : baseText;
+    submittingRef.current = true;
 
-    if (onSubmit) {
-      if (submittingRef.current) {
+    try {
+      const selectedKeys = selectedAttachments.map((attachment) => attachment.key);
+      const pendingUploads = selectedKeys
+        .map((key) => uploadTasksRef.current.get(key))
+        .filter(
+          (task): task is Promise<DocumentItem | null> => Boolean(task),
+        );
+
+      if (pendingUploads.length > 0) {
+        // 버튼을 누른 뒤에는 중복 전송을 막고, 현재 업로드/인덱싱이
+        // 완료되는 즉시 같은 클릭으로 채팅 전송까지 이어간다.
+        setSending(true);
+        await Promise.all(pendingUploads);
+      }
+
+      const sentAttachments = selectedKeys
+        .map((key) => uploadedDocsRef.current.get(key))
+        .filter((doc): doc is DocumentItem => Boolean(doc));
+
+      // 첨부를 선택했는데 하나라도 최종 업로드에 실패했다면 텍스트만
+      // 전송하지 않는다. 파일이 빠진 채 질문되는 기존 문제를 막는다.
+      if (
+        hasSelectedAttachments &&
+        sentAttachments.length !== selectedAttachments.length
+      ) {
+        window.alert(
+          "첨부파일 준비가 완료되지 않았습니다. 잠시 후 다시 시도하거나 실패한 파일을 다시 첨부해주세요.",
+        );
         return;
       }
 
-      submittingRef.current = true;
+      // 텍스트 없이 파일만 첨부한 경우에도 정상적인 문서 읽기 요청으로 보낸다.
+      const baseText = typedText || "첨부된 파일의 내용을 읽고 핵심 내용을 알려주세요.";
 
-      // resetEditor()가 attachments를 지우기 전에, 업로드가 끝난 파일만 추려서 넘긴다.
-      // (업로드 중/실패 상태는 doc이 없어서 제외)
-      const sentAttachments = attachments
-        .filter((a) => a.status === "done" && a.doc)
-        .map((a) => a.doc as DocumentItem);
+      // 인용된 이전 메시지가 있으면 입력창 표시 텍스트는 그대로 두고
+      // AI에 보내는 finalPrompt에만 인용 블록을 붙인다.
+      const finalPrompt = quotedMessage
+        ? `[인용된 이전 ${quotedMessage.role === "user" ? "내 메시지" : "AI 응답"}]\n${quotedMessage.content}\n\n[위 내용을 참고해서 답변]\n${baseText}`
+        : baseText;
 
-      try {
-        onSubmit(typedText, [...directEditsRef.current], sentAttachments, finalPrompt);
+      if (onSubmit) {
+        onSubmit(
+          typedText,
+          [...directEditsRef.current],
+          sentAttachments,
+          finalPrompt,
+        );
         resetEditor();
         onClearQuote?.();
-      } finally {
-        setTimeout(() => {
-          submittingRef.current = false;
-        }, 0);
+        return;
       }
 
-      return;
-    }
+      setSending(true);
 
-    setSending(true);
-
-    try {
-      const response = await execute(finalPrompt);
-      setResult(response?.result?.result ?? JSON.stringify(response));
-      onClearQuote?.();
-    } catch (error) {
-      console.error("프롬프트 실행 실패:", error);
-      setResult("요청 실행 중 오류가 발생했습니다.");
+      try {
+        const response = await execute(finalPrompt);
+        setResult(response?.result?.result ?? JSON.stringify(response));
+        onClearQuote?.();
+      } catch (error) {
+        console.error("프롬프트 실행 실패:", error);
+        setResult("요청 실행 중 오류가 발생했습니다.");
+      }
     } finally {
       setSending(false);
+      setTimeout(() => {
+        submittingRef.current = false;
+      }, 0);
     }
   }
 
@@ -1148,7 +1229,7 @@ export default function PromptEditor({
                 </span>
 
                 {attachment.status === "uploading" && (
-                  <span className="attach-chip-status">업로드 중…</span>
+                  <span className="attach-chip-status">파일 준비 중…</span>
                 )}
 
                 {attachment.status === "error" && (
@@ -1173,6 +1254,7 @@ export default function PromptEditor({
             <input
               ref={fileInputRef}
               type="file"
+              accept=".pdf,.docx,.txt,.md"
               multiple
               hidden
               onChange={(e) => {
@@ -1217,7 +1299,8 @@ export default function PromptEditor({
             <button
               className="send-btn"
               disabled={
-                (!text.trim() && !attachments.some((a) => a.status === "done" && a.doc)) ||
+                (!text.trim() &&
+                  !attachments.some((a) => a.status !== "error")) ||
                 sending ||
                 disabled
               }

@@ -119,8 +119,9 @@ class DocumentIdsRoutingTest(unittest.TestCase):
 
         captured = {}
 
-        def fake_retrieve(retrieve_req):
-            captured["req"] = retrieve_req
+        def fake_overview(owner_user_id, document_ids):
+            captured["owner_user_id"] = owner_user_id
+            captured["document_ids"] = document_ids
             return RetrieveResponse(
                 documents=[
                     Document(
@@ -137,8 +138,11 @@ class DocumentIdsRoutingTest(unittest.TestCase):
             )
 
         with patch(
-            "app.services.retrieval.retrieval_orchestrator.pipeline_mock.retrieve",
-            side_effect=fake_retrieve,
+            "app.services.retrieval.retrieval_orchestrator.USE_REAL_RETRIEVAL",
+            True,
+        ), patch(
+            "app.services.retrieval.retrieval_orchestrator.retrieve_document_overview",
+            side_effect=fake_overview,
         ):
             result = execute_retrieval(req)
 
@@ -146,14 +150,10 @@ class DocumentIdsRoutingTest(unittest.TestCase):
         self.assertTrue(result.used_internal_rag)
         self.assertEqual(len(result.documents), 1)
         self.assertEqual(result.documents[0].document_id, 42)
-
-        # RetrieveRequest에도 document_ids가 실제로 실려갔는지 확인
-        self.assertEqual(captured["req"].document_ids, [42])
+        self.assertEqual(captured["owner_user_id"], 1)
+        self.assertEqual(captured["document_ids"], [42])
 
     def test_document_ids_overrides_conversation_route_override(self):
-        # 대화 맥락상으로는 "그거 다시 알려줘" 같은 followup이 no_retrieval로
-        # override 될 수 있는 상황이더라도, document_ids가 있으면 그보다
-        # 우선해서 internal_rag로 가야 한다.
         req = RetrievalExecuteRequest(
             query="그거 다시 설명해줘",
             owner_user_id=1,
@@ -165,13 +165,23 @@ class DocumentIdsRoutingTest(unittest.TestCase):
             document_ids=[7],
         )
 
+        captured = {}
+
+        def fake_retrieve(retrieve_req):
+            captured["req"] = retrieve_req
+            return RetrieveResponse(documents=[])
+
         with patch(
-            "app.services.retrieval.retrieval_orchestrator.pipeline_mock.retrieve",
-            return_value=RetrieveResponse(documents=[]),
+            "app.services.retrieval.retrieval_orchestrator.USE_REAL_RETRIEVAL",
+            True,
+        ), patch(
+            "app.services.retrieval.retrieval_orchestrator.retrieve",
+            side_effect=fake_retrieve,
         ):
             result = execute_retrieval(req)
 
         self.assertEqual(result.route, "internal_rag")
+        self.assertEqual(captured["req"].document_ids, [7])
 
     def test_no_document_ids_falls_back_to_existing_routing(self):
         # document_ids가 없을 때는 기존 동작(ML 라우팅)이 그대로 유지되어야

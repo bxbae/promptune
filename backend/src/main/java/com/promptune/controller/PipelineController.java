@@ -52,6 +52,7 @@ public class PipelineController {
     private final com.promptune.service.PreferenceResolutionService preferenceResolutionService;
     private final com.promptune.repository.ReceiverProfileRepository receiverProfileRepository; // 추가
     private final com.promptune.repository.DocumentRepository documentRepository; // 추가
+    private final com.promptune.service.DocumentIntentResolver documentIntentResolver;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -63,7 +64,8 @@ public class PipelineController {
         com.promptune.service.MicrosoftGraphService microsoftGraphService,
         com.promptune.service.PreferenceResolutionService preferenceResolutionService,
         com.promptune.repository.ReceiverProfileRepository receiverProfileRepository,
-        com.promptune.repository.DocumentRepository documentRepository) {
+        com.promptune.repository.DocumentRepository documentRepository,
+        com.promptune.service.DocumentIntentResolver documentIntentResolver) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -77,6 +79,7 @@ public class PipelineController {
         this.preferenceResolutionService = preferenceResolutionService;
         this.receiverProfileRepository = receiverProfileRepository;
         this.documentRepository = documentRepository;
+        this.documentIntentResolver = documentIntentResolver;
     }
 
     /**
@@ -136,7 +139,128 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     java.util.List<java.util.Map<String, String>> conversationHistory =
             buildConversationHistory(req.chatSessionId(), userId);
 
+    // 문서 생성 의도와 활성 문서를 먼저 각각 확정한다.
+    // "이 파일을 보고서로 만들어줘"처럼 첨부문서를 재료로 쓰는 요청은
+    // Retrieval 후 Document Generator로 넘겨야 현재 파일 본문을 잃지 않는다.
+    java.util.Optional<com.promptune.service.DocumentIntentResolver.DocumentAction> documentAction =
+            documentIntentResolver.resolve(req.finalPrompt(), conversationHistory);
+
+    java.util.List<Long> retrievalDocumentIds =
+            resolveRetrievalDocumentIds(
+                    req.documentIds(),
+                    req.chatSessionId(),
+                    userId,
+                    req.finalPrompt());
+
+    String documentResolutionSource =
+            retrievalDocumentIds.isEmpty()
+                    ? "NONE"
+                    : "CURRENT_OR_ACTIVE";
+
+    /*
+     * 현재 첨부/대화의 활성 문서가 없을 때만 파일관리 catalog를 본다.
+     * 따라서 현재 첨부 > 대화 active document > 파일관리 검색 우선순위가 보존된다.
+     */
+    if (retrievalDocumentIds.isEmpty()) {
+        java.util.List<com.promptune.domain.Document> ownedCatalogDocuments =
+                documentRepository.findByOwnerUserId(userId);
+
+        com.promptune.service.DocumentReferenceResolver.Resolution catalogResolution =
+                com.promptune.service.DocumentReferenceResolver.resolveMetadata(
+                        req.finalPrompt(),
+                        ownedCatalogDocuments);
+
+        /*
+         * title / description / document_type만으로 확정하기 애매하면
+         * 기존 /api/ai/retrieve를 직접 사용해 BGE-M3 semantic 후보를 얻는다.
+         * ML Router를 거치지 않으므로 "파일관리 문서 찾아줘"가 web/chat으로
+         * 오분류되는 문제와 분리된다.
+         */
+        if (!catalogResolution.found()
+                && com.promptune.service.DocumentReferenceResolver
+                        .shouldSearchCatalog(req.finalPrompt())) {
+            try {
+                java.util.List<java.util.Map<String, Object>> semanticCandidates =
+                        ai.retrieve(
+                                req.finalPrompt(),
+                                userId,
+                                8);
+
+                catalogResolution =
+                        com.promptune.service.DocumentReferenceResolver.resolveSemantic(
+                                req.finalPrompt(),
+                                semanticCandidates,
+                                ownedCatalogDocuments);
+            } catch (Exception e) {
+                System.err.println(
+                        "[DocumentResolver] semantic catalog search failed"
+                                + " / userId=" + userId
+                                + " / prompt=" + req.finalPrompt()
+                                + " / error=" + e.getMessage());
+            }
+        }
+
+        if (catalogResolution.found()) {
+            retrievalDocumentIds =
+                    catalogResolution.documentIds();
+
+            documentResolutionSource =
+                    catalogResolution.source();
+
+            System.out.println(
+                    "[DocumentResolver] source="
+                            + catalogResolution.source()
+                            + " / confidence="
+                            + String.format(
+                                    java.util.Locale.ROOT,
+                                    "%.3f",
+                                    catalogResolution.confidence())
+                            + " / documentIds="
+                            + catalogResolution.documentIds()
+                            + " / candidates="
+                            + catalogResolution.candidates().stream()
+                                    .map(candidate ->
+                                            candidate.documentId()
+                                                    + ":"
+                                                    + candidate.title()
+                                                    + ":"
+                                                    + String.format(
+                                                            java.util.Locale.ROOT,
+                                                            "%.3f",
+                                                            candidate.score()))
+                                    .toList());
+        }
+    }
+
+    ensureActiveDocumentsReady(retrievalDocumentIds, userId);
+
+    if (documentAction.isPresent() && retrievalDocumentIds.isEmpty()) {
+        return executeDocumentAction(
+                req,
+                userId,
+                documentAction.get());
+    }
+
     DiagnoseResult d = ai.diagnose(req.finalPrompt());
+
+    String persistedTaskType = documentAction.isPresent()
+            ? "document_generation"
+            : d.taskType();
+
+    com.promptune.domain.PromptSession session =
+            new com.promptune.domain.PromptSession(
+                    userId,
+                    req.finalPrompt(),
+                    req.finalPrompt(),
+                    persistedTaskType,
+                    req.chatSessionId());
+
+    promptSessionRepository.save(session);
+
+    linkCurrentAttachments(
+            req.documentIds(),
+            userId,
+            session.getId());
 
     // Retrieval Router/Orchestrator(승연님 PR #67)가 내부문서 검색·웹검색 여부까지
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
@@ -152,33 +276,65 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     try {
         // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
         // 본문 최대 1200자(3개면 최대 3600자+)가 프롬프트에 통째로 들어가면서
-        // t3.large CPU에서 generate() 한 번에 9분 가까이 걸리는 문제가 있어
-        // (nginx /api/execute 타임아웃 300초 초과) top_k를 3→1로 줄였었음.
-        //
-        // 2026-08-26: 하지만 검색 결과가 1개뿐이면, 검색엔진이 상위에 올린
-        // 기사가 실제 "결과" 기사가 아니라 "프리뷰/예측" 기사여도 그거 하나를
-        // 그대로 근거로 답해야 해서 사실과 다른 답(예: 어제 경기 승패를 반대로
-        // 답함)이 나오는 문제가 확인됨. GPU 인스턴스로 전환하면서 t3.large
-        // CPU 지연 문제는 더 이상 해당되지 않으므로 top_k를 3으로 복원
-        // (generate_hcx.py 쪽 결과당 본문 길이도 600자로 다시 늘려서 최대
-        // 1800자 - 문제가 됐던 3600자보다는 작게 유지).
-        // 2026-08-26: 이 메시지에 첨부된 문서 id를 그대로 넘긴다 - DOCX를
-        // 첨부하고 "이게 무슨 내용이야?" 라고 물으면 문서 내용 대신 이전
-        // 대화 주제로 엉뚱하게 답하던 문제의 원인이 여기(req.documentIds()가
-        // 캡처만 되고 실제로 retrieval-execute까지 전달된 적이 없었음)였음.
+        // 내부문서는 최대 4개 chunk를 사용한다.
+        // Web 검색 결과 수는 ai-service에서 별도로 최대 3건으로 제한한다.
+        // 현재 첨부/활성/파일관리에서 resolve된 실제 document ID를 반드시 전달한다.
         retrieval = ai.retrievalExecute(
                 req.finalPrompt(),
                 userId,
-                3,
+                4,
                 conversationHistory,
-                req.documentIds());
+                retrievalDocumentIds);
     } catch (Exception e) {
+        // 첨부/이전 문서가 명확한 요청에서 Retrieval 실패를 숨기고 일반 HCX 답변으로
+        // 넘어가면 모델이 과거 문서나 임의 문서를 근거로 답하는 치명적 오류가 난다.
+        if (!retrievalDocumentIds.isEmpty()) {
+            System.err.println(
+                    "[문서 Retrieval 실패] documentIds="
+                            + retrievalDocumentIds
+                            + " / prompt="
+                            + req.finalPrompt()
+                            + " / error="
+                            + e.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "첨부 문서 내용을 불러오지 못했습니다. 문서 분석 상태를 확인해주세요.");
+        }
+
+        // 웹/일반 검색 실패는 검색 없이도 대화를 계속할 수 있으므로 fail-open 유지.
         retrieval = java.util.Map.of();
     }
     java.util.List<java.util.Map<String, Object>> documents =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("documents", java.util.List.of());
     java.util.List<java.util.Map<String, Object>> webResults =
             (java.util.List<java.util.Map<String, Object>>) retrieval.getOrDefault("web_results", java.util.List.of());
+
+    validateDocumentRetrievalInvariant(
+            retrievalDocumentIds,
+            documents,
+            userId);
+
+    System.out.println(
+            "[ExecutionContext] chatSessionId=" + req.chatSessionId()
+                    + " / currentDocumentIds=" + req.documentIds()
+                    + " / activeDocumentIds=" + retrievalDocumentIds
+                    + " / documentResolutionSource=" + documentResolutionSource
+                    + " / route=" + retrieval.get("route")
+                    + " / retrievedDocumentIds="
+                    + documents.stream()
+                            .map(doc -> doc.get("document_id"))
+                            .distinct()
+                            .toList());
+
+    if (documentAction.isPresent()) {
+        return executeGroundedDocumentAction(
+                req,
+                userId,
+                documentAction.get(),
+                session,
+                retrievalDocumentIds,
+                documents);
+    }
 
     // user_context이면 실제 Microsoft Graph 프로필을 생성 컨텍스트로 전달.
     // Microsoft 미연동/연동 실패 시에도 채팅 자체는 계속 진행돼야 하므로
@@ -249,24 +405,31 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         }
     }
 
-    com.promptune.domain.PromptSession session = new com.promptune.domain.PromptSession(
-            userId, req.finalPrompt(), req.finalPrompt(), d.taskType(), req.chatSessionId());
     // AI 응답 원문도 같이 저장 (이제까지 저장 안 되고 있던 부분 — 메시지 목록에 필요해서 추가)
     Object aiText = result != null ? result.get("result") : null;
     session.setAiResponseText(aiText != null ? aiText.toString() : null);
     promptSessionRepository.save(session);
 
-    // 이 메시지에 첨부된 문서가 있으면 prompt_session_id로 연결
-    // (본인 소유 문서만 연결 - 다른 사람 문서 id를 끼워넣는 걸 방지)
-    if (req.documentIds() != null && !req.documentIds().isEmpty()) {
-        List<com.promptune.domain.Document> docs = documentRepository.findAllById(req.documentIds());
-        for (com.promptune.domain.Document doc : docs) {
-            if (doc.getOwnerUserId().equals(userId)) {
-                doc.setPromptSessionId(session.getId());
-            }
-        }
-        documentRepository.saveAll(docs);
-    }
+    // 첨부 관계는 documents.prompt_session_id 단일 컬럼이 아니라
+    // prompt_session_documents 연결 테이블에 저장한다. 같은 파일을 여러 턴에서
+    // 다시 사용해도 과거 대화의 첨부 이력이 사라지지 않는다.
+    java.util.List<Long> persistedDocumentIds =
+            retrievalDocumentIds != null && !retrievalDocumentIds.isEmpty()
+                    ? retrievalDocumentIds
+                    : (req.documentIds() == null
+                            ? java.util.List.of()
+                            : req.documentIds());
+
+    linkCurrentAttachments(
+            persistedDocumentIds,
+            userId,
+            session.getId());
+
+    System.out.println(
+            "[DocumentMemory] promptSessionId="
+                    + session.getId()
+                    + " / persistedDocumentIds="
+                    + persistedDocumentIds);
 
     if (req.chatSessionId() != null) {
     chatSessionRepository.findById(req.chatSessionId()).ifPresent(chat -> {
@@ -304,9 +467,16 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     response.put("usedWebSearch", retrieval.getOrDefault("used_web_search", false));
     response.put("result", result);
     response.put("promptSessionId", session.getId());
-    // 2026-08-26: 클라이언트(크롬 확장 등)에서 "출처 더보기"로 실제 검색된
-    // 기사 링크를 보여줄 수 있도록, 웹검색 결과에서 title/url만 추려서
-    // 함께 내려준다 (content 본문은 프롬프트용이라 클라이언트에는 불필요).
+    response.put("activeDocumentIds", retrievalDocumentIds);
+    response.put(
+            "retrievedDocumentIds",
+            documents.stream()
+                    .map(doc -> doc.get("document_id"))
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList());
+
+    // Web 검색 결과의 실제 출처를 클라이언트에서도 확인할 수 있게 유지한다.
     response.put("sources", buildSources(webResults));
     return response;
     }
@@ -389,6 +559,523 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         }
 
         return history;
+    }
+
+    private Map<String, Object> executeDocumentAction(
+            ExecuteRequest req,
+            Long userId,
+            com.promptune.service.DocumentIntentResolver.DocumentAction action) {
+
+        String assistantText =
+                "요청하신 " + action.title() + " 문서를 생성합니다.";
+
+        com.promptune.domain.PromptSession session =
+                new com.promptune.domain.PromptSession(
+                        userId,
+                        req.finalPrompt(),
+                        req.finalPrompt(),
+                        "document_generation",
+                        req.chatSessionId());
+
+        session.setAiResponseText(assistantText);
+        promptSessionRepository.save(session);
+
+        linkCurrentAttachments(
+                req.documentIds(),
+                userId,
+                session.getId());
+
+        touchChatSession(
+                req.chatSessionId(),
+                req.finalPrompt());
+
+        Map<String, Object> actionPayload = new java.util.HashMap<>();
+        actionPayload.put("type", "GENERATE_DOCUMENT");
+        actionPayload.put("title", action.title());
+        actionPayload.put("content", action.content());
+        actionPayload.put("format", action.format());
+        actionPayload.put("useExistingTemplate", action.useExistingTemplate());
+
+        Map<String, Object> resultPayload = new java.util.HashMap<>();
+        resultPayload.put("result", assistantText);
+        resultPayload.put("used_web_search", false);
+
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("taskType", "document_generation");
+        response.put("needsInternalDocs", false);
+        response.put("retrievalRoute", "no_retrieval");
+        response.put("usedInternalRag", false);
+        response.put("usedWebSearch", false);
+        response.put("result", resultPayload);
+        response.put("promptSessionId", session.getId());
+        response.put("documentAction", actionPayload);
+
+        return response;
+    }
+
+    private Map<String, Object> executeGroundedDocumentAction(
+            ExecuteRequest req,
+            Long userId,
+            com.promptune.service.DocumentIntentResolver.DocumentAction action,
+            com.promptune.domain.PromptSession session,
+            java.util.List<Long> activeDocumentIds,
+            java.util.List<java.util.Map<String, Object>> retrievedDocuments) {
+
+        String assistantText =
+                "현재 첨부 문서를 바탕으로 " + action.title() + " 문서를 생성합니다.";
+
+        session.setAiResponseText(assistantText);
+        promptSessionRepository.save(session);
+
+        touchChatSession(
+                req.chatSessionId(),
+                req.finalPrompt());
+
+        String groundedContent =
+                buildGroundedDocumentSource(
+                        action.content(),
+                        retrievedDocuments);
+
+        Map<String, Object> actionPayload =
+                new java.util.HashMap<>();
+
+        actionPayload.put("type", "GENERATE_DOCUMENT");
+        actionPayload.put("title", action.title());
+        actionPayload.put("content", groundedContent);
+        actionPayload.put("format", action.format());
+        actionPayload.put(
+                "useExistingTemplate",
+                action.useExistingTemplate());
+
+        Map<String, Object> resultPayload =
+                new java.util.HashMap<>();
+
+        resultPayload.put("result", assistantText);
+        resultPayload.put("used_web_search", false);
+
+        Map<String, Object> response =
+                new java.util.HashMap<>();
+
+        response.put(
+                "taskType",
+                "document_generation");
+
+        response.put(
+                "needsInternalDocs",
+                true);
+
+        response.put(
+                "retrievalRoute",
+                "internal_rag");
+
+        response.put(
+                "usedInternalRag",
+                true);
+
+        response.put(
+                "usedWebSearch",
+                false);
+
+        response.put(
+                "result",
+                resultPayload);
+
+        response.put(
+                "promptSessionId",
+                session.getId());
+
+        response.put(
+                "activeDocumentIds",
+                activeDocumentIds);
+
+        response.put(
+                "retrievedDocumentIds",
+                retrievedDocuments.stream()
+                        .map(doc -> doc.get("document_id"))
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList());
+
+        response.put(
+                "documentAction",
+                actionPayload);
+
+        return response;
+    }
+
+    private String buildGroundedDocumentSource(
+            String instruction,
+            java.util.List<java.util.Map<String, Object>> documents) {
+
+        StringBuilder out =
+                new StringBuilder();
+
+        out.append(
+                instruction == null
+                        ? ""
+                        : instruction.trim());
+
+        out.append("\n\n[첨부 문서 원문]\n");
+
+        Object previousId = null;
+        int usedChars = 0;
+        final int maxChars = 12000;
+
+        for (java.util.Map<String, Object> doc : documents) {
+
+            if (usedChars >= maxChars) {
+                break;
+            }
+
+            Object documentId =
+                    doc.get("document_id");
+
+            if (!java.util.Objects.equals(
+                    previousId,
+                    documentId)) {
+
+                if (previousId != null) {
+                    out.append("\n");
+                }
+
+                out.append("[문서 id=")
+                        .append(documentId)
+                        .append("] ")
+                        .append(
+                                String.valueOf(
+                                        doc.getOrDefault(
+                                                "title",
+                                                "")))
+                        .append("\n");
+
+                previousId = documentId;
+            }
+
+            String content =
+                    String.valueOf(
+                            doc.getOrDefault(
+                                    "content",
+                                    ""))
+                            .trim();
+
+            if (content.isBlank()) {
+                continue;
+            }
+
+            int remaining =
+                    maxChars - usedChars;
+
+            String piece =
+                    content.length() > remaining
+                            ? content.substring(
+                                    0,
+                                    remaining)
+                            : content;
+
+            out.append(piece)
+                    .append("\n");
+
+            usedChars += piece.length();
+        }
+
+        return out.toString().trim();
+    }
+
+    private void linkCurrentAttachments(
+            java.util.List<Long> documentIds,
+            Long userId,
+            Long promptSessionId) {
+
+        if (documentIds == null || documentIds.isEmpty()) {
+            return;
+        }
+
+        java.util.List<com.promptune.domain.Document> docs =
+                documentRepository.findAllById(documentIds);
+
+        java.util.List<com.promptune.domain.Document> ownedDocs =
+                docs.stream()
+                        .filter(doc -> userId.equals(doc.getOwnerUserId()))
+                        .toList();
+
+        for (com.promptune.domain.Document doc : ownedDocs) {
+            documentRepository.linkPromptSessionDocument(
+                    promptSessionId,
+                    doc.getId());
+        }
+    }
+
+    private void touchChatSession(
+            Long chatSessionId,
+            String prompt) {
+
+        if (chatSessionId == null) {
+            return;
+        }
+
+        chatSessionRepository.findById(chatSessionId).ifPresent(chat -> {
+            if (chat.getTitle() == null || chat.getTitle().isBlank()) {
+                String raw = prompt == null ? "" : prompt.trim();
+                String title = raw.length() > 20
+                        ? raw.substring(0, 20) + "..."
+                        : raw;
+                chat.setTitle(title.isBlank() ? "새 문서" : title);
+            }
+
+            chat.touch();
+            chatSessionRepository.save(chat);
+        });
+    }
+
+    private java.util.List<Long> resolveRetrievalDocumentIds(
+            java.util.List<Long> currentDocumentIds,
+            Long chatSessionId,
+            Long userId,
+            String prompt) {
+
+        java.util.List<Long> ownedCurrent = filterOwnedDocumentIds(
+                currentDocumentIds,
+                userId);
+
+        // 현재 턴 첨부는 ML Router보다 항상 우선한다.
+        if (!ownedCurrent.isEmpty()) {
+            return ownedCurrent;
+        }
+
+        if (chatSessionId == null || !looksLikeDocumentFollowup(prompt)) {
+            return java.util.List.of();
+        }
+
+        java.util.List<com.promptune.domain.PromptSession> sessions =
+                promptSessionRepository
+                        .findByChatSessionIdOrderByCreatedAtAsc(chatSessionId);
+
+        // "그거/이거"처럼 매우 모호한 지시대명사는 오래된 첨부파일까지
+        // 거슬러 올라가면 오히려 틀린 문서를 활성화한다. 이런 표현은 직전 2턴에
+        // 첨부가 있을 때만 문서 참조로 해석하고, 명시적 "그 파일/거기서/문서 요약"
+        // 표현은 더 이전 첨부까지 찾는다.
+        int maxLookback = isGenericDocumentReference(prompt) ? 2 : sessions.size();
+        int checked = 0;
+
+        for (int i = sessions.size() - 1; i >= 0 && checked < maxLookback; i--, checked++) {
+            com.promptune.domain.PromptSession session = sessions.get(i);
+
+            java.util.List<Long> documentIds =
+                    documentRepository.findByPromptSessionId(session.getId())
+                            .stream()
+                            .filter(doc -> userId.equals(doc.getOwnerUserId()))
+                            .map(com.promptune.domain.Document::getId)
+                            .toList();
+
+            if (!documentIds.isEmpty()) {
+                return documentIds;
+            }
+        }
+
+        return java.util.List.of();
+    }
+
+    private boolean isGenericDocumentReference(String prompt) {
+        String text = prompt == null ? "" : prompt.trim().toLowerCase();
+
+        boolean hasGenericPronoun = containsAnyText(
+                text,
+                "이거", "이걸", "그거", "그걸", "그것", "저거");
+
+        return hasGenericPronoun
+                && !containsAnyText(
+                        text,
+                        "문서", "파일", "이력서", "보고서",
+                        "거기서", "아까", "전에 올린",
+                        "내용", "요약", "프로젝트", "경력");
+    }
+
+    private boolean containsAnyText(String text, String... markers) {
+        for (String marker : markers) {
+            if (text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void ensureActiveDocumentsReady(
+            java.util.List<Long> activeDocumentIds,
+            Long userId) {
+
+        if (activeDocumentIds == null || activeDocumentIds.isEmpty()) {
+            return;
+        }
+
+        java.util.List<com.promptune.domain.Document> docs =
+                documentRepository.findAllById(activeDocumentIds)
+                        .stream()
+                        .filter(doc -> userId.equals(doc.getOwnerUserId()))
+                        .toList();
+
+        if (docs.size() != activeDocumentIds.stream().distinct().count()) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "첨부 문서를 찾을 수 없습니다.");
+        }
+
+        java.util.List<String> failedTitles = docs.stream()
+                .filter(doc -> "FAILED".equalsIgnoreCase(doc.getIndexStatus()))
+                .map(com.promptune.domain.Document::getTitle)
+                .toList();
+
+        if (!failedTitles.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "문서 분석에 실패했습니다: " + String.join(", ", failedTitles));
+        }
+
+        java.util.List<String> waitingTitles = docs.stream()
+                .filter(doc -> !"READY".equalsIgnoreCase(doc.getIndexStatus())
+                        && !"TEXT_READY".equalsIgnoreCase(doc.getIndexStatus()))
+                .map(com.promptune.domain.Document::getTitle)
+                .toList();
+
+        if (!waitingTitles.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "문서 분석이 아직 완료되지 않았습니다: " + String.join(", ", waitingTitles));
+        }
+    }
+
+    private void validateDocumentRetrievalInvariant(
+            java.util.List<Long> activeDocumentIds,
+            java.util.List<java.util.Map<String, Object>> retrievedDocuments,
+            Long userId) {
+
+        if (activeDocumentIds == null || activeDocumentIds.isEmpty()) {
+            return;
+        }
+
+        java.util.Set<Long> expected = new java.util.HashSet<>(activeDocumentIds);
+        java.util.Set<Long> actual = new java.util.HashSet<>();
+
+        for (java.util.Map<String, Object> document : retrievedDocuments) {
+            Object rawId = document.get("document_id");
+            if (rawId instanceof Number number) {
+                actual.add(number.longValue());
+            }
+        }
+
+        if (!actual.isEmpty() && !expected.containsAll(actual)) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "첨부 문서 범위를 벗어난 검색 결과가 반환되었습니다.");
+        }
+
+        if (!retrievedDocuments.isEmpty()) {
+            return;
+        }
+
+        java.util.List<com.promptune.domain.Document> docs =
+                documentRepository.findAllById(activeDocumentIds)
+                        .stream()
+                        .filter(doc -> userId.equals(doc.getOwnerUserId()))
+                        .toList();
+
+        boolean failed = docs.stream()
+                .anyMatch(doc -> "FAILED".equalsIgnoreCase(doc.getIndexStatus()));
+        boolean notReady = docs.stream()
+                .anyMatch(doc -> !"READY".equalsIgnoreCase(doc.getIndexStatus())
+                        && !"TEXT_READY".equalsIgnoreCase(doc.getIndexStatus()));
+
+        if (failed) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "첨부 문서 분석에 실패했습니다. 파일을 다시 업로드하거나 재인덱싱해주세요.");
+        }
+
+        if (notReady) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "첨부 문서가 아직 분석 준비 중입니다. 잠시 후 다시 시도해주세요.");
+        }
+
+        throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "첨부 문서는 준비되어 있지만 검색 결과가 비어 있습니다. 문서 인덱스를 확인해주세요.");
+    }
+
+    private java.util.List<Long> filterOwnedDocumentIds(
+            java.util.List<Long> documentIds,
+            Long userId) {
+
+        if (documentIds == null || documentIds.isEmpty()) {
+            return java.util.List.of();
+        }
+
+        return documentRepository.findAllById(documentIds)
+                .stream()
+                .filter(doc -> userId.equals(doc.getOwnerUserId()))
+                .map(com.promptune.domain.Document::getId)
+                .distinct()
+                .toList();
+    }
+
+    private boolean looksLikeDocumentFollowup(String prompt) {
+        String text = prompt == null
+                ? ""
+                : prompt.trim().toLowerCase();
+
+        if (text.isBlank()) {
+            return false;
+        }
+
+        String[] markers = {
+                "거기서",
+                "그 문서",
+                "그 파일",
+                "그 이력서",
+                "그 보고서",
+                "해당 문서",
+                "해당 파일",
+                "아까 문서",
+                "아까 파일",
+                "아까 올린",
+                "전에 올린",
+                "이 문서",
+                "이 파일",
+                "이거",
+                "이걸",
+                "그거",
+                "그걸",
+                "그것",
+                "저거",
+                "방금",
+                "무슨 내용",
+                "각 항목",
+                "각항목",
+                "항목에",
+                "항목은",
+                "항목들",
+                "어떤 항목",
+                "구성은",
+                "구성 항목",
+                "목차",
+                "더 자세히",
+                "자세히 알려",
+                "뭐 있는데",
+                "뭐있는데",
+                "내용이야",
+                "내용 알려",
+                "문서 요약",
+                "파일 요약",
+                "프로젝트만",
+                "경력만"
+        };
+
+        for (String marker : markers) {
+            if (text.contains(marker)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private String compactHistoryText(String text) {
