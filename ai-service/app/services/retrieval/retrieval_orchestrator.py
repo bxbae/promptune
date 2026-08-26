@@ -13,6 +13,7 @@ from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
+from app.services.retrieval.search_query_cleanup import build_search_query
 
 # app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
 # (거길 직접 import하면 순환참조라 동일 로직을 복제함)
@@ -87,13 +88,24 @@ def execute_retrieval(
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
+        # 2026-08-26: PrompTune의 "8요소" 다듬기 기능이 붙인 어조/분량/대상/
+        # 제약 지시문("나에게", "3문단으로", "친근하게", "숫자는 꼭 포함해서" 등)
+        # 까지 검색어에 그대로 섞여 들어가면, Tavily가 엉뚱한 결과(무관한
+        # 스포츠 프리뷰, 정치 기사 등)를 상위로 올리는 사례가 확인됨 - "이강인
+        # 축구선수" 검색에 아틀레티코 마드리드 훈련 기사 1건과 무관한 하키/
+        # 축구 프리뷰 2건이 섞이거나, "침착맨" 검색이 완전히 무관한 정치 기사
+        # 1건뿐이었던 사례. 검색어에는 이 지시문을 제거한 버전만 쓰고, 답변
+        # 생성에 쓰는 effective_query/finalPrompt 원문은 건드리지 않는다.
+        #
         # 2026-08-26: "어제"/"오늘" 같은 상대 날짜 표현이 그대로 Tavily에
         # 넘어가면 검색엔진이 어느 날짜인지 특정 못 해서(예: "어제 lg 트윈스
         # 경기 결과" -> 실제로는 다른 날짜/다른 상대팀 경기 내용이 섞여
         # 들어옴) 사실과 다른 답이 나오는 문제가 있었음. 검색어에만
         # 실제 날짜를 덧붙여서 보정한다(라우팅 판단에 쓰는 effective_query
         # 자체는 안 건드림 - date_resolver.py 상단 설명 참고).
-        search_query = resolve_relative_dates(effective_query)
+        search_query = resolve_relative_dates(
+            build_search_query(effective_query)
+        )
 
         results = search_web(
             search_query,

@@ -9,39 +9,91 @@ from unittest.mock import patch
 # (ai-service Docker 이미지에서는 transformers/FlagEmbedding의 전이
 # 의존성으로 항상 설치되어 있음 - requirements.txt 참고). import 자체만
 # 통과시키면 되므로 최소한의 더미 모듈로 대체한다.
-if "torch" not in sys.modules:
-    import contextlib
+#
+# 2026-08-26(수정): 이 스텁을 module import 시점에 sys.modules에 영구로
+# 남기면, `python -m unittest discover`로 여러 테스트 파일을 한 프로세스에서
+# 돌릴 때 알파벳순으로 뒤에 실행되는 다른 파일(예: test_improve_hcx.py)이
+# 진짜 torch 대신 이 가짜 스텁을 넘겨받아서, 원래는 "torch 없음"으로 깔끔하게
+# import 에러가 나야 할 테스트가 스텁의 부족한 기능(torch.tensor 등 없음)
+# 때문에 엉뚱하게 실패하는 부작용이 실제로 확인됨(test_generate_hcx_system_prompt.py
+# 작성 중 발견). setUpModule/tearDownModule로 이 파일이 실행되는 동안만
+# 스텁을 걸고, 끝나면 반드시 원상복구한다.
+_installed_torch_stub = False
+_installed_hcx_runtime_stub = False
 
-    _torch_stub = types.ModuleType("torch")
-    _torch_stub.inference_mode = contextlib.nullcontext
+ConversationMessage = None
+RetrievalExecuteRequest = None
+RetrieveResponse = None
+Document = None
+execute_retrieval = None
 
-    class _StubTensor:  # scipy/sklearn의 array-api 호환 체크가 torch.Tensor를
-        pass            # getattr/issubclass로 조회하길래 최소한만 채워둠.
 
-    _torch_stub.Tensor = _StubTensor
-    sys.modules["torch"] = _torch_stub
+def setUpModule():
+    global _installed_torch_stub, _installed_hcx_runtime_stub
+    global ConversationMessage, RetrievalExecuteRequest, RetrieveResponse, Document
+    global execute_retrieval
 
-# conversation_context가 실제로 필요로 하는 건 hcx_lock/load_hcx_runtime
-# "함수가 존재한다"는 것뿐 - 이 테스트는 두 함수 다 호출되지 않는 경로만
-# 다루므로(document_ids가 있거나, 대화 이력 자체가 없거나 짧은 케이스),
-# transformers(및 그게 필요로 하는 실제 torch 런타임) 전체를 로드할 필요가
-# 없다. hcx_runtime 모듈 자체를 더미로 대체해서 무거운 import 체인을 끊는다.
-if "app.services.hcx_runtime" not in sys.modules:
-    import contextlib
+    if "torch" not in sys.modules:
+        import contextlib
 
-    _hcx_runtime_stub = types.ModuleType("app.services.hcx_runtime")
+        torch_stub = types.ModuleType("torch")
+        torch_stub.inference_mode = contextlib.nullcontext
 
-    def _unexpected_hcx_call(*args, **kwargs):
-        raise AssertionError(
-            "이 테스트 경로에서는 HCX 런타임이 호출되면 안 됨"
-        )
+        class _StubTensor:  # scipy/sklearn의 array-api 호환 체크가 torch.Tensor를
+            pass            # getattr/issubclass로 조회하길래 최소한만 채워둠.
 
-    _hcx_runtime_stub.hcx_lock = lambda timeout=None: contextlib.nullcontext()
-    _hcx_runtime_stub.load_hcx_runtime = _unexpected_hcx_call
-    sys.modules["app.services.hcx_runtime"] = _hcx_runtime_stub
+        torch_stub.Tensor = _StubTensor
+        sys.modules["torch"] = torch_stub
+        _installed_torch_stub = True
 
-from app.schemas.models import ConversationMessage, RetrievalExecuteRequest, RetrieveResponse, Document
-from app.services.retrieval.retrieval_orchestrator import execute_retrieval
+    # conversation_context가 실제로 필요로 하는 건 hcx_lock/load_hcx_runtime
+    # "함수가 존재한다"는 것뿐 - 이 테스트는 두 함수 다 호출되지 않는 경로만
+    # 다루므로(document_ids가 있거나, 대화 이력 자체가 없거나 짧은 케이스),
+    # transformers(및 그게 필요로 하는 실제 torch 런타임) 전체를 로드할 필요가
+    # 없다. hcx_runtime 모듈 자체를 더미로 대체해서 무거운 import 체인을 끊는다.
+    if "app.services.hcx_runtime" not in sys.modules:
+        import contextlib
+
+        hcx_runtime_stub = types.ModuleType("app.services.hcx_runtime")
+
+        def _unexpected_hcx_call(*args, **kwargs):
+            raise AssertionError(
+                "이 테스트 경로에서는 HCX 런타임이 호출되면 안 됨"
+            )
+
+        hcx_runtime_stub.hcx_lock = lambda timeout=None: contextlib.nullcontext()
+        hcx_runtime_stub.load_hcx_runtime = _unexpected_hcx_call
+        sys.modules["app.services.hcx_runtime"] = hcx_runtime_stub
+        _installed_hcx_runtime_stub = True
+
+    from app.schemas.models import (
+        ConversationMessage as _ConversationMessage,
+        RetrievalExecuteRequest as _RetrievalExecuteRequest,
+        RetrieveResponse as _RetrieveResponse,
+        Document as _Document,
+    )
+    from app.services.retrieval.retrieval_orchestrator import (
+        execute_retrieval as _execute_retrieval,
+    )
+
+    ConversationMessage = _ConversationMessage
+    RetrievalExecuteRequest = _RetrievalExecuteRequest
+    RetrieveResponse = _RetrieveResponse
+    Document = _Document
+    execute_retrieval = _execute_retrieval
+
+
+def tearDownModule():
+    # 이 파일이 실제로 설치한 스텁만 제거한다 (이미 다른 곳에서 진짜 torch가
+    # 로드돼 있던 경우는 절대 건드리지 않음).
+    sys.modules.pop("app.services.retrieval.retrieval_orchestrator", None)
+    sys.modules.pop("app.services.retrieval.conversation_context", None)
+
+    if _installed_torch_stub:
+        sys.modules.pop("torch", None)
+
+    if _installed_hcx_runtime_stub:
+        sys.modules.pop("app.services.hcx_runtime", None)
 
 
 class DocumentIdsRoutingTest(unittest.TestCase):
@@ -139,6 +191,38 @@ class DocumentIdsRoutingTest(unittest.TestCase):
             result = execute_retrieval(req)
 
         self.assertIn(result.route, {"web_search", "external_or_realtime"})
+
+    def test_search_query_has_style_directives_stripped(self):
+        # 2026-08-26: PrompTune 8요소 다듬기 지시문("나에게", "3문단으로",
+        # "친근하게" 등)까지 그대로 Tavily에 넘어가면 엉뚱한 결과가 상위로
+        # 올라오는 사례가 확인됨(search_query_cleanup.py 참고) - 실제로
+        # search_web()에 넘어가는 검색어에서 지시문이 빠졌는지 확인한다.
+        req = RetrievalExecuteRequest(
+            query=(
+                "lg 트윈스 단장님의 이름과 약력을 안내해줘. 나에게. 최근 "
+                "이슈와 관련해. 간단하게. 친근하게. 간결하게"
+            ),
+            owner_user_id=1,
+            top_k=3,
+            history=[],
+            document_ids=[],
+        )
+
+        captured = {}
+
+        def fake_search_web(query, max_results):
+            captured["query"] = query
+            return []
+
+        with patch(
+            "app.services.retrieval.retrieval_orchestrator.search_web",
+            side_effect=fake_search_web,
+        ):
+            execute_retrieval(req)
+
+        self.assertEqual(
+            captured["query"], "lg 트윈스 단장님의 이름과 약력을 안내해줘"
+        )
 
 
 if __name__ == "__main__":
