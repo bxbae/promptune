@@ -106,21 +106,23 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
 
     def test_includes_structured_profile_answer_rule(self):
         # 2026-08-26: "프로필을 알려줘" 질의에 문단형 설명만 주고 확인 안 된
-        # 수치(체중/생년월일 등)까지 섞은 사례가 확인됨 - 항목별 정리 +
-        # 미확인 항목 생략을 명시해야 한다.
+        # 수치(체중/생년월일 등)까지 섞은 사례가 확인됨 - '개요/기본 프로필/
+        # 경력/주요 특징' 구조 + 미확인 항목 생략을 명시해야 한다.
         prompt = self._prompt([])
-        self.assertIn("항목별로 정리해서 답하라", prompt)
+        self.assertIn("'개요'", prompt)
+        self.assertIn("'기본 프로필'", prompt)
+        self.assertIn("'경력'", prompt)
         self.assertIn("추측하지 마라", prompt)
 
     def test_structured_profile_format_overrides_paragraph_count_request(self):
         # 2026-08-26: "이강인 소속과 프로필을 알려줘...3문단으로..." 질의에서
-        # 항목별 정리 대신 사실이 거의 없는 두루뭉술한 문단형 답변("활약이
+        # 구조화된 정리 대신 사실이 거의 없는 두루뭉술한 문단형 답변("활약이
         # 주목받고 있습니다" 등)이 나온 사례가 확인됨 - 사용자가 문단 수를
-        # 같이 요청해도 프로필 요청에는 항목별 정리가 우선해야 한다는 걸
+        # 같이 요청해도 프로필 요청에는 이 구조가 우선해야 한다는 걸
         # 명시해야 한다.
         prompt = self._prompt([])
         self.assertIn("3문단으로", prompt)
-        self.assertIn("항목별 정리 형식을 우선하라", prompt)
+        self.assertIn("프로필 요청에는 이 구조를 우선하라", prompt)
 
     def test_includes_profile_answer_completeness_rule(self):
         # 같은 사례에서 위키/나무위키 자료가 실제로 있었는데도 이름/소속만
@@ -128,6 +130,15 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
         # 확인됨 - 참고자료에 있는 항목은 최대한 빠짐없이 담아야 한다.
         prompt = self._prompt([])
         self.assertIn("빠짐없이 반영하라", prompt)
+
+    def test_includes_inline_citation_rule(self):
+        # 2026-08-26: 프로필 답변에 출처가 "출처 더보기" 목록에만 붙고,
+        # 어느 항목이 어느 출처에서 나온 사실인지 본문에서는 알 수 없는
+        # 경우가 있었음 - 참고자료가 여러 개일 때는 항목/문장 끝에
+        # "[숫자](URL)" 형식의 인라인 출처 표시를 명시해야 한다.
+        prompt = self._prompt([])
+        self.assertIn("[숫자](출처 URL)", prompt)
+        self.assertIn("지어내지 마라", prompt)
 
 
 if __name__ == "__main__":
