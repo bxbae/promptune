@@ -231,10 +231,16 @@ def execute_retrieval(
         # 방법이 로그에 전혀 없어서(이 파일에 로깅 자체가 없었음) 매번 답변
         # 텍스트만 보고 추측해야 했다. docker logs로 바로 원인을 볼 수 있게
         # route/검색어/실제 검색 결과를 남긴다 - 동작에는 영향 없음(순수 로깅).
+        # 2026-08-26: "리센느" 검색 결과가 0건이었던 사례, "방탄소년단" 최근
+        # 이슈 질의에 그래미 보이콧 기사가 안 붙은 사례가 확인됐는데, Tavily가
+        # 실제로 그 기사를 찾긴 했지만 관련도 점수(score)가 낮아 뒤로 밀렸는지,
+        # 애초에 검색 자체가 안 됐는지 로그만으로는 구분이 안 됐다. Tavily
+        # 응답의 score 필드를 함께 남겨서 다음에 같은 문제가 재현되면 추측 없이
+        # 바로 원인을 좁힐 수 있게 한다 - 동작에는 영향 없음(순수 로깅).
         print(
             f"[Retrieval] route={route!r} search_query={search_query!r} "
             f"time_range={time_range!r} "
-            f"results={[(r.get('title'), r.get('url')) for r in results]}"
+            f"results={[(r.get('title'), r.get('url'), r.get('score')) for r in results]}"
         )
 
         web_results = [
