@@ -262,6 +262,140 @@ class NewsPathWikiFallbackTest(unittest.TestCase):
         self.assertEqual(mock_client.search.call_count, 3)
 
 
+class LowRelevanceScoreFallbackTest(unittest.TestCase):
+    """
+    2026-08-26: patch 21이 검색어를 "침착맨" 단일 토큰으로 정리한 뒤에도
+    완전히 지어낸 답변이 재현됨. docker logs로 실제 Tavily 응답을 확인한
+    결과, 신뢰 도메인 제한 검색이 "0건"이 아니라 "결과는 2건 있지만
+    관련성 점수(score)가 0.12/0.046으로 사실상 무관한" 기사(YTN 오늘의
+    운세, 무관한 감독 인터뷰)를 반환했음 - 기존 "0건이면 다음 단계로"
+    폴백 조건(if not results)이 트리거되지 않아서, 정답이 있는 위키백과
+    폴백까지 도달하지 못했다. score 필드로 "사실상 무관함"을 판정해서
+    이런 경우도 다음 단계로 넘어가게 한 동작을 고정한다.
+    """
+
+    def setUp(self):
+        self._original_key = os.environ.get("TAVILY_API_KEY")
+        os.environ["TAVILY_API_KEY"] = "test-key"
+        self._original_domains = os.environ.get("TAVILY_TRUSTED_DOMAINS")
+        os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+
+    def tearDown(self):
+        if self._original_key is None:
+            os.environ.pop("TAVILY_API_KEY", None)
+        else:
+            os.environ["TAVILY_API_KEY"] = self._original_key
+        if self._original_domains is None:
+            os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+        else:
+            os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_low_score_results_fall_through_to_wikipedia(self, mock_client_cls):
+        # 실제 프로덕션 docker logs에서 확인한 원문 점수(0.1213/0.0457)를
+        # 그대로 재현한다.
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            {
+                "results": [
+                    {
+                        "title": "[오늘의 운세]2026년 08월 26일 띠별 운세",
+                        "url": "u1",
+                        "content": "c1",
+                        "score": 0.12130033,
+                    },
+                    {
+                        "title": "[인터뷰] 류승룡 감독...",
+                        "url": "u2",
+                        "content": "c2",
+                        "score": 0.04574752,
+                    },
+                ]
+            },
+            {"results": []},  # 무제한 재시도도 여전히 무관함(단순화를 위해 0건으로)
+            {
+                "results": [
+                    {
+                        "title": "이말년 - 위키백과",
+                        "url": "https://ko.wikipedia.org/wiki/이말년",
+                        "content": "침착맨이라는 활동명으로...",
+                        "score": 0.87,
+                    }
+                ]
+            },
+        ]
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("침착맨", max_results=3, time_range="week")
+
+        self.assertEqual(
+            results,
+            [
+                {
+                    "title": "이말년 - 위키백과",
+                    "url": "https://ko.wikipedia.org/wiki/이말년",
+                    "content": "침착맨이라는 활동명으로...",
+                    "score": 0.87,
+                }
+            ],
+        )
+        self.assertEqual(mock_client.search.call_count, 3)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_high_score_result_does_not_trigger_fallback(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [
+                {"title": "침착맨 관련 기사", "url": "u", "content": "c", "score": 0.65}
+            ]
+        }
+        mock_client_cls.return_value = mock_client
+
+        results = search_web("침착맨", max_results=3)
+
+        self.assertEqual(
+            results,
+            [{"title": "침착맨 관련 기사", "url": "u", "content": "c", "score": 0.65}],
+        )
+        self.assertEqual(mock_client.search.call_count, 1)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_mixed_scores_with_one_relevant_result_do_not_trigger_fallback(
+        self, mock_client_cls
+    ):
+        # 여러 결과 중 하나라도 충분히 관련 있으면(score가 임계값 이상)
+        # 그 결과를 근거로 삼을 수 있으므로 다음 단계로 넘어가지 않는다.
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [
+                {"title": "무관한 기사", "url": "u1", "content": "c1", "score": 0.05},
+                {"title": "침착맨 관련 기사", "url": "u2", "content": "c2", "score": 0.6},
+            ]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("침착맨", max_results=3)
+
+        self.assertEqual(mock_client.search.call_count, 1)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_missing_score_field_is_trusted_as_before(self, mock_client_cls):
+        # score 필드가 없는 응답(기존 테스트 픽스처 등)은 이 판정에서 제외돼
+        # 예전처럼 그대로 신뢰해야 한다 - 실제 Tavily 응답에는 항상 score가
+        # 있으므로 이 검사는 실전에서는 영향이 없고, 기존 테스트 스위트의
+        # 나머지 부분(score를 안 쓰는 모든 픽스처)이 회귀 없이 그대로
+        # 통과해야 한다.
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c"}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        search_web("아무 질의", max_results=3)
+
+        self.assertEqual(mock_client.search.call_count, 1)
+
+
 class ProfileQueryDomainsTest(unittest.TestCase):
     """
     2026-08-26: "이강인 축구선수 프로필/소속" 질의가 (검색어 정제 이후로는)
