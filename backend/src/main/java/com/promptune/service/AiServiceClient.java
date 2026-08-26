@@ -259,16 +259,23 @@ public class AiServiceClient {
             String query,
             Long ownerUserId,
             int topK,
-            List<Map<String, String>> history) {
+            List<Map<String, String>> history,
+            List<Long> documentIds) {
 
         long start = System.currentTimeMillis();
 
         try {
-            Map<String, Object> body = Map.of(
-                    "query", query,
-                    "owner_user_id", ownerUserId,
-                    "top_k", topK,
-                    "history", history);
+            java.util.Map<String, Object> body = new java.util.HashMap<>();
+            body.put("query", query);
+            body.put("owner_user_id", ownerUserId);
+            body.put("top_k", topK);
+            body.put("history", history);
+            // 2026-08-26: 이 메시지에 첨부된 문서 id - "DOCX 첨부하고 '이게 무슨
+            // 내용이야?' 라고 물으면 이전 대화 내용으로 엉뚱하게 답하는" 문제의
+            // 원인이 여기(retrieval-execute에 document_ids가 아예 전달된 적이
+            // 없었음)였음. Map.of()는 null/빈 값 허용이 까다로워서(2026-08-25에
+            // 같은 이유로 null 처리 버그가 났었음) HashMap을 씀.
+            body.put("document_ids", documentIds != null ? documentIds : List.of());
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
@@ -288,12 +295,22 @@ public class AiServiceClient {
     public Map<String, Object> retrievalExecute(
             String query,
             Long ownerUserId,
+            int topK,
+            List<Map<String, String>> history) {
+
+        return retrievalExecute(query, ownerUserId, topK, history, List.of());
+    }
+
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
             int topK) {
 
         return retrievalExecute(
                 query,
                 ownerUserId,
                 topK,
+                List.of(),
                 List.of());
     }
 

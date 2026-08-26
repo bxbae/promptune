@@ -162,11 +162,16 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         // CPU 지연 문제는 더 이상 해당되지 않으므로 top_k를 3으로 복원
         // (generate_hcx.py 쪽 결과당 본문 길이도 600자로 다시 늘려서 최대
         // 1800자 - 문제가 됐던 3600자보다는 작게 유지).
+        // 2026-08-26: 이 메시지에 첨부된 문서 id를 그대로 넘긴다 - DOCX를
+        // 첨부하고 "이게 무슨 내용이야?" 라고 물으면 문서 내용 대신 이전
+        // 대화 주제로 엉뚱하게 답하던 문제의 원인이 여기(req.documentIds()가
+        // 캡처만 되고 실제로 retrieval-execute까지 전달된 적이 없었음)였음.
         retrieval = ai.retrievalExecute(
                 req.finalPrompt(),
                 userId,
                 3,
-                conversationHistory);
+                conversationHistory,
+                req.documentIds());
     } catch (Exception e) {
         retrieval = java.util.Map.of();
     }
