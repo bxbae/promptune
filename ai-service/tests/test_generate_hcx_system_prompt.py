@@ -112,6 +112,23 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
         self.assertIn("항목별로 정리해서 답하라", prompt)
         self.assertIn("추측하지 마라", prompt)
 
+    def test_structured_profile_format_overrides_paragraph_count_request(self):
+        # 2026-08-26: "이강인 소속과 프로필을 알려줘...3문단으로..." 질의에서
+        # 항목별 정리 대신 사실이 거의 없는 두루뭉술한 문단형 답변("활약이
+        # 주목받고 있습니다" 등)이 나온 사례가 확인됨 - 사용자가 문단 수를
+        # 같이 요청해도 프로필 요청에는 항목별 정리가 우선해야 한다는 걸
+        # 명시해야 한다.
+        prompt = self._prompt([])
+        self.assertIn("3문단으로", prompt)
+        self.assertIn("항목별 정리 형식을 우선하라", prompt)
+
+    def test_includes_profile_answer_completeness_rule(self):
+        # 같은 사례에서 위키/나무위키 자료가 실제로 있었는데도 이름/소속만
+        # 짧게 쓰고 생년월일/신체정보 등은 다 빠뜨린 채 답이 끝난 경우가
+        # 확인됨 - 참고자료에 있는 항목은 최대한 빠짐없이 담아야 한다.
+        prompt = self._prompt([])
+        self.assertIn("빠짐없이 반영하라", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
