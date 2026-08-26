@@ -58,6 +58,45 @@ class ClassifyMlRetrievalRouteTest(unittest.TestCase):
                     classify_ml_retrieval_route(query), "external_or_realtime"
                 )
 
+    def test_third_party_profile_query_routes_to_realtime_search(self):
+        # 2026-08-26: "이강인 소속과 프로필을 알려줘"가 user_context로 잘못
+        # 분류돼(학습 데이터의 "프로필"/"소속" 예시가 전부 "내 프로필"류라서
+        # char n-gram이 "이강인 프로필"까지 같은 카테고리로 끌고 감) 웹검색을
+        # 아예 안 하고, HCX가 근거 없이 완전히 지어낸 답(PSG 소속, 1996년생
+        # 등 - 실제로는 아틀레티코 마드리드, 2001년생)을 내놓은 사례가
+        # 재현 확인됨. 출처 링크도 당연히 안 붙었음.
+        for query in (
+            "이강인 소속과 프로필을 알려줘",
+            "이강인 선수의 프로필을 안내해줘",
+            "침착맨 프로필 알려줘",
+            (
+                "현제 이강인 소속과 프로필을 알려줘. 나에게. 요약해줘. "
+                "최근 골 소식과 관련해서. 3문단으로. 전문적으로. "
+                "숫자는 꼭 포함해서"
+            ),
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    classify_ml_retrieval_route(query), "external_or_realtime"
+                )
+
+    def test_self_profile_query_still_routes_to_user_context(self):
+        # 위 수정이 진짜 "내 프로필/소속" 질의까지 웹검색으로 돌려버리는
+        # 회귀를 만들지 않았는지 확인 - 학습 데이터의 39개 user_context
+        # 예시를 대표하는 케이스들을 고정한다.
+        for query in (
+            "내 소속 알려줘",
+            "내 프로필의 부서 알려줘",
+            "내 계정의 소속 알려줘",
+            "현재 내 계정의 회사와 부서 알려줘",
+            "내 회사 프로필에서 소속 팀 확인해줘",
+            "제 프로필 좀 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    classify_ml_retrieval_route(query), "user_context"
+                )
+
     def test_real_estate_query_does_not_fall_back_to_internal_rag(self):
         # 2026-08-26: "요즘 뜨는 부동산 정책 알려줘"가 internal_rag로
         # 잘못 분류돼(학습 데이터에 부동산 카테고리가 아예 없었음) 사내

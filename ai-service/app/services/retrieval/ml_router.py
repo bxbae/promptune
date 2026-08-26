@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -183,6 +184,39 @@ def _is_likely_realtime_fact(query: str) -> bool:
     return has_time and has_fact
 
 
+def _is_third_party_profile_query(query: str) -> bool:
+    """
+    2026-08-26: "이강인 소속과 프로필을 알려줘"가 웹검색을 전혀 안 하는
+    user_context로 잘못 분류되어(로그인한 사용자 자신의 정보로 오인),
+    HCX가 근거자료 없이 완전히 지어낸 답(예: "이강인은 PSG 소속,
+    1996년생...")을 내놓은 사례가 재현 확인됨 - 출처 링크도 당연히
+    안 붙었음(검색 자체를 안 했으므로).
+
+    routing_train_242.json의 user_context 학습 예시(39개)는 "내 소속",
+    "내 프로필의 부서" 처럼 "프로필"/"소속" 관련 예시가 전부 "내 "로
+    시작하는 1인칭 소유 표현을 동반한다 - 예외 없음. 242개 char n-gram
+    학습 데이터로는 "내 프로필" vs "이강인 프로필"을 의미상 구분하지
+    못하고 "프로필"/"소속" 패턴 자체에 끌려가 오분류가 나므로, 1인칭
+    소유 표현이 없는 프로필/소속/약력 질의는 ML 판단보다 먼저 실시간
+    웹 검색(external_or_realtime)으로 보낸다.
+    """
+    text = query.strip().lower()
+
+    profile_markers = ["프로필", "소속", "약력"]
+    has_profile = any(marker in text for marker in profile_markers)
+
+    # 단순 부분 문자열 매칭("제 " in text)은 "현제 이강인"(오타: 현재)처럼
+    # 앞에 다른 한글 음절이 붙어 우연히 "제 "로 끝나는 단어에도 걸려서,
+    # "내"/"제" 앞이 문장 시작이거나 공백/구두점일 때만(즉 실제로 독립된
+    # 1인칭 대명사일 때만) 매치하도록 부정 전방탐색을 둔다.
+    has_first_person = bool(
+        re.search(r"(?<![가-힣])(?:내|제)\s", text)
+        or any(marker in text for marker in ("저의", "나의", "제가", "내가"))
+    )
+
+    return has_profile and not has_first_person
+
+
 def classify_ml_retrieval_route(query: str) -> str:
     if _is_restricted(query):
         return "not_rag_or_restricted"
@@ -191,6 +225,9 @@ def classify_ml_retrieval_route(query: str) -> str:
         return "internal_rag"
 
     if _is_likely_realtime_fact(query):
+        return "external_or_realtime"
+
+    if _is_third_party_profile_query(query):
         return "external_or_realtime"
 
     return _ROUTER.predict(query)
