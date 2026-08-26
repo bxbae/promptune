@@ -98,6 +98,20 @@ class BuildSystemPromptRelevanceRulesTest(unittest.TestCase):
         self.assertIn("사전 지식", prompt)
         self.assertIn("참고자료를 따르고", prompt)
 
+    def test_includes_no_vague_filler_rule(self):
+        # 2026-08-26: "이강인 축구선수 최근 소식" 질의에서 구체적 사실 없이
+        # "관심이 높아지고 있다" 같은 문장으로만 3문단을 채운 사례가 확인됨.
+        prompt = self._prompt([])
+        self.assertIn("분량만 채우는 문장을 쓰지 마라", prompt)
+
+    def test_includes_structured_profile_answer_rule(self):
+        # 2026-08-26: "프로필을 알려줘" 질의에 문단형 설명만 주고 확인 안 된
+        # 수치(체중/생년월일 등)까지 섞은 사례가 확인됨 - 항목별 정리 +
+        # 미확인 항목 생략을 명시해야 한다.
+        prompt = self._prompt([])
+        self.assertIn("항목별로 정리해서 답하라", prompt)
+        self.assertIn("추측하지 마라", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
