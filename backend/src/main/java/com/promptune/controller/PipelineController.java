@@ -152,14 +152,20 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     try {
         // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
         // 본문 최대 1200자(3개면 최대 3600자+)가 프롬프트에 통째로 들어가면서
-        // t3.large CPU에서 generate() 한 번에 9분 가까이 걸리는 문제가 확인됨
-        // (nginx /api/execute 타임아웃 300초를 넘겨 "결과를 생성하지 못했습니다"로
-        // 이어짐). top_k를 3→1로 줄여 프롬프트에 들어가는 검색 결과 자체를 줄임
-        // (generate_hcx.py의 결과당 본문 길이도 1200→400자로 같이 축소).
+        // t3.large CPU에서 generate() 한 번에 9분 가까이 걸리는 문제가 있어
+        // (nginx /api/execute 타임아웃 300초 초과) top_k를 3→1로 줄였었음.
+        //
+        // 2026-08-26: 하지만 검색 결과가 1개뿐이면, 검색엔진이 상위에 올린
+        // 기사가 실제 "결과" 기사가 아니라 "프리뷰/예측" 기사여도 그거 하나를
+        // 그대로 근거로 답해야 해서 사실과 다른 답(예: 어제 경기 승패를 반대로
+        // 답함)이 나오는 문제가 확인됨. GPU 인스턴스로 전환하면서 t3.large
+        // CPU 지연 문제는 더 이상 해당되지 않으므로 top_k를 3으로 복원
+        // (generate_hcx.py 쪽 결과당 본문 길이도 600자로 다시 늘려서 최대
+        // 1800자 - 문제가 됐던 3600자보다는 작게 유지).
         retrieval = ai.retrievalExecute(
                 req.finalPrompt(),
                 userId,
-                1,
+                3,
                 conversationHistory);
     } catch (Exception e) {
         retrieval = java.util.Map.of();
