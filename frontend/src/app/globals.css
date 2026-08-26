@@ -146,16 +146,25 @@ textarea:focus { outline: none; }
   background: var(--panel-alt); color: var(--ink); font-size: 13px; cursor: pointer;
   font-family: inherit;
 }
-.popup-option.active { border-color: var(--accent); background: var(--accent-tint); color: var(--active); font-weight: 600; }
+.popup-option.active, .popup-option:hover { border-color: var(--accent); background: var(--accent-tint); color: var(--active); font-weight: 600; }
 .popup-custom-btn {
-  display: block; width: 100%; text-align: left; padding: 8px 10px;
-  border-radius: 8px; border: 1px dashed var(--line); background: transparent;
+  display: block; width: 100%; margin-bottom: 6px; text-align: left; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--line); background: transparent;
   color: var(--muted); font-size: 13px; cursor: pointer; font-family: inherit;
 }
+.popup-custom-btn.active, .popup-custom-btn:hover {
+  border-color: var(--accent); background: var(--accent-tint); color: var(--active); font-weight: 600;
+}
+.popup-custom-btn.input-style { border-style: dashed; }
+.popup-custom-btn.input-style.active,
+.popup-custom-btn.input-style:hover {
+  border-style: solid; border-color: var(--accent);
+}
 .popup-custom-input {
-  width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px dashed var(--accent);
+  width: 100%; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; border: 1px dashed var(--line);
   font-size: 13px; font-family: inherit; color: var(--ink); background: var(--panel);
 }
+.popup-custom-input:focus { outline: 1px solid var(--accent); }
 
 /* 하단 아이콘 · 전송 버튼 줄 */
 .composer-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding-top: 8px; }
@@ -169,6 +178,19 @@ textarea:focus { outline: none; }
   width: 100%; height: 100%; object-fit: contain;
 }
 .icon-btn:hover { background: var(--panel-alt); }
+
+/* 다듬기 버튼 */
+.trim-btn {
+  padding: 4px 10px; border-radius: 6px; font-size: 13px;
+  border: none; background: var(--panel-alt); color: var(--muted);
+  opacity: 0;
+}
+
+.trim-btn:not(:disabled) { opacity: 1; cursor: pointer; }
+
+.trim-btn:not(:disabled):hover {
+  background: var(--accent); color: var(--panel);
+}
 
 /* 채팅 컴포저 파일 첨부 칩 */
 .attach-chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
