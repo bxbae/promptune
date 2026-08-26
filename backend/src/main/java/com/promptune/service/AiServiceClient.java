@@ -202,21 +202,63 @@ public class AiServiceClient {
         }
     }
 
+    public Map<String, Object> indexDocumentBytes(
+            Long documentId,
+            Long ownerUserId,
+            String fileType,
+            byte[] bytes,
+            String filename) {
+
+        long start = System.currentTimeMillis();
+
+        try {
+            ByteArrayResource resource = new ByteArrayResource(bytes) {
+                @Override
+                public String getFilename() {
+                    return filename == null || filename.isBlank()
+                            ? "document." + fileType
+                            : filename;
+                }
+            };
+
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("document_id", documentId);
+            body.add("owner_user_id", ownerUserId);
+            body.add("file_type", fileType);
+            body.add("file", resource);
+
+            Map result = client.post()
+                    .uri("/api/ai/index-document")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            log("ai-service", "/api/ai/index-document", start, "success");
+            return result;
+        } catch (Exception e) {
+            log("ai-service", "/api/ai/index-document", start, "error");
+            throw e;
+        }
+    }
+
     // Retrieval Router/Orchestrator 연동 (승연님 PR #67) — 내부문서/웹검색 여부까지 통째로 판단·실행
     public Map<String, Object> retrievalExecute(
             String query,
             Long ownerUserId,
             int topK,
-            List<Map<String, String>> history) {
+            List<Map<String, String>> history,
+            List<Long> documentIds) {
 
         long start = System.currentTimeMillis();
 
         try {
-            Map<String, Object> body = Map.of(
-                    "query", query,
-                    "owner_user_id", ownerUserId,
-                    "top_k", topK,
-                    "history", history);
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("query", query);
+            body.put("owner_user_id", ownerUserId);
+            body.put("top_k", topK);
+            body.put("history", history == null ? List.of() : history);
+            body.put("document_ids", documentIds == null ? List.of() : documentIds);
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
@@ -236,12 +278,27 @@ public class AiServiceClient {
     public Map<String, Object> retrievalExecute(
             String query,
             Long ownerUserId,
+            int topK,
+            List<Map<String, String>> history) {
+
+        return retrievalExecute(
+                query,
+                ownerUserId,
+                topK,
+                history,
+                List.of());
+    }
+
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
             int topK) {
 
         return retrievalExecute(
                 query,
                 ownerUserId,
                 topK,
+                List.of(),
                 List.of());
     }
 

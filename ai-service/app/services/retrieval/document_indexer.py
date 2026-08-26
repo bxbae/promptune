@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import numpy as np
@@ -102,9 +103,15 @@ def embed_chunks(chunks: list[str]) -> np.ndarray:
 
     model = get_model()
 
+    try:
+        batch_size = int(os.getenv("BGE_M3_BATCH_SIZE", "4"))
+    except ValueError:
+        batch_size = 4
+    batch_size = max(1, min(batch_size, 64))
+
     output = model.encode(
         chunks,
-        batch_size=4,
+        batch_size=batch_size,
         max_length=512,
         return_dense=True,
         return_sparse=False,
@@ -159,12 +166,71 @@ def verify_document_owner(
         )
 
 
-def save_chunks(
+def load_document_metadata(
+    document_id: int,
+    owner_user_id: int,
+) -> dict[str, str]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT title, document_type, description
+                FROM documents
+                WHERE id = %s
+                  AND owner_user_id = %s
+                """,
+                (document_id, owner_user_id),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        raise ValueError(
+            f"문서 메타데이터를 찾을 수 없습니다: {document_id}"
+        )
+
+    title, document_type, description = row
+    return {
+        "title": str(title or "").strip(),
+        "document_type": str(document_type or "OTHER").strip(),
+        "description": str(description or "").strip(),
+    }
+
+
+def build_embedding_inputs(
+    chunks: list[str],
+    metadata: dict[str, str],
+) -> list[str]:
+    """
+    검색 embedding에는 파일명/유형/설명을 함께 넣되 DB의 실제 chunk content는
+    원문 그대로 유지한다. 따라서 "전에 올린 이력서", "회사 보고서" 같은
+    자연어 문서 찾기가 본문 단어에만 의존하지 않는다.
+    """
+    prefix_parts = []
+
+    if metadata.get("title"):
+        prefix_parts.append(f"제목: {metadata['title']}")
+    if metadata.get("document_type"):
+        prefix_parts.append(f"문서 유형: {metadata['document_type']}")
+    if metadata.get("description"):
+        prefix_parts.append(f"설명: {metadata['description']}")
+
+    prefix = "\n".join(prefix_parts)
+
+    if not prefix:
+        return chunks
+
+    return [
+        f"{prefix}\n내용:\n{chunk}"
+        for chunk in chunks
+    ]
+
+
+def save_chunk_texts(
     document_id: int,
     owner_user_id: int,
     chunks: list[str],
-    embeddings: np.ndarray,
 ) -> None:
+    """텍스트 추출 결과를 embedding과 독립적으로 먼저 보존한다."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -188,40 +254,72 @@ def save_chunks(
                     "문서 소유자가 일치하지 않습니다."
                 )
 
-            # 재인덱싱 시 기존 chunk 제거
             cur.execute(
-                """
-                DELETE FROM document_chunks
-                WHERE document_id = %s
-                """,
+                "DELETE FROM document_chunks WHERE document_id = %s",
                 (document_id,),
             )
 
-            sql = """
+            cur.executemany(
+                """
                 INSERT INTO document_chunks (
-                    document_id,
-                    chunk_index,
-                    content,
-                    embedding
+                    document_id, chunk_index, content, embedding
                 )
-                VALUES (%s, %s, %s, %s::vector)
-            """
+                VALUES (%s, %s, %s, NULL)
+                """,
+                [
+                    (document_id, chunk_index, content)
+                    for chunk_index, content in enumerate(chunks)
+                ],
+            )
 
-            rows = []
+        conn.commit()
 
-            for chunk_index, content in enumerate(chunks):
-                rows.append(
+
+def save_chunk_embeddings(
+    document_id: int,
+    owner_user_id: int,
+    embeddings: np.ndarray,
+) -> None:
+    """텍스트가 저장된 뒤 embedding만 별도로 채운다."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT owner_user_id
+                FROM documents
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (document_id,),
+            )
+            row = cur.fetchone()
+
+            if row is None:
+                raise ValueError(
+                    f"존재하지 않는 document_id입니다: {document_id}"
+                )
+
+            if row[0] != owner_user_id:
+                raise PermissionError(
+                    "문서 소유자가 일치하지 않습니다."
+                )
+
+            cur.executemany(
+                """
+                UPDATE document_chunks
+                SET embedding = %s::vector
+                WHERE document_id = %s
+                  AND chunk_index = %s
+                """,
+                [
                     (
+                        vector_literal(embeddings[chunk_index]),
                         document_id,
                         chunk_index,
-                        content,
-                        vector_literal(
-                            embeddings[chunk_index]
-                        ),
                     )
-                )
-
-            cur.executemany(sql, rows)
+                    for chunk_index in range(len(embeddings))
+                ],
+            )
 
         conn.commit()
 
@@ -258,14 +356,35 @@ def index_document(
     if not chunks:
         raise ValueError("chunking 결과가 비어 있습니다.")
 
-    embeddings = embed_chunks(chunks)
-
-    save_chunks(
+    # 가장 중요한 순서: 먼저 실제 텍스트를 저장한다. BGE-M3가 실패해도
+    # 사용자는 방금 올린 문서의 전체 내용/요약을 읽을 수 있어야 한다.
+    save_chunk_texts(
         document_id=document_id,
         owner_user_id=owner_user_id,
         chunks=chunks,
-        embeddings=embeddings,
     )
+
+    metadata = load_document_metadata(
+        document_id=document_id,
+        owner_user_id=owner_user_id,
+    )
+
+    embedding_error = None
+
+    try:
+        embeddings = embed_chunks(
+            build_embedding_inputs(chunks, metadata)
+        )
+        save_chunk_embeddings(
+            document_id=document_id,
+            owner_user_id=owner_user_id,
+            embeddings=embeddings,
+        )
+        status = "ready"
+    except Exception as exc:
+        # 텍스트는 이미 DB에 있으므로 "완전 실패"가 아니다.
+        status = "text_ready"
+        embedding_error = str(exc)[:1000]
 
     return {
         "document_id": document_id,
@@ -274,5 +393,6 @@ def index_document(
         "text_chars": len(text),
         "chunk_count": len(chunks),
         "embedding_dimension": EXPECTED_DIM,
-        "status": "indexed",
+        "status": status,
+        "embedding_error": embedding_error,
     }

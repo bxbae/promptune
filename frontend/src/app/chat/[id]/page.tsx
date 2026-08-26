@@ -40,99 +40,6 @@ function detectReceiverName(prompt: string): string | null {
 
 // TODO: 목업 - 나중에 백엔드/ai-service 실제 스타일 분석 붙으면 이 배열 자체를 없애고
 // 백엔드가 내려주는 진짜 분석 결과로 교체할 것. 지금은 수신자와 무관하게 항상 같은 문구.
-function buildDocumentGenerationContent(
-  prompt: string,
-  title: string,
-): string {
-  if (/주간\s*업무보고|주간\s*보고/.test(prompt)) {
-    return `${prompt}
-
-구체적인 업무 실적 정보가 제공되지 않았으므로 사실을 임의로 만들지 마세요.
-실제 회사에서 바로 작성할 수 있는 전문적인 주간 업무보고서 양식으로 구성하세요.
-보고기간, 작성부서, 작성자, 금주 주요업무, 업무별 진행현황,
-주요 성과, 이슈 및 리스크, 차주 추진계획, 지원 또는 결정 요청사항을
-명확한 제목, 표, 목록을 적절히 사용하여 구성하세요.
-값을 알 수 없는 항목은 빈칸 또는 작성용 자리로 남겨주세요.`;
-  }
-
-  if (/양식|템플릿/.test(prompt)) {
-    return `${prompt}
-
-구체적인 내용이 제공되지 않았다면 사실을 임의로 만들지 마세요.
-사용자가 바로 내용을 입력할 수 있는 완성도 높은 업무용 ${title} 양식으로 만드세요.
-제목, 기본정보 영역, 핵심 본문 섹션, 표 또는 목록, 작성란을 적절히 구성하세요.
-빈 문서처럼 보이지 않도록 실제 업무에서 사용할 수 있는 구조를 충분히 제공하세요.`;
-  }
-
-  return prompt;
-}
-
-function detectDocumentGenerationRequest(
-  prompt: string,
-): { format: DocumentFormat; title: string } | null {
-  const text = prompt.trim();
-
-  const hasCreateVerb =
-    /(만들어|만들어줘|생성해|생성해줘|작성해|작성해줘)/.test(text);
-
-  const hasDocumentWord =
-    /(보고서|회의록|계획서|제안서|시말서|경위서|사유서|소명서|양식|문서)/.test(text);
-
-  const explicitFile =
-    /(워드|word|docx|pdf|파일|다운로드)/i.test(text);
-
-  const templateRequest =
-    /양식/.test(text) && hasCreateVerb;
-
-  if (
-    !(
-      hasCreateVerb &&
-      hasDocumentWord &&
-      (explicitFile || templateRequest)
-    )
-  ) {
-    return null;
-  }
-
-  let format: DocumentFormat = "pdf";
-
-  if (/(워드|word|docx)/i.test(text)) {
-    format = "docx";
-  } else if (/pdf/i.test(text)) {
-    format = "pdf";
-  } else if (/(양식|템플릿|작성용|수정 가능)/.test(text)) {
-    format = "docx";
-  }
-
-  let title = "PrompTune 생성 문서";
-
-  if (/회의록/.test(text)) {
-    title = "회의록";
-  } else if (/업무\s*보고/.test(text)) {
-    title = "업무보고서";
-  } else if (/보고서/.test(text)) {
-    title = /양식/.test(text)
-      ? "보고서 양식"
-      : "보고서";
-  } else if (/계획서/.test(text)) {
-    title = "계획서";
-  } else if (/제안서/.test(text)) {
-    title = "제안서";
-  } else if (/시말서/.test(text)) {
-    title = "시말서";
-  } else if (/경위서/.test(text)) {
-    title = "경위서";
-  } else if (/사유서/.test(text)) {
-    title = "사유서";
-  } else if (/소명서/.test(text)) {
-    title = "소명서";
-  } else if (/양식/.test(text)) {
-    title = "문서 양식";
-  }
-
-  return { format, title };
-}
-
 const MOCK_STYLE_HINTS = [
   "정중하지만 간결한 사내 업무체",
   "요청사항을 첫 문단에 배치",
@@ -423,57 +330,6 @@ export default function ChatThreadPage() {
   ) {
     setIsGenerating(true);
 
-    const documentRequest =
-      detectDocumentGenerationRequest(prompt);
-
-    if (documentRequest) {
-      const assistantId = generateId();
-
-      try {
-        const blob = await generateDocumentFile(
-          documentRequest.title,
-          prompt,
-          documentRequest.format,
-        );
-
-        setGeneratedDocuments((prev) => ({
-          ...prev,
-          [assistantId]: {
-            fileName:
-              `${documentRequest.title}.${documentRequest.format}`,
-            format: documentRequest.format,
-            blob,
-          },
-        }));
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: assistantId,
-            role: "assistant",
-            content:
-              `요청하신 ${documentRequest.title}을 만들었습니다.`,
-          },
-        ]);
-      } catch (e) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: assistantId,
-            role: "assistant",
-            content:
-              e instanceof Error
-                ? `문서 생성에 실패했습니다: ${e.message}`
-                : "문서 생성에 실패했습니다.",
-          },
-        ]);
-      } finally {
-        setIsGenerating(false);
-      }
-
-      return;
-    }
-
     // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
     const detectedBeforeGen = detectReceiverName(prompt);
     const matchedProfile = detectedBeforeGen
@@ -484,8 +340,71 @@ export default function ChatThreadPage() {
       const documentIds = attachments.map((a) => a.id);
       const res = await execute(prompt, chatSessionId, documentIds, matchedProfile?.id);
       const resultText = res?.result?.result ?? JSON.stringify(res);
-      setIsGenerating(false);
       const assistantId = generateId();
+
+      const documentAction = res?.documentAction as
+        | {
+            type: "GENERATE_DOCUMENT";
+            title: string;
+            content: string;
+            format: DocumentFormat;
+            useExistingTemplate?: boolean;
+          }
+        | undefined;
+
+      if (documentAction?.type === "GENERATE_DOCUMENT") {
+        try {
+          const blob = await generateDocumentFile(
+            documentAction.title,
+            documentAction.content,
+            documentAction.format,
+          );
+
+          setGeneratedDocuments((prev) => ({
+            ...prev,
+            [assistantId]: {
+              fileName: `${documentAction.title}.${documentAction.format}`,
+              format: documentAction.format,
+              blob,
+            },
+          }));
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: assistantId,
+              role: "assistant",
+              content: resultText,
+              promptSessionId: res?.promptSessionId,
+            },
+          ]);
+        } catch (e) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: assistantId,
+              role: "assistant",
+              content:
+                e instanceof Error
+                  ? `문서 생성에 실패했습니다: ${e.message}`
+                  : "문서 생성에 실패했습니다.",
+              promptSessionId: res?.promptSessionId,
+            },
+          ]);
+        } finally {
+          setIsGenerating(false);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("chat-session-updated", {
+            detail: { chatSessionId },
+          })
+        );
+
+        return;
+      }
+
+      setIsGenerating(false);
       setMessages((prev) => [
         ...prev,
         { id: assistantId, role: "assistant", content: resultText, promptSessionId: res?.promptSessionId },

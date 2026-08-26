@@ -25,11 +25,26 @@ services:
       # BGE-M3까지 무조건 로드함)까지 같이 켜져 버려서 위험함 — 생성만 별도로 켤 수 있게
       # 명시적으로 선언.
       USE_REAL_GENERATION: "${USE_REAL_GENERATION:-false}"
+      # 내부 문서/첨부파일은 mock으로 폴백하면 잘못된 답을 만들 수 있으므로
+      # 배포 환경에서는 기본적으로 실제 BGE-M3 + pgvector retrieval을 사용한다.
+      USE_REAL_RETRIEVAL: "${USE_REAL_RETRIEVAL:-true}"
       USE_REAL_VALIDATION: "${USE_REAL_VALIDATION:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
       HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
-      HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"
+      HF_HCX_DEVICE: "${HF_HCX_DEVICE:-auto}"
+      HF_HCX_DTYPE: "${HF_HCX_DTYPE:-auto}"
       HF_HOME: /root/.cache/huggingface
+      BGE_M3_MODEL: "${BGE_M3_MODEL:-BAAI/bge-m3}"
+      BGE_M3_DEVICE: "${BGE_M3_DEVICE:-auto}"
+      BGE_M3_USE_FP16: "${BGE_M3_USE_FP16:-auto}"
+      BGE_M3_BATCH_SIZE: "${BGE_M3_BATCH_SIZE:-4}"
+      # AI-service가 pgvector/RDS를 직접 조회하므로 Spring의 JDBC URL과 별개로
+      # psycopg용 DB_* 환경변수도 컨테이너에 반드시 전달해야 한다.
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
     volumes:
       - ./ai-service/models/prompt-diagnosis:/app/models/prompt-diagnosis:ro
       - hf_cache:/root/.cache/huggingface

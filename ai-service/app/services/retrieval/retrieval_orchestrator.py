@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from app.schemas.models import (
     RetrievalExecuteRequest,
@@ -23,29 +24,119 @@ USE_REAL_RETRIEVAL = (
     == "true"
 )
 
-# /retrieve 엔드포인트와 동일하게, real 모드일 때만 실제 BGE-M3 임베딩 모델을
-# 쓰는 rag_retriever를 로드한다. 예전엔 이 플래그 체크 없이 항상 real 모델을
-# 불러서, mock 모드로 설정해도 internal_rag 라우트에서 매번 BGE-M3를 로드하려다
-# 메모리 부족(OOM)으로 ai-service가 죽는 문제가 있었음 (2026-08-24).
 if USE_REAL_RETRIEVAL:
-    from app.services.retrieval.rag_retriever import retrieve
+    from app.services.retrieval.rag_retriever import (
+        retrieve,
+        retrieve_document_overview,
+    )
+
+
+_OVERVIEW_MARKERS = (
+    "무슨 내용",
+    "어떤 내용",
+    "내용이야",
+    "내용 알려",
+    "전체 내용",
+    "전체내용",
+    "전체 요약",
+    "전체요약",
+    "문서 요약",
+    "파일 요약",
+    "요약해줘",
+    "요약해 줘",
+    "읽어줘",
+    "읽어 줘",
+    "핵심 내용",
+    "핵심내용",
+    "각 항목",
+    "각항목",
+    "전체 항목",
+    "항목들",
+    "구성 항목",
+    "목차",
+)
+
+
+_DOCUMENT_TRANSFORM_MARKERS = (
+    "보고서로 만들어",
+    "문서로 만들어",
+    "파일로 만들어",
+    "pdf로 만들어",
+    "워드로 만들어",
+    "word로 만들어",
+    "docx로 만들어",
+    "양식으로 만들어",
+    "템플릿으로 만들어",
+)
+
+
+def _is_document_transform_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    return any(
+        marker in text
+        for marker in _DOCUMENT_TRANSFORM_MARKERS
+    )
+
+
+def _is_document_overview_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    return any(marker in text for marker in _OVERVIEW_MARKERS)
+
+
+def _clean_document_followup_query(query: str) -> str:
+    """특정 document_id가 확정된 뒤에는 지시대명사 노이즈를 최소화한다."""
+    text = str(query or "").strip()
+
+    replacements = (
+        "거기서",
+        "그 문서에서",
+        "그 파일에서",
+        "해당 문서에서",
+        "해당 파일에서",
+        "그 문서",
+        "그 파일",
+        "그 이력서",
+        "그 보고서",
+        "아까 문서",
+        "아까 파일",
+        "전에 올린 문서",
+        "전에 올린 파일",
+    )
+
+    for marker in replacements:
+        text = text.replace(marker, " ")
+
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or query
 
 
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
-    conversation = resolve_conversation_retrieval(
-        query=req.query,
-        history=req.history,
+    document_ids = list(
+        dict.fromkeys(
+            int(x)
+            for x in req.document_ids
+            if x is not None and int(x) > 0
+        )
     )
 
-    effective_query = conversation.query
-
-    route = (
-        conversation.route_override
-        if conversation.route_override is not None
-        else classify_ml_retrieval_route(effective_query)
-    )
+    # Backend가 현재 첨부/이전 첨부를 실제 document_id로 확정해서 보낸 경우에는
+    # 대화 텍스트를 다시 HCX로 추정할 필요가 없다. ID가 가장 강한 사실(source of truth)이다.
+    if document_ids:
+        route = "internal_rag"
+        effective_query = _clean_document_followup_query(req.query)
+    else:
+        conversation = resolve_conversation_retrieval(
+            query=req.query,
+            history=req.history,
+        )
+        effective_query = conversation.query
+        route = (
+            conversation.route_override
+            if conversation.route_override is not None
+            else classify_ml_retrieval_route(effective_query)
+        )
 
     documents = []
     web_results: list[WebSearchResult] = []
@@ -55,30 +146,64 @@ def execute_retrieval(
 
     # 1. 내부문서 검색
     if route == "internal_rag":
+        # 실제 첨부/내부문서를 요청했는데 retrieval flag가 꺼져 있으면 mock 문서로
+        # 조용히 대체하면 안 된다. 사용자가 올린 파일을 못 읽은 사실을 숨기는 대신
+        # 설정 오류를 즉시 드러내야 잘못된 문서 답변을 원천 차단할 수 있다.
+        if not USE_REAL_RETRIEVAL:
+            raise ValueError(
+                "내부 문서 분석에는 USE_REAL_RETRIEVAL=true가 필요합니다."
+            )
+
         if req.owner_user_id is None:
             raise ValueError(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
             )
 
-        retrieve_req = RetrieveRequest(
-            query=effective_query,
-            owner_user_id=req.owner_user_id,
-            top_k=req.top_k,
-        )
-        result = (
-            retrieve(retrieve_req)
-            if USE_REAL_RETRIEVAL
-            else pipeline_mock.retrieve(retrieve_req)
-        )
+        if (
+            document_ids
+            and (
+                _is_document_overview_query(req.query)
+                or _is_document_transform_query(req.query)
+            )
+            and USE_REAL_RETRIEVAL
+        ):
+            # "이거 무슨 내용이야?" / 전체 요약은 semantic Top-1이 아니라
+            # document chunk를 원래 순서대로 읽는다.
+            result = retrieve_document_overview(
+                owner_user_id=req.owner_user_id,
+                document_ids=document_ids,
+            )
+        else:
+            retrieve_req = RetrieveRequest(
+                query=effective_query,
+                owner_user_id=req.owner_user_id,
+                top_k=req.top_k,
+                document_ids=document_ids,
+            )
+
+            result = (
+                retrieve(retrieve_req)
+                if USE_REAL_RETRIEVAL
+                else pipeline_mock.retrieve(retrieve_req)
+            )
+
+            if document_ids and not USE_REAL_RETRIEVAL:
+                result.documents = [
+                    doc
+                    for doc in result.documents
+                    if doc.document_id in document_ids
+                ]
 
         documents = result.documents
         used_internal_rag = bool(documents)
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
+        # 내부 RAG 품질을 위해 top_k를 4 정도로 써도 Tavily 결과가 다시 커지지 않게
+        # 웹은 현재 1건으로 제한한다.
         results = search_web(
             effective_query,
-            max_results=req.top_k,
+            max_results=1,
         )
 
         web_results = [
@@ -91,15 +216,6 @@ def execute_retrieval(
         ]
 
         used_web_search = bool(web_results)
-
-    # user_context:
-    #   현재 여기서는 MS Graph를 직접 호출하지 않고 route만 반환한다.
-    #
-    # no_retrieval:
-    #   검색하지 않는다.
-    #
-    # not_rag_or_restricted:
-    #   검색하지 않는다.
 
     return RetrievalExecuteResponse(
         route=route,

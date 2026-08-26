@@ -121,6 +121,8 @@ class RetrieveRequest(BaseModel):
     query: str
     owner_user_id: int
     top_k: int = 3
+    # 현재/이전 대화에서 특정 문서가 확정된 경우 해당 문서들 안에서만 검색한다.
+    document_ids: list[int] = Field(default_factory=list)
 
 
 DocumentType = Literal[
@@ -206,6 +208,9 @@ class RetrievalExecuteRequest(BaseModel):
     owner_user_id: int | None = None
     top_k: int = 3
     history: list[ConversationMessage] = Field(default_factory=list)
+    # 현재 첨부파일 또는 대화 문맥에서 복원된 이전 첨부파일 id.
+    # 값이 있으면 ML Router보다 internal_rag를 우선한다.
+    document_ids: list[int] = Field(default_factory=list)
 
 
 class RetrievalExecuteResponse(BaseModel):

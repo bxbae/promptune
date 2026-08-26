@@ -169,6 +169,239 @@ def _build_effective_user_prompt(req: GenerateRequest) -> str:
     return "제공된 내부 문서에서 " + normalized
 
 
+
+_DOCUMENT_OVERVIEW_MARKERS = (
+    "무슨 내용",
+    "어떤 내용",
+    "내용이야",
+    "내용 알려",
+    "전체 내용",
+    "전체내용",
+    "전체 요약",
+    "전체요약",
+    "문서 요약",
+    "파일 요약",
+    "요약해줘",
+    "요약해 줘",
+    "읽어줘",
+    "읽어 줘",
+    "핵심 내용",
+    "핵심내용",
+)
+
+_PREVIOUS_ANSWER_DEPENDENT_MARKERS = (
+    "방금 답변",
+    "앞 답변",
+    "이전 답변",
+    "앞에서 말한",
+    "위에서 말한",
+    "그 부분",
+    "그 항목",
+    "그 설명",
+    "첫 번째",
+    "두 번째",
+    "세 번째",
+    "더 자세",
+    "좀 더",
+    "이어서",
+    "계속 설명",
+)
+
+
+def _is_document_overview_request(prompt: str) -> bool:
+    text = str(prompt or "").strip().lower()
+    return any(marker in text for marker in _DOCUMENT_OVERVIEW_MARKERS)
+
+
+def _document_titles(req: GenerateRequest) -> list[str]:
+    return list(
+        dict.fromkeys(
+            document.title.strip()
+            for document in req.documents
+            if document.title and document.title.strip()
+        )
+    )
+
+
+def _needs_previous_answer_context(prompt: str) -> bool:
+    text = str(prompt or "").strip().lower()
+    return any(marker in text for marker in _PREVIOUS_ANSWER_DEPENDENT_MARKERS)
+
+
+def _build_overview_evidence(req: GenerateRequest) -> str:
+    """Build a compact, broad evidence view for document overview questions.
+
+    A small instruction model can over-focus on one part of a long document.  For an
+    overview, surface the beginning of every retrieved chunk in addition to the full
+    context so the model sees multiple sections/roles/features before it starts
+    summarising.  The text is copied from the source; nothing is inferred here.
+    """
+    if not req.documents:
+        return "없음"
+
+    chunks = sorted(
+        req.documents,
+        key=lambda item: (
+            item.document_id is None,
+            item.document_id if item.document_id is not None else 10**18,
+            item.chunk_index is None,
+            item.chunk_index if item.chunk_index is not None else 10**9,
+        ),
+    )
+
+    excerpts: list[str] = []
+    total = 0
+
+    for chunk in chunks:
+        content = re.sub(r"\s+", " ", (chunk.content or "").strip())
+        if not content:
+            continue
+
+        excerpt = content[:520].strip()
+        if not excerpt:
+            continue
+
+        label = (
+            f"chunk {chunk.chunk_index}"
+            if chunk.chunk_index is not None
+            else "chunk"
+        )
+        excerpts.append(f"- [{label}] {excerpt}")
+        total += len(excerpt)
+
+        if len(excerpts) >= 8 or total >= 3200:
+            break
+
+    return "\n".join(excerpts) if excerpts else "없음"
+
+
+def _select_generation_history(req: GenerateRequest):
+    """Select only history that is genuinely needed for the current answer.
+
+    Once Retrieval has already resolved a concrete document, conversation history must
+    never be used to guess the document identity again.  This prevents an older file
+    name in history from competing with the current attachment.  History is retained
+    only when the user explicitly refers to a previous *answer* (for example
+    "그 부분 더 자세히").
+    """
+    if not req.documents:
+        return [
+            message
+            for message in req.history
+            if message.content.strip()
+        ]
+
+    if not _needs_previous_answer_context(req.prompt):
+        return []
+
+    return [
+        message
+        for message in req.history[-2:]
+        if message.content.strip()
+    ]
+
+
+def _build_generation_user_prompt(req: GenerateRequest) -> str:
+    """Put the resolved document and source evidence in the final user turn."""
+    user_prompt = _build_effective_user_prompt(req)
+    internal_context = _build_internal_context(req)
+
+    if internal_context == "없음":
+        return user_prompt
+
+    titles = _document_titles(req)
+    title_text = ", ".join(f'"{title}"' for title in titles) or "현재 내부 문서"
+    overview = _is_document_overview_request(req.prompt)
+
+    parts = [
+        "[현재 문서 제목]",
+        title_text,
+        "",
+    ]
+
+    if overview:
+        evidence = _build_overview_evidence(req)
+        if evidence != "없음":
+            parts.extend([
+                "[대표 근거 - 문서 각 부분에서 그대로 발췌]",
+                evidence,
+                "",
+            ])
+
+    parts.extend([
+        "[현재 문서 본문]",
+        internal_context,
+        "",
+        "[현재 사용자 요청]",
+        user_prompt,
+        "",
+        "[반드시 지킬 것]",
+        "- 현재 문서만 답변 근거로 사용한다.",
+        "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
+        "- 본문에 없는 소유관계·제작주체·회사관계·인과관계를 추론하지 않는다. 예: 제목에 IBM이 있다고 해서 'IBM의 제품/도구'라고 바꾸지 않는다.",
+        "- 문서의 고유명사, 사람/역할, 기술명, 기능, 수치처럼 출처에 있는 구체적 표현을 가능한 한 보존한다.",
+    ])
+
+    if overview:
+        parts.extend([
+            "- 이 요청은 문서 개요 요청이다. 문서의 한 부분만 요약하지 말고 여러 섹션을 고르게 반영한다.",
+            "- 1~2문장 개요 뒤에 4~6개의 주요 내용을 제시한다.",
+            "- 주요 내용의 각 항목에는 본문에 실제 등장하는 구체적 사실이나 용어를 최소 1개 포함한다.",
+            "- '프롬프트 관련 문서입니다'처럼 범주만 말하고 끝내지 않는다.",
+            "- 현재 문서의 정확한 제목은 서버가 답변 앞에 별도로 붙이므로, 제목을 추측하거나 다른 소유관계로 바꾸지 않는다.",
+        ])
+
+    parts.extend([
+        "",
+        "위 자료를 읽고 현재 요청에 바로 답한다.",
+    ])
+
+    return "\n".join(parts)
+
+
+def _build_document_system_prompt(req: GenerateRequest) -> str:
+    """Short, specialised system prompt for document-grounded turns.
+
+    The 1.5B model follows a focused contract more reliably than the full generic
+    conversation policy when a concrete document has already been resolved.
+    """
+    preference_context = _build_preference_context(req.preference)
+
+    parts = [
+        "너는 PrompTune의 문서 분석 어시스턴트다.",
+        "현재 문서는 Retrieval 단계에서 이미 확정되었다. 문서 선택을 다시 추측하지 않는다.",
+        "제공된 현재 문서의 실제 본문에 근거해 정확하고 구체적으로 답한다.",
+        "본문에 없는 사실이나 관계를 추가하지 않는다.",
+        "사용자의 '이거', '그 문서', '그 파일', '거기서'는 현재 문서를 가리킨다.",
+        "이전 대화가 현재 문서와 충돌하면 현재 문서를 따른다.",
+    ]
+
+    if preference_context != "없음":
+        parts.extend([
+            "",
+            "[응답 스타일 선호도]",
+            preference_context,
+        ])
+
+    return "\n".join(parts)
+
+
+def _format_document_result(req: GenerateRequest, result: str) -> str:
+    """Guarantee deterministic document identity for overview answers."""
+    result = (result or "").strip()
+    if not result or not req.documents or not _is_document_overview_request(req.prompt):
+        return result
+
+    titles = _document_titles(req)
+    if len(titles) != 1:
+        return result
+
+    title = titles[0]
+    # The title is system-known metadata.  Prefixing it prevents the language model
+    # from inventing a different file identity or ownership relationship.
+    return f'현재 문서: "{title}"\n\n{result}'
+
+
 def _build_prompt(
     req: GenerateRequest,
     web_results: list[dict],
@@ -242,7 +475,6 @@ def _build_system_prompt(
     req: GenerateRequest,
     web_results: list[dict],
 ) -> str:
-    internal_context = _build_internal_context(req)
     web_context = _build_web_context(web_results)
     user_context = _build_user_context(req.user_context)
     preference_context = _build_preference_context(req.preference)
@@ -262,14 +494,10 @@ def _build_system_prompt(
         "8. 웹 검색 결과가 없으면 검색했다고 주장하지 마라.",
         "9. 사용자가 요청하지 않은 배경설명, 링크, 외부 프로젝트, 회사, 인물 정보를 임의로 추가하지 마라.",
         "10. 사용자의 질문에 필요한 범위만 답하고 관련 없는 내용을 확장하지 마라.",
+        "11. 현재 요청에 내부 문서가 제공되면 그 문서가 현재 활성 문서다. 이전 대화에 다른 파일명이 있어도 현재 문서를 우선하라.",
+        "12. 사용자가 문서의 내용/요약을 물었으면 제목·문서유형·설명만 반복하는 답변은 금지한다. 반드시 [본문]의 실제 사실, 항목, 섹션을 구체적으로 요약하라.",
+        "13. 내부 문서 본문이 제공된 경우 '어떤 파일인지 알려달라', '파일을 다시 업로드해달라'고 묻지 마라.",
     ]
-
-    if internal_context != "없음":
-        parts.extend([
-            "",
-            "[내부 문서]",
-            internal_context,
-        ])
 
     if web_context != "없음":
         parts.extend([
@@ -305,12 +533,17 @@ def generate(
 
     tokenizer, model, device = load_hcx_runtime()
 
-    system_prompt = _build_system_prompt(
-        req=req,
-        web_results=web_results,
+    system_prompt = (
+        _build_document_system_prompt(req)
+        if req.documents
+        else _build_system_prompt(
+            req=req,
+            web_results=web_results,
+        )
     )
 
-    user_prompt = _build_effective_user_prompt(req)
+    user_prompt = _build_generation_user_prompt(req)
+    selected_history = _select_generation_history(req)
 
     messages = [
         {
@@ -324,8 +557,7 @@ def generate(
             "role": message.role,
             "content": message.content.strip(),
         }
-        for message in req.history
-        if message.content.strip()
+        for message in selected_history
     )
 
     messages.append(
@@ -344,6 +576,15 @@ def generate(
     )
 
     inputs = inputs.to(device)
+
+    logger.info(
+        "HCX prompt mode=%s documents=%d history_in=%d history_used=%d input_tokens=%d",
+        "document_grounded" if req.documents else "conversation",
+        len(req.documents),
+        len(req.history),
+        len(selected_history),
+        inputs["input_ids"].shape[1],
+    )
 
     with hcx_lock(timeout=120):
         with torch.inference_mode():
@@ -376,6 +617,8 @@ def generate(
         skip_special_tokens=True,
         clean_up_tokenization_spaces=False,
     ).strip()
+
+    result = _format_document_result(req, result)
 
     logger.info(
         "HCX final generation task_type=%s web=%s documents=%d",

@@ -18,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Locale;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -64,6 +65,12 @@ public class DocumentController {
                 : title;
         String fileType = extractExtension(file.getOriginalFilename());
 
+        if (fileType == null || !List.of("pdf", "docx", "txt", "md").contains(fileType)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "현재 AI 문서 분석은 PDF, DOCX, TXT, MD 형식만 지원합니다.");
+        }
+
         String s3Key = s3StorageService.uploadDocument(user.getId(), file);
 
         Document document = new Document(user.getId(), resolvedTitle, s3Key, fileType);
@@ -71,17 +78,23 @@ public class DocumentController {
         if (documentType != null && !documentType.isBlank()) {
             document.setDocumentType(documentType.toUpperCase());
         }
+        document.setIndexStatus("INDEXING");
+        document.setIndexError(null);
         document = documentRepository.save(document);
 
-        // AI 인덱싱(청킹·임베딩) 요청 — 실패해도 업로드 자체는 성공으로 처리
-        // (문서는 이미 저장·검색가능 상태, 인덱싱만 나중에 재시도하면 되므로 업로드를 막을 이유 없음)
+        // 업로드와 "AI가 읽을 수 있음"은 다른 상태다. 인덱싱 결과를 반드시 DB에 남긴다.
         try {
-            aiServiceClient.indexDocument(document.getId(), user.getId(), fileType, file);
+            java.util.Map<String, Object> indexResult =
+                    aiServiceClient.indexDocument(
+                            document.getId(), user.getId(), fileType, file);
+            applyIndexResult(document, indexResult);
         } catch (Exception e) {
+            document.setIndexStatus("FAILED");
+            document.setIndexError(compactIndexError(e));
             System.err.println("[문서 인덱싱 실패] documentId=" + document.getId() + " / " + e.getMessage());
         }
 
-        return document;
+        return documentRepository.save(document);
     }
 
     public record GenerateDocumentRequest(
@@ -205,6 +218,46 @@ public class DocumentController {
     }
 
 
+    @PostMapping("/{id}/reindex")
+    public Document reindex(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        User user = currentUser(authentication);
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "문서를 찾을 수 없습니다."));
+
+        if (!document.getOwnerUserId().equals(user.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "본인 문서만 재인덱싱할 수 있습니다.");
+        }
+
+        document.setIndexStatus("INDEXING");
+        document.setIndexError(null);
+        documentRepository.save(document);
+
+        try {
+            byte[] bytes = s3StorageService.download(document.getS3Key());
+            java.util.Map<String, Object> indexResult =
+                    aiServiceClient.indexDocumentBytes(
+                            document.getId(),
+                            user.getId(),
+                            document.getFileType(),
+                            bytes,
+                            document.getTitle());
+
+            applyIndexResult(document, indexResult);
+        } catch (Exception e) {
+            document.setIndexStatus("FAILED");
+            document.setIndexError(compactIndexError(e));
+        }
+
+        return documentRepository.save(document);
+    }
+
     @GetMapping
     public List<Document> myDocuments(Authentication authentication) {
         User user = currentUser(authentication);
@@ -256,6 +309,46 @@ public class DocumentController {
         }
         return userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+    }
+
+    private void applyIndexResult(
+            Document document,
+            java.util.Map<String, Object> indexResult) {
+
+        String status = indexResult == null
+                ? ""
+                : String.valueOf(indexResult.getOrDefault("status", ""));
+
+        if ("ready".equalsIgnoreCase(status)
+                || "indexed".equalsIgnoreCase(status)) {
+            document.setIndexStatus("READY");
+            document.setIndexError(null);
+            document.setIndexedAt(LocalDateTime.now());
+            return;
+        }
+
+        if ("text_ready".equalsIgnoreCase(status)) {
+            document.setIndexStatus("TEXT_READY");
+            Object error = indexResult.get("embedding_error");
+            document.setIndexError(error == null ? null : error.toString());
+            document.setIndexedAt(LocalDateTime.now());
+            return;
+        }
+
+        document.setIndexStatus("FAILED");
+        document.setIndexError("알 수 없는 문서 인덱싱 상태: " + status);
+    }
+
+    private String compactIndexError(Exception e) {
+        String message = e == null || e.getMessage() == null
+                ? "문서 인덱싱에 실패했습니다."
+                : e.getMessage().trim();
+
+        if (message.length() > 1000) {
+            return message.substring(0, 1000);
+        }
+
+        return message;
     }
 
     private String extractExtension(String filename) {
