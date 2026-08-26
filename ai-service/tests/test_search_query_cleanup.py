@@ -66,6 +66,34 @@ class BuildSearchQueryTest(unittest.TestCase):
     def test_empty_query_is_left_unchanged(self):
         self.assertEqual(build_search_query(""), "")
 
+    def test_strips_context_variant_with_edited_wording(self):
+        # 2026-08-26: "최근 이슈와 관련해"를 사용자가 직접 "최근 골 소식과
+        # 관련해서"로 고쳐 붙인 사례 - 검색어가 골/데뷔전 뉴스 쪽으로 쏠려서
+        # 프로필(위키/나무위키) 결과가 안 나오고 답변이 부실해진 원인이었음.
+        query = (
+            "현제 이강인 소속과 프로필을 알려줘. 나에게. 요약해줘. 최근 골 "
+            "소식과 관련해서. 3문단으로. 전문적으로. 숫자는 꼭 포함해서"
+        )
+        self.assertEqual(
+            build_search_query(query),
+            "현제 이강인 소속과 프로필을 알려줘",
+        )
+
+    def test_strips_additional_info_suggestion_line_joined_by_newline(self):
+        # 2026-08-26: improve_prompt가 붙이는 "추가로 필요한 정보: 담당자에게"
+        # 안내 문구가 마침표가 아니라 줄바꿈으로만 앞 절("숫자는 꼭 포함해서")과
+        # 붙어 있어서, 정확매칭에 실패해 검색어에 그대로 남고 심지어 HCX가
+        # 이 문구 자체를 질문으로 오인해 답변에 옮겨 적는 사례가 확인됨.
+        query = (
+            "현제 이강인 소속과 프로필을 알려줘. 나에게. 요약해줘. 최근 골 "
+            "소식과 관련해서. 3문단으로. 전문적으로. 숫자는 꼭 포함해서\n"
+            "추가로 필요한 정보: 담당자에게"
+        )
+        self.assertEqual(
+            build_search_query(query),
+            "현제 이강인 소속과 프로필을 알려줘",
+        )
+
     def test_legitimate_multi_clause_content_is_preserved(self):
         query = "이강인 소식 알려줘. 최근에 이적했어? 어느 팀으로 갔어"
         self.assertEqual(

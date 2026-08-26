@@ -42,6 +42,11 @@ _STOCK_PHRASES = {
     "간결하게", "간단하게", "자세하게", "상세하게",
     # CONTEXT
     "지난 회의 관련해서", "이번 분기 상황에서", "최근 이슈와 관련해",
+    # 2026-08-26: "최근 골 소식과 관련해서"("최근 이슈와 관련해" 클릭 후 직접
+    # 수정해서 붙인 것으로 보임)가 이 집합에 없어서 검색어에 그대로 남았고,
+    # "이강인 소속과 프로필" 질의가 위키/나무위키 인물 정보 대신 골/데뷔전
+    # 뉴스 기사 쪽으로 쏠려 프로필 항목이 부실해진 사례가 확인됨.
+    "최근 골 소식과 관련해서",
     # CONSTRAINT
     "전문용어는 빼고", "숫자는 꼭 포함해서", "회사명은 언급하지 말고",
     # EXAMPLE
@@ -50,6 +55,16 @@ _STOCK_PHRASES = {
     # 담고 있을 때만 걸러진다(절 전체가 이 동사뿐이어야 함 - 아래 로직 참고).
     "요약해줘", "요약해 줘", "작성해줘", "작성해 줘", "정리해줘", "정리해 줘",
 }
+
+# 2026-08-26: "추가로 필요한 정보: 담당자에게"처럼 improve_prompt 기능이 붙이는
+# 안내 문구는 마침표가 아니라 줄바꿈으로 앞 문장과 구분되어 있어서(아래
+# build_search_query의 절 분리 로직 참고), "숫자는 꼭 포함해서 추가로 필요한
+# 정보: 담당자에게"처럼 다른 절과 한 덩어리로 붙어버리는 사례가 확인됨 -
+# 이러면 _STOCK_PHRASES 정확매칭에 안 걸려서 검색어에 그대로 남고, 심지어
+# HCX가 이 문구 자체를 실제 질문("담당자에게 요청하세요")으로 오인해 답변에
+# 그대로 옮겨 적는 부작용까지 있었음. 이 문구는 "무엇을 검색해야 하는가"와
+# 무관한 UI 안내 문구이므로 뒤에 뭐가 붙든 통째로 검색어에서 제외한다.
+_ADDITIONAL_INFO_PREFIX_RE = re.compile(r"^추가로\s*필요한\s*정보\s*[:：]")
 
 # "3문단으로", "5줄로", "300자 이내로", "3~4줄로" 처럼 숫자+단위로 된 FORMAT/
 # LENGTH 상투구는 값이 매번 달라서 고정 문자열 집합으로 못 잡으므로 정규식으로.
@@ -72,6 +87,9 @@ def _is_stock_clause(clause: str) -> bool:
     if _NUMERIC_FORMAT_RE.match(normalized):
         return True
 
+    if _ADDITIONAL_INFO_PREFIX_RE.match(normalized):
+        return True
+
     return False
 
 
@@ -86,7 +104,10 @@ def build_search_query(query: str) -> str:
     if not original:
         return original
 
-    clauses = [c for c in re.split(r"[.](?!\d)", original)]
+    # 2026-08-26: "숫자는 꼭 포함해서\n추가로 필요한 정보: 담당자에게"처럼
+    # improve_prompt 안내 문구가 마침표가 아니라 줄바꿈으로만 앞 절과
+    # 구분되는 경우가 있어서, 마침표뿐 아니라 줄바꿈도 절 구분자로 취급한다.
+    clauses = [c for c in re.split(r"\n|[.](?!\d)", original)]
 
     kept = [c.strip().strip(",").strip() for c in clauses]
     kept = [c for c in kept if c and not _is_stock_clause(c)]
