@@ -11,11 +11,22 @@ import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
 import { generateDocumentFile, type DocumentFormat, type DocumentItem } from "@/api/documents";
 
+interface MessageSource {
+  title: string;
+  url: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   promptSessionId?: number;
+  // /api/execute 응답의 sources(웹검색으로 실제 참고한 기사 title/url) -
+  // 2026-08-26: 크롬 확장 프로그램의 "출처 더보기"와 동일한 데이터를
+  // 웹 채팅에도 보여주기 위해 추가. 지난 대화를 다시 불러올 때는 채워지지
+  // 않음(백엔드가 prompt_session에 sources를 저장하지 않아서 - 방금 생성된
+  // 응답에만 있음).
+  sources?: MessageSource[];
   // 방금 보낸 메시지는 DocumentItem[](업로드 응답), 지난 대화 다시 불러온 메시지는
   // MessageAttachment[](백엔드 /messages 응답)이 들어옴. 렌더링엔 id/title만 쓰여서
   // DocumentItem이 구조적으로 MessageAttachment를 만족하므로 타입 호환됨.
@@ -488,7 +499,13 @@ export default function ChatThreadPage() {
       const assistantId = generateId();
       setMessages((prev) => [
         ...prev,
-        { id: assistantId, role: "assistant", content: resultText, promptSessionId: res?.promptSessionId },
+        {
+          id: assistantId,
+          role: "assistant",
+          content: resultText,
+          promptSessionId: res?.promptSessionId,
+          sources: Array.isArray(res?.sources) ? res.sources : undefined,
+        },
       ]);
 
       // "직접 입력"으로 해결한 요소 = 직접수정. response_edits에 기록.
@@ -709,6 +726,21 @@ export default function ChatThreadPage() {
                         </svg>
                       </button>
                     </div>
+
+                    {m.sources && m.sources.length > 0 && (
+                      <details className="msg-sources">
+                        <summary>출처 더보기 ({m.sources.length})</summary>
+                        <ul>
+                          {m.sources.map((src) => (
+                            <li key={src.url}>
+                              <a href={src.url} target="_blank" rel="noopener noreferrer">
+                                {src.title || src.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
 
                     {generatedDocuments[m.id] && (
                       <div className="generated-file-card">
