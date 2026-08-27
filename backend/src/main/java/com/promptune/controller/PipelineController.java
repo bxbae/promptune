@@ -407,7 +407,18 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     // AI 응답 원문도 같이 저장 (이제까지 저장 안 되고 있던 부분 — 메시지 목록에 필요해서 추가)
     Object aiText = result != null ? result.get("result") : null;
-    session.setAiResponseText(aiText != null ? aiText.toString() : null);
+
+    if (aiText == null) {
+        // 생성 실패 - 파이프라인 초반에 미리 저장해둔 빈 세션을 지워서
+        // "프롬프트만 있고 응답 없는" 중복 행이 재전송할 때마다 쌓이는 것을 방지.
+        // prompt_session_documents는 ON DELETE CASCADE라 첨부 연결도 같이 안전하게 정리됨.
+        promptSessionRepository.delete(session);
+        throw new ResponseStatusException(
+                org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
+                "응답 생성에 실패했습니다.");
+    }
+
+    session.setAiResponseText(aiText.toString());
     promptSessionRepository.save(session);
 
     // 첨부 관계는 documents.prompt_session_id 단일 컬럼이 아니라
