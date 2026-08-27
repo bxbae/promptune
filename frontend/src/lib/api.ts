@@ -77,11 +77,13 @@ export async function execute(
   chatSessionId?: number,
   documentIds?: number[],
   receiverProfileId?: number,
+  signal?: AbortSignal,
 ) {
   const res = await fetch(`${API}/api/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ finalPrompt, chatSessionId, documentIds, receiverProfileId }),
+    signal,
   });
   if (!res.ok) throw new Error(`실행 실패: ${res.status}`);
   return res.json();

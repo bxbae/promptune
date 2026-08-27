@@ -1,20 +1,16 @@
 package com.promptune.controller;
 
-import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable; // 추가
-import org.springframework.web.bind.annotation.PostMapping; // 추가
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.promptune.domain.User;
-import com.promptune.dto.PipelineDtos.*;
 import com.promptune.dto.PipelineDtos.AnalyzeRequest;
 import com.promptune.dto.PipelineDtos.AnalyzeResponse;
 import com.promptune.dto.PipelineDtos.DiagnoseResult;
@@ -25,10 +21,10 @@ import com.promptune.dto.PipelineDtos.SuggestResult;
 import com.promptune.repository.UserRepository;
 import com.promptune.service.AiServiceClient;
 import com.promptune.service.BehaviorLogService;
+import com.promptune.service.ConsentService;
 import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
 import com.promptune.service.RecommendService;
-import com.promptune.service.ConsentService;
 
 /**
  * 파이프라인 오케스트레이터.
@@ -257,6 +253,17 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     promptSessionRepository.save(session);
 
+    // RETRY_DUPLICATE_MESSAGE_BUG 후속 수정 (2026-08-27):
+    // 위 aiText == null 케이스만 delete를 해주고 있었는데, 그건 ai.generate()/
+    // validateWithRetry()가 "예외 없이 정상 리턴됐지만 result가 비어있는" 경우만
+    // 커버한다. ai.retrievalExecute()/ai.generate()/validateWithRetry() 자체가
+    // 타임아웃·네트워크 오류 등으로 예외를 던지며 실패하는 경우엔 그 if문에
+    // 도달하지도 못해서, 파이프라인 초반에 저장해둔 이 빈 session이 그대로 DB에
+    // 남았다. 아래 블록 전체를 try로 감싸고, 그 안에서 던져지는 모든 런타임
+    // 예외를 여기서 잡아 session을 지운 뒤 그대로 다시 던지도록 해서 두 케이스를
+    // 전부 커버한다.
+    // (prompt_session_documents는 ON DELETE CASCADE라 첨부 연결도 같이 안전하게 정리됨)
+    try {
     linkCurrentAttachments(
             req.documentIds(),
             userId,
@@ -409,10 +416,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     Object aiText = result != null ? result.get("result") : null;
 
     if (aiText == null) {
-        // 생성 실패 - 파이프라인 초반에 미리 저장해둔 빈 세션을 지워서
-        // "프롬프트만 있고 응답 없는" 중복 행이 재전송할 때마다 쌓이는 것을 방지.
-        // prompt_session_documents는 ON DELETE CASCADE라 첨부 연결도 같이 안전하게 정리됨.
-        promptSessionRepository.delete(session);
+        // 생성 실패(result가 비어있는 케이스) - 아래 catch(RuntimeException)가
+        // 이 예외를 잡아서 session을 지운 뒤 다시 던진다.
         throw new ResponseStatusException(
                 org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
                 "응답 생성에 실패했습니다.");
@@ -490,6 +495,14 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // Web 검색 결과의 실제 출처를 클라이언트에서도 확인할 수 있게 유지한다.
     response.put("sources", buildSources(webResults));
     return response;
+    } catch (RuntimeException e) {
+        // 위 try 블록 어디서든 실패하면(retrieval 예외, HCX 생성/검증 예외,
+        // aiText == null 등) 파이프라인 초반에 미리 저장해둔 빈 session을
+        // 명시적으로 지우고 그대로 다시 던진다. ResponseStatusException을
+        // 포함한 모든 RuntimeException이 여기로 들어온다.
+        promptSessionRepository.delete(session);
+        throw e;
+    }
     }
 
     private java.util.List<java.util.Map<String, String>> buildSources(
