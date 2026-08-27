@@ -36,7 +36,7 @@ services:
       USE_REAL_TITLE_SUMMARY: "${USE_REAL_TITLE_SUMMARY:-false}"
       USE_REAL_RETRIEVAL: "${USE_REAL_RETRIEVAL:-true}"
       HF_TOKEN: "${HF_TOKEN:-}"
-      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
+      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B}"
       HF_HCX_DEVICE: "${HF_HCX_DEVICE:-auto}"
       HF_HCX_DTYPE: "${HF_HCX_DTYPE:-auto}"
       HF_HOME: /root/.cache/huggingface

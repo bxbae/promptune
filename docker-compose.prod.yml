@@ -48,7 +48,7 @@ services:
       USE_REAL_RETRIEVAL: "${USE_REAL_RETRIEVAL:-true}"
       USE_REAL_VALIDATION: "${USE_REAL_VALIDATION:-false}"
       HF_TOKEN: "${HF_TOKEN:-}"
-      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B}"
+      HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B}"
       # 기본값은 CPU로 유지하고, GPU 배포에서는 .env.production의
       # HF_HCX_DEVICE=cuda로 명시적으로 활성화한다.
       HF_HCX_DEVICE: "${HF_HCX_DEVICE:-cpu}"

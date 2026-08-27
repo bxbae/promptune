@@ -50,7 +50,6 @@ def _resolve_hcx_dtype(device: str, requested: str):
     value = (requested or "auto").strip().lower()
 
     if value == "auto":
-        # T4에서는 float16이 가장 현실적인 선택이다. CPU에서는 float32를 유지한다.
         return torch.float16 if device.startswith("cuda") else torch.float32
 
     aliases = {
@@ -124,7 +123,7 @@ def hcx_lock(timeout: float = 120.0):
 def load_hcx_runtime():
     model_name = os.getenv(
         "HF_HCX_MODEL",
-        "naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B",
+        "naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B",
     )
 
     token = os.getenv("HF_TOKEN")
@@ -132,10 +131,6 @@ def load_hcx_runtime():
     device = config["device"]
     dtype = _resolve_hcx_dtype(device, os.getenv("HF_HCX_DTYPE", "auto"))
 
-    if not token:
-        raise RuntimeError(
-            "HF_TOKEN is required when real HyperCLOVA X mode is enabled"
-        )
 
     # 2026-08-25: CPU vs GPU 벤치마크에서 "모델 로딩 시간"을 "생성 시간"과
     # 분리해서 보려고 명시적으로 측정/로깅. 이 함수 전체(tokenizer/model
@@ -146,11 +141,13 @@ def load_hcx_runtime():
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         token=token,
+        trust_remote_code=True,
     )
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         token=token,
+        trust_remote_code=True,
         torch_dtype=dtype,
     )
 

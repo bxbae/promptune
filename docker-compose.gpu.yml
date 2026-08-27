@@ -1,9 +1,14 @@
 services:
   ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile.gpu
+
     environment:
       USE_REAL_RETRIEVAL: "true"
       USE_REAL_GENERATION: "true"
 
+      HF_HCX_MODEL: "naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B"
       HF_HCX_DEVICE: "cuda"
       HF_HCX_DTYPE: "float16"
 
