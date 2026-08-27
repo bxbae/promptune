@@ -117,6 +117,81 @@ def _clean_document_followup_query(query: str) -> str:
     return text or query
 
 
+_EXTERNAL_COMPARISON_MARKERS = (
+    "비교해",
+    "비교해줘",
+    "비교해서",
+    "맞는지",
+    "맞아?",
+    "맞나요",
+    "검증해",
+    "검증해줘",
+    "확인해",
+    "확인해줘",
+    "검토해",
+    "검토해줘",
+)
+
+_EXTERNAL_REFERENCE_MARKERS = (
+    "현재",
+    "지금",
+    "최근",
+    "최신",
+    "오늘",
+    "현행",
+    "법률",
+    "법",
+    "법규",
+    "노동법",
+    "근로기준법",
+    "정부 기준",
+    "공식 기준",
+    "시장",
+    "시장가",
+    "시장 가격",
+    "시세",
+    "환율",
+    "주가",
+    "최신 자료",
+    "외부 자료",
+    "웹",
+    "인터넷",
+    "뉴스",
+    "실시간",
+)
+
+
+def _should_auto_use_web_with_internal(
+    query: str,
+    document_ids: list[int],
+) -> bool:
+    """
+    확정된 내부/첨부 문서를 외부의 현재·공식 사실과
+    비교/검증하는 요청일 때만 Web 검색을 함께 실행한다.
+
+    단순 문서 요약/질의는 Web을 호출하지 않는다.
+    """
+    if not document_ids:
+        return False
+
+    text = str(query or "").strip().lower()
+
+    if not text:
+        return False
+
+    has_comparison = any(
+        marker in text
+        for marker in _EXTERNAL_COMPARISON_MARKERS
+    )
+
+    has_external_reference = any(
+        marker in text
+        for marker in _EXTERNAL_REFERENCE_MARKERS
+    )
+
+    return has_comparison and has_external_reference
+
+
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
@@ -212,6 +287,10 @@ def execute_retrieval(
     should_use_web = (
         bool(req.use_web_search)
         or route in {"web_search", "external_or_realtime"}
+        or _should_auto_use_web_with_internal(
+            req.query,
+            document_ids,
+        )
     )
 
     if should_use_web:
