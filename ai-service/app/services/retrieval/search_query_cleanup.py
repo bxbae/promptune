@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import re
 
+from app.services.retrieval.query_intent import (
+    extract_external_entity_subject,
+)
+
 
 """
 2026-08-26: "이강인 축구선수에대해 알려줘 지금 소속팀과 프로필 부탁해. 요약해줘.
@@ -118,6 +122,10 @@ def build_search_query(query: str) -> str:
 
     if not original:
         return original
+
+    entity_subject = extract_external_entity_subject(original)
+    if entity_subject:
+        return entity_subject
 
     # 검색 주체 명사에 "에대해/에 대해/에관해/에 관해"가 (띄어쓰기 유무와
     # 무관하게) 그대로 들러붙어 검색어를 오염시키지 않도록, 절을 나누기 전에

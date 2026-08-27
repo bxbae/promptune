@@ -8,6 +8,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
 
+from app.services.retrieval.query_intent import is_external_entity_lookup_query
+
 
 APP = Path(__file__).resolve().parents[2]
 TRAIN_PATH = APP / "data/rag/routing_train_242.json"
@@ -274,6 +276,9 @@ def classify_ml_retrieval_route(query: str) -> str:
 
     if _is_explicit_internal_rag(query):
         return "internal_rag"
+
+    if is_external_entity_lookup_query(query):
+        return "external_or_realtime"
 
     if _is_likely_realtime_fact(query):
         return "external_or_realtime"
