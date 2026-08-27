@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -183,6 +184,90 @@ def _is_likely_realtime_fact(query: str) -> bool:
     return has_time and has_fact
 
 
+def _is_third_party_profile_query(query: str) -> bool:
+    """
+    2026-08-26: "이강인 소속과 프로필을 알려줘"가 웹검색을 전혀 안 하는
+    user_context로 잘못 분류되어(로그인한 사용자 자신의 정보로 오인),
+    HCX가 근거자료 없이 완전히 지어낸 답(예: "이강인은 PSG 소속,
+    1996년생...")을 내놓은 사례가 재현 확인됨 - 출처 링크도 당연히
+    안 붙었음(검색 자체를 안 했으므로).
+
+    routing_train_242.json의 user_context 학습 예시(39개)는 "내 소속",
+    "내 프로필의 부서" 처럼 "프로필"/"소속" 관련 예시가 전부 "내 "로
+    시작하는 1인칭 소유 표현을 동반한다 - 예외 없음. 242개 char n-gram
+    학습 데이터로는 "내 프로필" vs "이강인 프로필"을 의미상 구분하지
+    못하고 "프로필"/"소속" 패턴 자체에 끌려가 오분류가 나므로, 1인칭
+    소유 표현이 없는 프로필/소속/약력 질의는 ML 판단보다 먼저 실시간
+    웹 검색(external_or_realtime)으로 보낸다.
+    """
+    text = query.strip().lower()
+
+    profile_markers = ["프로필", "소속", "약력"]
+    has_profile = any(marker in text for marker in profile_markers)
+
+    # 단순 부분 문자열 매칭("제 " in text)은 "현제 이강인"(오타: 현재)처럼
+    # 앞에 다른 한글 음절이 붙어 우연히 "제 "로 끝나는 단어에도 걸려서,
+    # "내"/"제" 앞이 문장 시작이거나 공백/구두점일 때만(즉 실제로 독립된
+    # 1인칭 대명사일 때만) 매치하도록 부정 전방탐색을 둔다.
+    has_first_person = bool(
+        re.search(r"(?<![가-힣])(?:내|제)\s", text)
+        or any(marker in text for marker in ("저의", "나의", "제가", "내가"))
+    )
+
+    return has_profile and not has_first_person
+
+
+# 2026-08-26: "침착맨에대해. 요약해줘. 최근 이슈와 관련해..."가 no_retrieval로
+# 분류되어(patch 19의 위키 폴백은 search_web()이 아예 호출되지 않으니 무용지물
+# 이었음) 웹검색 없이 HCX가 완전히 지어낸 인물 정보(가짜 데뷔 연도, 없는
+# 앨범 등)로 답한 사례가 재현 확인됨. docker logs의 [Retrieval] 로그로
+# route='no_retrieval'을 직접 확인한 뒤 원인을 찾음: routing_train_242.json의
+# no_retrieval 학습 예시(43개)는 전부 "이 문장을/이 내용을/아래 글을 +
+# 요약해줘/다듬어줘/번역해줘" 형태 - 즉 프롬프트에 이미 주어진 텍스트를
+# 다듬는 요청뿐이고, "OO에 대해 요약해줘"처럼 "~에 대해/대하여/관해/관하여"
+# 구문으로 특정 대상을 지칭하는 예시는 267개 학습 데이터 전체에 단 하나도
+# 없음(직접 검증함) - 그래서 char n-gram 모델이 "~을 요약해줘"라는 표면적
+# 겹침만 보고 이 구문 전체를 no_retrieval로 잘못 분류한 것으로 보인다.
+# 학습 데이터에 아예 없는 구문이라 ML 예측이 사실상 정의되지 않은 영역이므로,
+# 결정적 규칙으로 보정한다 - 단, 이 규칙은 ML이 no_retrieval 또는 user_context로
+# 예측했을 때만 개입한다(다른 라벨을 예측했으면 그대로 둠 - 개입 범위를 최소화해서
+# 이미 잘 맞히고 있는 다른 케이스에 영향이 없게 함).
+#
+# user_context도 개입 대상에 포함한 이유: 실제 테스트 중 "리센느에 대하여
+# 소개해줘"가 no_retrieval이 아니라 user_context로 잘못 예측되는 사례가
+# 발견됨(로그인한 사용자 자신의 정보로 오인) - _is_third_party_profile_query와
+# 동일한 원인이지만 "프로필"/"소속"/"약력" 마커가 없어 그 필터에는 안 걸림.
+# has_first_person 배제 조건이 이미 "내 프로필에 대해 알려줘"류 진짜 자기참조
+# 질의는 걸러내므로, user_context를 개입 대상에 추가해도 회귀 위험은 없다.
+_ABOUT_SUBJECT_RE = re.compile(r"에\s*(?:대|관)(?:해|하여)")
+
+_SUMMARY_ASK_MARKERS = ["요약해", "알려", "설명해", "소개해", "정리해"]
+
+# "우리 회사 정책에 대해 알려줘"처럼 실제로는 내부 문서를 찾아야 하는 질의까지
+# 외부 검색으로 잘못 보내지 않도록, 내부/자기참조성 주제 마커가 있으면 이
+# 보정을 적용하지 않는다.
+_INTERNAL_TOPIC_MARKERS = [
+    "내부", "사내", "회사", "우리 팀", "우리팀", "부서", "정책", "규정",
+    "문서", "파일", "보고서",
+]
+
+
+def _is_external_subject_summary_query(query: str) -> bool:
+    text = query.strip().lower()
+
+    has_about = bool(_ABOUT_SUBJECT_RE.search(text))
+    has_ask = any(marker in text for marker in _SUMMARY_ASK_MARKERS)
+
+    has_first_person = bool(
+        re.search(r"(?<![가-힣])(?:내|제)\s", text)
+        or any(marker in text for marker in ("저의", "나의", "제가", "내가"))
+    )
+
+    has_internal_topic = any(marker in text for marker in _INTERNAL_TOPIC_MARKERS)
+
+    return has_about and has_ask and not has_first_person and not has_internal_topic
+
+
 def classify_ml_retrieval_route(query: str) -> str:
     if _is_restricted(query):
         return "not_rag_or_restricted"
@@ -193,4 +278,15 @@ def classify_ml_retrieval_route(query: str) -> str:
     if _is_likely_realtime_fact(query):
         return "external_or_realtime"
 
-    return _ROUTER.predict(query)
+    if _is_third_party_profile_query(query):
+        return "external_or_realtime"
+
+    predicted = _ROUTER.predict(query)
+
+    if (
+        predicted in ("no_retrieval", "user_context")
+        and _is_external_subject_summary_query(query)
+    ):
+        return "external_or_realtime"
+
+    return predicted

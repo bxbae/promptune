@@ -11,7 +11,7 @@ from app.schemas.models import (
 )
 from app.services import pipeline_mock
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
-from app.services.retrieval.tavily_search import search_web
+from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
 from app.services.retrieval.search_query_cleanup import build_search_query
@@ -145,6 +145,8 @@ def execute_retrieval(
             else classify_ml_retrieval_route(effective_query)
         )
 
+    print(f"[Retrieval] route={route!r} effective_query={effective_query!r}")
+
     documents = []
     web_results: list[WebSearchResult] = []
 
@@ -206,6 +208,15 @@ def execute_retrieval(
 
     # 2. 웹 / 외부·실시간 검색
     elif route in {"web_search", "external_or_realtime"}:
+        # 2026-08-26: "최근"/"최신" 같은 시점 표현은 search_query_cleanup.py의
+        # 불용구 제거(패치 13, 예: "최근 골 소식과 관련해서" 전체를 stock
+        # phrase로 지움) 이후에는 검색어에서 이미 사라져 있을 수 있다. 그래서
+        # "최근 소식은 일주일 이내 기사로 한정" 판정은 정제 전 원문
+        # effective_query에 대해 먼저 하고, 그 결과(time_range)만 정제된
+        # 검색어와 함께 넘긴다.
+        recent_only = is_recency_query(effective_query)
+        time_range = "week" if recent_only else None
+
         search_query = resolve_relative_dates(
             build_search_query(effective_query)
         )
@@ -217,6 +228,25 @@ def execute_retrieval(
         results = search_web(
             search_query,
             max_results=web_top_k,
+            time_range=time_range,
+        )
+
+        # 2026-08-26: "이강인 소속과 프로필" 질의가 검색어 정리(패치 13) 이후
+        # 오히려 손흥민/조규성처럼 완전히 무관한 인물의 결과가 섞여 들어오는
+        # 회귀가 재현됐는데, search_web()이 반환한 실제 title/url을 확인할
+        # 방법이 로그에 전혀 없어서(이 파일에 로깅 자체가 없었음) 매번 답변
+        # 텍스트만 보고 추측해야 했다. docker logs로 바로 원인을 볼 수 있게
+        # route/검색어/실제 검색 결과를 남긴다 - 동작에는 영향 없음(순수 로깅).
+        # 2026-08-26: "리센느" 검색 결과가 0건이었던 사례, "방탄소년단" 최근
+        # 이슈 질의에 그래미 보이콧 기사가 안 붙은 사례가 확인됐는데, Tavily가
+        # 실제로 그 기사를 찾긴 했지만 관련도 점수(score)가 낮아 뒤로 밀렸는지,
+        # 애초에 검색 자체가 안 됐는지 로그만으로는 구분이 안 됐다. Tavily
+        # 응답의 score 필드를 함께 남겨서 다음에 같은 문제가 재현되면 추측 없이
+        # 바로 원인을 좁힐 수 있게 한다 - 동작에는 영향 없음(순수 로깅).
+        print(
+            f"[Retrieval] route={route!r} search_query={search_query!r} "
+            f"time_range={time_range!r} "
+            f"results={[(r.get('title'), r.get('url'), r.get('score')) for r in results]}"
         )
 
         web_results = [

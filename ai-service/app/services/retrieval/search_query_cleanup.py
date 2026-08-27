@@ -42,6 +42,11 @@ _STOCK_PHRASES = {
     "간결하게", "간단하게", "자세하게", "상세하게",
     # CONTEXT
     "지난 회의 관련해서", "이번 분기 상황에서", "최근 이슈와 관련해",
+    # 2026-08-26: "최근 골 소식과 관련해서"("최근 이슈와 관련해" 클릭 후 직접
+    # 수정해서 붙인 것으로 보임)가 이 집합에 없어서 검색어에 그대로 남았고,
+    # "이강인 소속과 프로필" 질의가 위키/나무위키 인물 정보 대신 골/데뷔전
+    # 뉴스 기사 쪽으로 쏠려 프로필 항목이 부실해진 사례가 확인됨.
+    "최근 골 소식과 관련해서",
     # CONSTRAINT
     "전문용어는 빼고", "숫자는 꼭 포함해서", "회사명은 언급하지 말고",
     # EXAMPLE
@@ -51,6 +56,16 @@ _STOCK_PHRASES = {
     "요약해줘", "요약해 줘", "작성해줘", "작성해 줘", "정리해줘", "정리해 줘",
 }
 
+# 2026-08-26: "추가로 필요한 정보: 담당자에게"처럼 improve_prompt 기능이 붙이는
+# 안내 문구는 마침표가 아니라 줄바꿈으로 앞 문장과 구분되어 있어서(아래
+# build_search_query의 절 분리 로직 참고), "숫자는 꼭 포함해서 추가로 필요한
+# 정보: 담당자에게"처럼 다른 절과 한 덩어리로 붙어버리는 사례가 확인됨 -
+# 이러면 _STOCK_PHRASES 정확매칭에 안 걸려서 검색어에 그대로 남고, 심지어
+# HCX가 이 문구 자체를 실제 질문("담당자에게 요청하세요")으로 오인해 답변에
+# 그대로 옮겨 적는 부작용까지 있었음. 이 문구는 "무엇을 검색해야 하는가"와
+# 무관한 UI 안내 문구이므로 뒤에 뭐가 붙든 통째로 검색어에서 제외한다.
+_ADDITIONAL_INFO_PREFIX_RE = re.compile(r"^추가로\s*필요한\s*정보\s*[:：]")
+
 # "3문단으로", "5줄로", "300자 이내로", "3~4줄로" 처럼 숫자+단위로 된 FORMAT/
 # LENGTH 상투구는 값이 매번 달라서 고정 문자열 집합으로 못 잡으므로 정규식으로.
 _NUMERIC_FORMAT_RE = re.compile(
@@ -58,6 +73,21 @@ _NUMERIC_FORMAT_RE = re.compile(
     r"(?:문단|문장|줄|개|가지|자|단어|페이지|포인트|배|위|점)"
     r"\s*(?:이내로|이내|으로|로)?$"
 )
+
+# 2026-08-26: "침착맨에대해. 요약해줘. ..."가 라우팅(ml_router.py, patch 20)은
+# 고쳐서 search_web()이 호출되는 데까진 성공했는데도, 검색 결과가 침착맨과
+# 전혀 무관한 기사(예: NFL 관련 영문 기사)로 나와서 HCX가 여전히 완전히
+# 지어낸 답을 내놓는 사례가 재현됨. 원인은 "침착맨에대해"처럼 검색 주체
+# 이름과 "에대해/에 대해/에관해/에 관해" 조사+동사가 띄어쓰기 없이(혹은
+# 있어도) 한 덩어리 절로 그대로 Tavily 검색어에 남아있었기 때문 -
+# "침착맨에대해"라는 이 애플리케이션에만 존재하는 조합 토큰은 Tavily
+# 색인에 매칭될 만한 실제 단어가 아니라서(사실상 없는 단어), 신뢰 도메인
+# 검색은 0건이 되고 그 다음 무제한 재시도 단계에서 관련성 낮은 아무 최신
+# 기사나 걸려 나온 것으로 보인다. "에 대해/대하여/관해/관하여"는 검색에
+# 아무 의미가 없는 조사+동사 결합이므로, 절 분리 이전에 미리 제거해서
+# 실제 검색 주체 명사(예: "침착맨")가 다른 단어와 깨끗이 분리된 채로
+# 남게 한다.
+_ABOUT_SUBJECT_SUFFIX_RE = re.compile(r"에\s*(?:대|관)(?:해|하여)")
 
 
 def _is_stock_clause(clause: str) -> bool:
@@ -70,6 +100,9 @@ def _is_stock_clause(clause: str) -> bool:
         return True
 
     if _NUMERIC_FORMAT_RE.match(normalized):
+        return True
+
+    if _ADDITIONAL_INFO_PREFIX_RE.match(normalized):
         return True
 
     return False
@@ -86,12 +119,21 @@ def build_search_query(query: str) -> str:
     if not original:
         return original
 
-    clauses = [c for c in re.split(r"[.](?!\d)", original)]
+    # 검색 주체 명사에 "에대해/에 대해/에관해/에 관해"가 (띄어쓰기 유무와
+    # 무관하게) 그대로 들러붙어 검색어를 오염시키지 않도록, 절을 나누기 전에
+    # 미리 걷어낸다. 원문(finalPrompt)에는 영향 없음 - 검색어 생성에서만 씀.
+    original_for_search = _ABOUT_SUBJECT_SUFFIX_RE.sub(" ", original)
+
+    # 2026-08-26: "숫자는 꼭 포함해서\n추가로 필요한 정보: 담당자에게"처럼
+    # improve_prompt 안내 문구가 마침표가 아니라 줄바꿈으로만 앞 절과
+    # 구분되는 경우가 있어서, 마침표뿐 아니라 줄바꿈도 절 구분자로 취급한다.
+    clauses = [c for c in re.split(r"\n|[.](?!\d)", original_for_search)]
 
     kept = [c.strip().strip(",").strip() for c in clauses]
     kept = [c for c in kept if c and not _is_stock_clause(c)]
 
     cleaned = " ".join(kept).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 전부 상투구로 판정돼 텅 비면(예: 질의 자체가 짧은 스타일 지시문 하나뿐인
     # 경우) 원문 그대로 쓴다 - 검색어가 아예 없어지는 것보다는 잡음이 섞이더라도
