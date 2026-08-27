@@ -496,11 +496,14 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     response.put("sources", buildSources(webResults));
     return response;
     } catch (RuntimeException e) {
-        // 위 try 블록 어디서든 실패하면(retrieval 예외, HCX 생성/검증 예외,
-        // aiText == null 등) 파이프라인 초반에 미리 저장해둔 빈 session을
-        // 명시적으로 지우고 그대로 다시 던진다. ResponseStatusException을
-        // 포함한 모든 RuntimeException이 여기로 들어온다.
-        promptSessionRepository.delete(session);
+        // 2026-08-27 되돌림: 이전엔 실패하면 무조건 session을 지웠는데, 그러니
+        // 응답을 못 받은 프롬프트가 새로고침 후 화면에서 아예 안 보이는 문제가
+        // 생겼다(예진님 피드백) - "재전송을 여러 번 실패했을 때 중복으로 쌓이는
+        // 것"만 막으면 되는 거였지, 실패 흔적 자체를 다 지우라는 게 아니었음.
+        // 그래서 삭제는 하지 않고 session(prompt만 있고 응답 없음)을 그대로
+        // 둔다 - 프론트(buildLoadedMessages)가 같은 prompt로 연속된 실패
+        // 기록 중 마지막 하나만 남기고 접어서 보여주므로, 재시도해도 화면엔
+        // 중복 없이 항상 최소 1개는 남는다.
         throw e;
     }
     }
