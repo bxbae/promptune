@@ -15,6 +15,7 @@ from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
 from app.services.retrieval.search_query_cleanup import build_search_query
+from app.services.retrieval.search_plan import build_search_plan
 
 # app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
 # (거길 직접 import하면 순환참조라 동일 로직을 복제함)
@@ -300,8 +301,23 @@ def execute_retrieval(
         # "최근 소식은 일주일 이내 기사로 한정" 판정은 정제 전 원문
         # effective_query에 대해 먼저 하고, 그 결과(time_range)만 정제된
         # 검색어와 함께 넘긴다.
-        recent_only = is_recency_query(effective_query)
-        time_range = "week" if recent_only else None
+        search_plan = build_search_plan(
+            effective_query
+        )
+
+        recent_only = is_recency_query(
+            effective_query
+        )
+
+        if search_plan.freshness == "DAY":
+            time_range = "day"
+        elif (
+            search_plan.freshness == "WEEK"
+            or recent_only
+        ):
+            time_range = "week"
+        else:
+            time_range = None
 
         search_query = resolve_relative_dates(
             build_search_query(effective_query)
@@ -315,6 +331,8 @@ def execute_retrieval(
             search_query,
             max_results=web_top_k,
             time_range=time_range,
+            search_intent=search_plan.intent,
+            entity=search_plan.entity,
         )
 
         # 2026-08-26: "이강인 소속과 프로필" 질의가 검색어 정리(패치 13) 이후
@@ -331,6 +349,8 @@ def execute_retrieval(
         # 바로 원인을 좁힐 수 있게 한다 - 동작에는 영향 없음(순수 로깅).
         print(
             f"[Retrieval] route={route!r} search_query={search_query!r} "
+            f"search_intent={search_plan.intent!r} "
+            f"entity={search_plan.entity!r} "
             f"time_range={time_range!r} "
             f"results={[(r.get('title'), r.get('url'), r.get('score')) for r in results]}"
         )
