@@ -271,9 +271,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     // Retrieval Router/Orchestrator(승연님 PR #67)가 내부문서 검색·웹검색 여부까지
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
-    // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
-    // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    //
+    // 사용자 Web 검색 요청은 retrieval-execute까지 전달되며,
+    // 내부 문서와 Web을 동시에 사용하는 복합 Retrieval도 지원한다.
     // 2026-08-25: TAVILY_API_KEY가 prod에 없으면 web_search/external_or_realtime
     // 라우트로 분류된 요청은 ai-service의 /retrieval-execute가 500을 던지는데,
     // 그걸 그대로 흘려보내면 /api/execute 전체가 실패해서 채팅 자체가 안 됐음
@@ -291,7 +290,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 userId,
                 4,
                 conversationHistory,
-                retrievalDocumentIds);
+                retrievalDocumentIds,
+                Boolean.TRUE.equals(req.useWebSearch()));
     } catch (Exception e) {
         // 첨부/이전 문서가 명확한 요청에서 Retrieval 실패를 숨기고 일반 HCX 답변으로
         // 넘어가면 모델이 과거 문서나 임의 문서를 근거로 답하는 치명적 오류가 난다.
@@ -878,7 +878,13 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         // 거슬러 올라가면 오히려 틀린 문서를 활성화한다. 이런 표현은 직전 2턴에
         // 첨부가 있을 때만 문서 참조로 해석하고, 명시적 "그 파일/거기서/문서 요약"
         // 표현은 더 이전 첨부까지 찾는다.
-        int maxLookback = isGenericDocumentReference(prompt) ? 2 : sessions.size();
+        int maxLookback =
+                isVerificationFollowup(prompt)
+                        ? 1
+                        : (isGenericDocumentReference(prompt)
+                                ? 2
+                                : sessions.size());
+
         int checked = 0;
 
         for (int i = sessions.size() - 1; i >= 0 && checked < maxLookback; i--, checked++) {
@@ -897,6 +903,27 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         }
 
         return java.util.List.of();
+    }
+
+    private boolean isVerificationFollowup(String prompt) {
+        String text = prompt == null
+                ? ""
+                : prompt.trim().toLowerCase();
+
+        return containsAnyText(
+                text,
+                "확실해",
+                "확실한가",
+                "맞아",
+                "맞나요",
+                "진짜야",
+                "정말이야",
+                "근거 있어",
+                "근거있어",
+                "출처 맞아",
+                "출처가 맞아",
+                "다시 확인",
+                "재확인");
     }
 
     private boolean isGenericDocumentReference(String prompt) {
@@ -1090,7 +1117,19 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 "문서 요약",
                 "파일 요약",
                 "프로젝트만",
-                "경력만"
+                "경력만",
+                "확실해",
+                "확실한가",
+                "맞아",
+                "맞나요",
+                "진짜야",
+                "정말이야",
+                "근거 있어",
+                "근거있어",
+                "출처 맞아",
+                "출처가 맞아",
+                "다시 확인",
+                "재확인"
         };
 
         for (String marker : markers) {
@@ -1124,33 +1163,61 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             Map<String, String> preferenceMap,
             java.util.List<java.util.Map<String, String>> conversationHistory) {
 
-        Object generatedText = result != null ? result.get("result") : null;
+        Object generatedText =
+                result != null
+                        ? result.get("result")
+                        : null;
 
         if (generatedText == null) {
             return result;
         }
 
         Map validation =
-                ai.validate(originalPrompt, generatedText.toString());
+                ai.validate(
+                        originalPrompt,
+            generatedText.toString());
 
         boolean passed =
-                Boolean.TRUE.equals(validation.get("passed"));
+                Boolean.TRUE.equals(
+                        validation.get("passed"));
 
         if (passed) {
             return result;
         }
 
-        Map retryResult = ai.generate(
-                originalPrompt,
-                taskType,
-                documents,
-                webResults,
-                userContext,
-                preferenceMap,
-                conversationHistory);
+        Object issuesObject =
+                validation.get("issues");
+
+        String issues =
+                issuesObject == null
+                        ? "요청 형식 또는 필수 조건을 지키지 못했습니다."
+                        : issuesObject.toString();
+
+        if (issues.length() > 800) {
+            issues = issues.substring(0, 800);
+        }
+
+        String correctionPrompt =
+                originalPrompt
+                        + "\n\n[재생성 시 반드시 수정할 검증 오류]\n"
+                        + issues
+                        + "\n위 오류만 바로잡아 사용자의 원래 요청에 다시 답하세요."
+                        + "\n검증 오류에 없는 새로운 사실이나 조건은 추가하지 마세요.";
+
+        Map retryResult =
+                ai.generate(
+                        correctionPrompt,
+                        taskType,
+                        documents,
+                        webResults,
+                        userContext,
+                        preferenceMap,
+                        conversationHistory);
 
         Object retryText =
-                retryResult != null ? retryResult.get("result") : null;
+                retryResult != null
+                        ? retryResult.get("result")
+                        : null;
 
         if (retryText == null) {
             throw new ResponseStatusException(
@@ -1159,15 +1226,18 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         }
 
         Map retryValidation =
-                ai.validate(originalPrompt, retryText.toString());
+                ai.validate(
+                        originalPrompt,
+                        retryText.toString());
 
         boolean retryPassed =
-                Boolean.TRUE.equals(retryValidation.get("passed"));
+                Boolean.TRUE.equals(
+                        retryValidation.get("passed"));
 
         if (!retryPassed) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "검증을 통과하는 답변을 생성하지 못했습니다.");
+                    "요청한 형식 또는 필수 조건을 만족하는 답변을 생성하지 못했습니다.");
         }
 
         return retryResult;

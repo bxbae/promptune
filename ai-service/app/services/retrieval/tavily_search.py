@@ -208,7 +208,13 @@ def _run_search(client, query, max_results, topic, include_domains, time_range=N
     return [r for r in results if not _is_stale_wiki_revision(r)]
 
 
-def search_web(query, max_results=5, time_range=None):
+def search_web(
+    query,
+    max_results=5,
+    time_range=None,
+    search_intent=None,
+    entity=None,
+):
     if not query.strip():
         raise ValueError("검색어가 비어 있습니다.")
 
@@ -219,7 +225,27 @@ def search_web(query, max_results=5, time_range=None):
     client = TavilyClient(api_key=api_key)
     query = query.strip()
 
-    if _is_finance_query(query):
+    intent = str(
+        search_intent or ""
+    ).strip().upper()
+
+    use_finance_policy = (
+        intent == "FINANCE"
+        or (
+            not intent
+            and _is_finance_query(query)
+        )
+    )
+
+    use_profile_policy = (
+        intent == "PROFILE"
+        or (
+            not intent
+            and _is_profile_query(query)
+        )
+    )
+
+    if use_finance_policy:
         # 시세류 질의는 항상 "오늘/지금" 기준 최신값이 필요하므로 time_range를
         # 별도로 받지 않는다 - topic="finance" 자체가 이미 최신 시세 데이터
         # 소스로 좁혀져 있어 추가 제한이 오히려 결과를 0건으로 만들 위험이 크다.
@@ -229,7 +255,7 @@ def search_web(query, max_results=5, time_range=None):
             include_domains=None,
         )
 
-    if _is_profile_query(query):
+    if use_profile_policy:
         # topic="news"가 아니라 "general"을 쓴다 - 위키백과/나무위키 문서는
         # Tavily 기준 "뉴스" 콘텐츠가 아니라서, topic="news"로 두면
         # include_domains에 넣어도 결과 자체가 안 나올 위험이 있다.

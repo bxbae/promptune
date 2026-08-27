@@ -262,7 +262,8 @@ public class AiServiceClient {
             Long ownerUserId,
             int topK,
             List<Map<String, String>> history,
-            List<Long> documentIds) {
+            List<Long> documentIds,
+            boolean useWebSearch) {
 
         long start = System.currentTimeMillis();
 
@@ -279,6 +280,9 @@ public class AiServiceClient {
             body.put(
                     "document_ids",
                     documentIds == null ? List.of() : documentIds);
+            body.put(
+                    "use_web_search",
+                    useWebSearch);
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
@@ -299,6 +303,22 @@ public class AiServiceClient {
             String query,
             Long ownerUserId,
             int topK,
+            List<Map<String, String>> history,
+            List<Long> documentIds) {
+
+        return retrievalExecute(
+                query,
+                ownerUserId,
+                topK,
+                history,
+                documentIds,
+                false);
+    }
+
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
+            int topK,
             List<Map<String, String>> history) {
 
         return retrievalExecute(
@@ -306,7 +326,8 @@ public class AiServiceClient {
                 ownerUserId,
                 topK,
                 history,
-                List.of());
+                List.of(),
+                false);
     }
 
     public Map<String, Object> retrievalExecute(
@@ -319,7 +340,8 @@ public class AiServiceClient {
                 ownerUserId,
                 topK,
                 List.of(),
-                List.of());
+                List.of(),
+                false);
     }
 
     public Map generate(

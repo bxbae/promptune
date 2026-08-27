@@ -12,6 +12,11 @@ from app.services.conversation_memory import (
     build_recall_evidence,
     select_relevant_history,
 )
+from app.services.context_budget import (
+    MAX_RECALL_EVIDENCE_CHARS,
+    budget_history,
+    truncate_context_text,
+)
 from app.services.retrieval.date_resolver import KST
 from app.services.retrieval.retrieval_context import build_internal_context
 
@@ -121,9 +126,17 @@ def _build_preference_context(preference: dict[str, str]) -> str:
 def _build_recent_user_evidence(
     req: GenerateRequest,
 ) -> str:
-    return build_recall_evidence(
+    evidence = build_recall_evidence(
         req.prompt,
         req.history or [],
+    )
+
+    if evidence == "없음":
+        return evidence
+
+    return truncate_context_text(
+        evidence,
+        MAX_RECALL_EVIDENCE_CHARS,
     )
 
 
@@ -306,34 +319,52 @@ def _build_overview_evidence(req: GenerateRequest) -> str:
 
 
 def _select_generation_history(req: GenerateRequest):
-    """Select only history that is genuinely needed for the current answer.
-
-    Once Retrieval has already resolved a concrete document, conversation history must
-    never be used to guess the document identity again.  This prevents an older file
-    name in history from competing with the current attachment.  History is retained
-    only when the user explicitly refers to a previous *answer* (for example
-    "그 부분 더 자세히").
-    """
+    """Select and budget only history needed for the current answer."""
     if not req.documents:
-        return select_relevant_history(
+        selected = select_relevant_history(
             req.prompt,
             req.history or [],
         )
 
-    if not _needs_previous_answer_context(req.prompt):
+        return budget_history(
+            selected
+        )
+
+    if not _needs_previous_answer_context(
+        req.prompt
+    ):
         return []
 
-    return [
+    selected = [
         message
         for message in req.history[-2:]
         if message.content.strip()
     ]
 
+    return budget_history(
+        selected
+    )
 
-def _build_generation_user_prompt(req: GenerateRequest) -> str:
+
+def _build_generation_user_prompt(
+    req: GenerateRequest,
+    web_results: list[dict] | None = None,
+) -> str:
     """Put the resolved document and source evidence in the final user turn."""
     user_prompt = _build_effective_user_prompt(req)
-    internal_context = _build_internal_context(req)
+    overview = _is_document_overview_request(
+        req.prompt
+    )
+
+    internal_context = (
+        _build_overview_evidence(req)
+        if overview
+        else _build_internal_context(req)
+    )
+
+    web_context = _build_web_context(
+        web_results or []
+    )
 
     if internal_context == "없음":
         recent_user_evidence = _build_recent_user_evidence(req)
@@ -357,7 +388,6 @@ def _build_generation_user_prompt(req: GenerateRequest) -> str:
 
     titles = _document_titles(req)
     title_text = ", ".join(f'"{title}"' for title in titles) or "현재 내부 문서"
-    overview = _is_document_overview_request(req.prompt)
 
     parts = [
         "[현재 문서 제목]",
@@ -365,27 +395,45 @@ def _build_generation_user_prompt(req: GenerateRequest) -> str:
         "",
     ]
 
-    if overview:
-        evidence = _build_overview_evidence(req)
-        if evidence != "없음":
-            parts.extend([
-                "[대표 근거 - 문서 각 부분에서 그대로 발췌]",
-                evidence,
-                "",
-            ])
+    source_rules = [
+        "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
+        "- 본문에 없는 소유관계·제작주체·회사관계·인과관계를 추론하지 않는다.",
+        "- 문서의 고유명사, 사람/역할, 기술명, 기능, 수치처럼 출처에 있는 구체적 표현을 가능한 한 보존한다.",
+    ]
+
+    if web_context != "없음":
+        source_rules.extend([
+            "- 현재 문서는 내부/사내 사실의 최우선 근거로 사용한다.",
+            "- 웹 검색 결과는 현재·외부 사실을 확인하거나 내부 문서와 비교하는 근거로만 사용한다.",
+            "- 내부 문서의 내용을 웹 검색 결과로 덮어쓰지 않는다.",
+            "- 현재 문서의 내용과 외부 사실을 구분해서 비교한다.",
+            "- 두 근거가 다르면 내부 문서의 내용과 외부 근거의 내용을 각각 구분해 설명한다.",
+        ])
+    else:
+        source_rules.insert(
+            0,
+            "- 현재 문서만 답변 근거로 사용한다.",
+        )
 
     parts.extend([
         "[현재 문서 본문]",
         internal_context,
         "",
+    ])
+
+    if web_context != "없음":
+        parts.extend([
+            "[외부 웹 근거 - 현재/공식 사실 비교용]",
+            web_context,
+            "",
+        ])
+
+    parts.extend([
         "[현재 사용자 요청]",
         user_prompt,
         "",
         "[반드시 지킬 것]",
-        "- 현재 문서만 답변 근거로 사용한다.",
-        "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
-        "- 본문에 없는 소유관계·제작주체·회사관계·인과관계를 추론하지 않는다. 예: 제목에 IBM이 있다고 해서 'IBM의 제품/도구'라고 바꾸지 않는다.",
-        "- 문서의 고유명사, 사람/역할, 기술명, 기능, 수치처럼 출처에 있는 구체적 표현을 가능한 한 보존한다.",
+        *source_rules,
     ])
 
     if overview:
@@ -613,7 +661,10 @@ def generate(
         )
     )
 
-    user_prompt = _build_generation_user_prompt(req)
+    user_prompt = _build_generation_user_prompt(
+        req,
+        web_results=web_results,
+    )
     selected_history = _select_generation_history(req)
 
     messages = [

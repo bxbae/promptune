@@ -33,17 +33,6 @@ from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.retrieval_orchestrator import execute_retrieval
 from app.services.retrieval import document_indexer
 
-USE_REAL_TITLE_SUMMARY = (
-    os.getenv(
-        "USE_REAL_TITLE_SUMMARY",
-        os.getenv("USE_REAL_MODELS", "false"),
-    ).lower()
-    == "true"
-)
-
-if USE_REAL_TITLE_SUMMARY:
-    from app.services import summarize_hcx
-
 USE_REAL_DIAGNOSIS = (
     os.getenv(
         "USE_REAL_DIAGNOSIS",
@@ -295,13 +284,17 @@ def validate(req: ValidateRequest):
     tags=["대화 제목 요약"],
 )
 def summarize_title(req: SummarizeTitleRequest):
-    """대화의 첫 프롬프트를 짧은 제목으로 요약."""
-    if USE_REAL_TITLE_SUMMARY:
-        return summarize_hcx.summarize_title(req)
+    """LLM을 사용하지 않고 첫 프롬프트에서 대화 제목을 만든다."""
+    text = " ".join((req.text or "").split()).strip()
 
-    # mock: 앞부분 자르기 (모델 없이 빠르게 테스트할 때 사용)
-    title = req.text[:15].strip()
+    if not text:
+        return SummarizeTitleResponse(title="새 대화")
+
+    max_length = 24
+    title = text if len(text) <= max_length else text[:max_length].rstrip() + "..."
+
     return SummarizeTitleResponse(title=title)
+
 
 @router.post(
     "/index-document",
