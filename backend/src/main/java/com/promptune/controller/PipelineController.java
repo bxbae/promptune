@@ -291,7 +291,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 userId,
                 4,
                 conversationHistory,
-                retrievalDocumentIds);
+                retrievalDocumentIds,
+                Boolean.TRUE.equals(req.useWebSearch()));
     } catch (Exception e) {
         // 첨부/이전 문서가 명확한 요청에서 Retrieval 실패를 숨기고 일반 HCX 답변으로
         // 넘어가면 모델이 과거 문서나 임의 문서를 근거로 답하는 치명적 오류가 난다.

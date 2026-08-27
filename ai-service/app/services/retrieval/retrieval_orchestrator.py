@@ -207,7 +207,14 @@ def execute_retrieval(
         used_internal_rag = bool(documents)
 
     # 2. 웹 / 외부·실시간 검색
-    elif route in {"web_search", "external_or_realtime"}:
+    # explicit use_web_search는 internal_rag와 동시에 실행될 수 있다.
+    # 즉 특정 첨부문서를 읽으면서 최신 Web 근거를 함께 가져올 수 있다.
+    should_use_web = (
+        bool(req.use_web_search)
+        or route in {"web_search", "external_or_realtime"}
+    )
+
+    if should_use_web:
         # 2026-08-26: "최근"/"최신" 같은 시점 표현은 search_query_cleanup.py의
         # 불용구 제거(패치 13, 예: "최근 골 소식과 관련해서" 전체를 stock
         # phrase로 지움) 이후에는 검색어에서 이미 사라져 있을 수 있다. 그래서

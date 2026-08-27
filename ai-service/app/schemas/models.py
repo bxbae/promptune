@@ -212,6 +212,9 @@ class RetrievalExecuteRequest(BaseModel):
     owner_user_id: int | None = None
     top_k: int = 3
     history: list[ConversationMessage] = Field(default_factory=list)
+    # 사용자가 명시적으로 Web 검색을 요청한 경우.
+    # document_ids와 동시에 주어질 수 있으며 이 경우 INTERNAL + WEB을 모두 실행한다.
+    use_web_search: bool = False
     # 2026-08-26: RetrieveRequest.document_ids와 동일한 목적 - 이 메시지에
     # 직접 첨부된 문서가 있으면 라우팅 판단(ML)보다 우선해서 internal_rag로
     # 보내고, 그 문서들의 내용을 그대로 가져온다.
