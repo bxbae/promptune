@@ -12,6 +12,11 @@ from app.services.conversation_memory import (
     build_recall_evidence,
     select_relevant_history,
 )
+from app.services.context_budget import (
+    MAX_RECALL_EVIDENCE_CHARS,
+    budget_history,
+    truncate_context_text,
+)
 from app.services.retrieval.date_resolver import KST
 from app.services.retrieval.retrieval_context import build_internal_context
 
@@ -121,9 +126,17 @@ def _build_preference_context(preference: dict[str, str]) -> str:
 def _build_recent_user_evidence(
     req: GenerateRequest,
 ) -> str:
-    return build_recall_evidence(
+    evidence = build_recall_evidence(
         req.prompt,
         req.history or [],
+    )
+
+    if evidence == "없음":
+        return evidence
+
+    return truncate_context_text(
+        evidence,
+        MAX_RECALL_EVIDENCE_CHARS,
     )
 
 
@@ -306,28 +319,31 @@ def _build_overview_evidence(req: GenerateRequest) -> str:
 
 
 def _select_generation_history(req: GenerateRequest):
-    """Select only history that is genuinely needed for the current answer.
-
-    Once Retrieval has already resolved a concrete document, conversation history must
-    never be used to guess the document identity again.  This prevents an older file
-    name in history from competing with the current attachment.  History is retained
-    only when the user explicitly refers to a previous *answer* (for example
-    "그 부분 더 자세히").
-    """
+    """Select and budget only history needed for the current answer."""
     if not req.documents:
-        return select_relevant_history(
+        selected = select_relevant_history(
             req.prompt,
             req.history or [],
         )
 
-    if not _needs_previous_answer_context(req.prompt):
+        return budget_history(
+            selected
+        )
+
+    if not _needs_previous_answer_context(
+        req.prompt
+    ):
         return []
 
-    return [
+    selected = [
         message
         for message in req.history[-2:]
         if message.content.strip()
     ]
+
+    return budget_history(
+        selected
+    )
 
 
 def _build_generation_user_prompt(
@@ -336,7 +352,16 @@ def _build_generation_user_prompt(
 ) -> str:
     """Put the resolved document and source evidence in the final user turn."""
     user_prompt = _build_effective_user_prompt(req)
-    internal_context = _build_internal_context(req)
+    overview = _is_document_overview_request(
+        req.prompt
+    )
+
+    internal_context = (
+        _build_overview_evidence(req)
+        if overview
+        else _build_internal_context(req)
+    )
+
     web_context = _build_web_context(
         web_results or []
     )
@@ -363,22 +388,12 @@ def _build_generation_user_prompt(
 
     titles = _document_titles(req)
     title_text = ", ".join(f'"{title}"' for title in titles) or "현재 내부 문서"
-    overview = _is_document_overview_request(req.prompt)
 
     parts = [
         "[현재 문서 제목]",
         title_text,
         "",
     ]
-
-    if overview:
-        evidence = _build_overview_evidence(req)
-        if evidence != "없음":
-            parts.extend([
-                "[대표 근거 - 문서 각 부분에서 그대로 발췌]",
-                evidence,
-                "",
-            ])
 
     source_rules = [
         "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
