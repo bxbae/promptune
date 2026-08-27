@@ -45,6 +45,51 @@ def _contains_sensitive_text(text: str) -> bool:
     return any(marker in lowered for marker in _SENSITIVE_MARKERS)
 
 
+_VERIFICATION_MARKERS = (
+    "확실해",
+    "확실한가",
+    "맞아",
+    "맞나요",
+    "진짜야",
+    "정말이야",
+    "근거 있어",
+    "근거있어",
+    "출처 맞아",
+    "출처가 맞아",
+    "다시 확인",
+    "재확인",
+)
+
+
+def _is_verification_followup(text: str) -> bool:
+    lowered = str(text or "").strip().lower()
+
+    return any(
+        marker in lowered
+        for marker in _VERIFICATION_MARKERS
+    )
+
+
+def _find_previous_substantive_user_query(
+    history: list[ConversationMessage],
+) -> str:
+    for message in reversed(history):
+        if message.role != "user":
+            continue
+
+        content = message.content.strip()
+
+        if not content:
+            continue
+
+        if _is_verification_followup(content):
+            continue
+
+        return content
+
+    return ""
+
+
 def _build_history_text(
     history: list[ConversationMessage],
 ) -> str:
@@ -294,6 +339,22 @@ def resolve_conversation_retrieval(
 
     text = original.lower()
     context_mode = classify_conversation_context(original, history)
+
+    # "확실해?", "맞아?", "근거 있어?"처럼 직전 답변의 사실 확인을
+    # 요청하는 발화는 그 짧은 문장 자체를 검색어로 사용하지 않는다.
+    # 직전의 실질적인 사용자 질문을 그대로 재사용해서 동일 대상을
+    # 다시 Retrieval 하도록 한다. HCX query rewrite는 사용하지 않는다.
+    if _is_verification_followup(original):
+        previous_query = _find_previous_substantive_user_query(
+            history
+        )
+
+        if previous_query:
+            return ConversationRetrievalContext(
+                query=previous_query,
+                route_override=None,
+                used_history=True,
+            )
 
     # "내 프로젝트명이 뭐라고?", "전에 말한 담당자 누구였지?"처럼
     # 사용자가 과거에 직접 말한 사실을 회상하는 질문은 Web/BGE 검색 대상이 아니다.
