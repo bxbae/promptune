@@ -330,10 +330,16 @@ def _select_generation_history(req: GenerateRequest):
     ]
 
 
-def _build_generation_user_prompt(req: GenerateRequest) -> str:
+def _build_generation_user_prompt(
+    req: GenerateRequest,
+    web_results: list[dict] | None = None,
+) -> str:
     """Put the resolved document and source evidence in the final user turn."""
     user_prompt = _build_effective_user_prompt(req)
     internal_context = _build_internal_context(req)
+    web_context = _build_web_context(
+        web_results or []
+    )
 
     if internal_context == "없음":
         recent_user_evidence = _build_recent_user_evidence(req)
@@ -374,18 +380,45 @@ def _build_generation_user_prompt(req: GenerateRequest) -> str:
                 "",
             ])
 
+    source_rules = [
+        "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
+        "- 본문에 없는 소유관계·제작주체·회사관계·인과관계를 추론하지 않는다.",
+        "- 문서의 고유명사, 사람/역할, 기술명, 기능, 수치처럼 출처에 있는 구체적 표현을 가능한 한 보존한다.",
+    ]
+
+    if web_context != "없음":
+        source_rules.extend([
+            "- 현재 문서는 내부/사내 사실의 최우선 근거로 사용한다.",
+            "- 웹 검색 결과는 현재·외부 사실을 확인하거나 내부 문서와 비교하는 근거로만 사용한다.",
+            "- 내부 문서의 내용을 웹 검색 결과로 덮어쓰지 않는다.",
+            "- 현재 문서의 내용과 외부 사실을 구분해서 비교한다.",
+            "- 두 근거가 다르면 내부 문서의 내용과 외부 근거의 내용을 각각 구분해 설명한다.",
+        ])
+    else:
+        source_rules.insert(
+            0,
+            "- 현재 문서만 답변 근거로 사용한다.",
+        )
+
     parts.extend([
         "[현재 문서 본문]",
         internal_context,
         "",
+    ])
+
+    if web_context != "없음":
+        parts.extend([
+            "[외부 웹 근거 - 현재/공식 사실 비교용]",
+            web_context,
+            "",
+        ])
+
+    parts.extend([
         "[현재 사용자 요청]",
         user_prompt,
         "",
         "[반드시 지킬 것]",
-        "- 현재 문서만 답변 근거로 사용한다.",
-        "- 과거 대화의 다른 파일명이나 다른 문서 내용을 현재 문서와 섞지 않는다.",
-        "- 본문에 없는 소유관계·제작주체·회사관계·인과관계를 추론하지 않는다. 예: 제목에 IBM이 있다고 해서 'IBM의 제품/도구'라고 바꾸지 않는다.",
-        "- 문서의 고유명사, 사람/역할, 기술명, 기능, 수치처럼 출처에 있는 구체적 표현을 가능한 한 보존한다.",
+        *source_rules,
     ])
 
     if overview:
@@ -613,7 +646,10 @@ def generate(
         )
     )
 
-    user_prompt = _build_generation_user_prompt(req)
+    user_prompt = _build_generation_user_prompt(
+        req,
+        web_results=web_results,
+    )
     selected_history = _select_generation_history(req)
 
     messages = [
