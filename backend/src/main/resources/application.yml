@@ -79,3 +79,12 @@ microsoft:
   redirect-uri: ${MICROSOFT_REDIRECT_URI:http://localhost:8080/api/integrations/microsoft/callback}
   frontend-url: ${MICROSOFT_FRONTEND_URL:http://localhost:3000}
   token-key: ${MICROSOFT_TOKEN_KEY:}
+
+# 2026-08-27: MS 연동 콜백에서 "Invalid CORS request"가 노출된 사례 진단용.
+# SecurityConfig의 allowedMethods를 GET/POST 둘 다로 넓혔지만, 혹시 실제
+# 원인이 메서드가 아니라 Origin 값 자체의 불일치(예: "null"이 아닌 다른 값)라면
+# 이 로그가 다음 재현 시 Spring이 실제로 받은 Origin/메서드를 그대로 보여준다 -
+# 동작에는 영향 없음(순수 로그 레벨 조정).
+logging:
+  level:
+    org.springframework.web.cors: DEBUG
