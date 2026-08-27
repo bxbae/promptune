@@ -260,6 +260,25 @@ def validate(req: ValidateRequest):
         generated=req.generated,
     )
 
+    # 2026-08-27: "리센느" 요약 요청이 재생성까지 두 번 다 검증에 실패해
+    # 503("검증을 통과하는 답변을 생성하지 못했습니다")으로 노출된 사례가
+    # 팀원 리포트로 확인됨. rule_validator는 이 쿼리에 대해 직접 테스트해보면
+    # 통과하는 것으로 확인돼(원문에 실제 "사실 숫자"가 없음), semantic
+    # validator(BGE-M3 cosine similarity, threshold 0.65)가 원인일 가능성이
+    # 높은데, 이 모델은 샌드박스에서 재현할 수 없어(psycopg 의존성) 프로덕션
+    # 로그 없이는 확인이 안 된다. 다음에 같은 502/503이 재현되면 추측 없이
+    # 바로 원인(rule_ok vs semantic_ok, 실제 semantic_score, 실패 사유)을
+    # 좁힐 수 있도록 진단 로그를 남긴다 - 동작에는 영향 없음(순수 로깅).
+    print(
+        f"[Validate] passed={result.passed!r} rule_ok={result.rule_ok!r} "
+        f"semantic_ok={result.semantic_ok!r} "
+        f"semantic_score={result.semantic_score!r} "
+        f"facts_preserved={result.facts_preserved!r} "
+        f"issues={result.issues!r} "
+        f"original={req.original[:300]!r} "
+        f"generated={req.generated[:300]!r}"
+    )
+
     return ValidateResponse(
         passed=result.passed,
         rule_ok=result.rule_ok,
