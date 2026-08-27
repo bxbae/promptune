@@ -271,9 +271,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
     // Retrieval Router/Orchestrator(승연님 PR #67)가 내부문서 검색·웹검색 여부까지
     // 통째로 판단·실행해서 결과를 돌려줌. 자바 쪽 needsInternalDocs/ai.retrieve()는 더 이상 안 씀.
-    // TODO: 사용자가 웹검색 버튼 켰는지(req.useWebSearch())를 retrieval-execute에 전달해야
-    // "내부문서+웹검색 복합 요청"이 동작함. 승연님과 함께 필드 추가 작업 진행 중.
-    //
+    // 사용자 Web 검색 요청은 retrieval-execute까지 전달되며,
+    // 내부 문서와 Web을 동시에 사용하는 복합 Retrieval도 지원한다.
     // 2026-08-25: TAVILY_API_KEY가 prod에 없으면 web_search/external_or_realtime
     // 라우트로 분류된 요청은 ai-service의 /retrieval-execute가 500을 던지는데,
     // 그걸 그대로 흘려보내면 /api/execute 전체가 실패해서 채팅 자체가 안 됐음
