@@ -112,6 +112,55 @@ def _build_preference_context(preference: dict[str, str]) -> str:
 
 
 
+def _build_recent_user_evidence(req: GenerateRequest) -> str:
+    """최근 사용자 발화만 현재 요청 가까이에 다시 배치한다.
+
+    assistant의 이전 답변은 잘못됐을 수 있으므로 evidence로 승격하지 않는다.
+    """
+    items: list[str] = []
+    used_chars = 0
+
+    history = req.history or []
+
+    for message in reversed(history):
+        role = getattr(message, "role", None)
+        content = getattr(message, "content", None)
+
+        if isinstance(message, dict):
+            role = message.get("role")
+            content = message.get("content")
+
+        if role != "user":
+            continue
+
+        content = re.sub(
+            r"\s+",
+            " ",
+            str(content or "").strip(),
+        )
+
+        if not content:
+            continue
+
+        if len(content) > 450:
+            content = content[:450].rstrip() + "…"
+
+        items.append(content)
+        used_chars += len(content)
+
+        if len(items) >= 4 or used_chars >= 1400:
+            break
+
+    if not items:
+        return "없음"
+
+    items.reverse()
+
+    return "\n".join(
+        f"- {content}"
+        for content in items
+    )
+
 def _build_effective_user_prompt(req: GenerateRequest) -> str:
     """
     Retrieval에서는 원본 사용자 요청을 사용하고,
@@ -194,6 +243,12 @@ _DOCUMENT_OVERVIEW_MARKERS = (
     "요약해 줘",
     "읽어줘",
     "읽어 줘",
+    "불러와줘",
+    "불러와 줘",
+    "불러줘",
+    "불러 줘",
+    "열어줘",
+    "열어 줘",
     "핵심 내용",
     "핵심내용",
 )
@@ -316,7 +371,24 @@ def _build_generation_user_prompt(req: GenerateRequest) -> str:
     internal_context = _build_internal_context(req)
 
     if internal_context == "없음":
-        return user_prompt
+        recent_user_evidence = _build_recent_user_evidence(req)
+
+        if recent_user_evidence == "없음":
+            return user_prompt
+
+        return "\n".join([
+            "[최근 대화에서 사용자가 직접 말한 내용]",
+            recent_user_evidence,
+            "",
+            "[현재 사용자 요청]",
+            user_prompt,
+            "",
+            "[대화 문맥 규칙]",
+            "- 위 내용은 assistant의 추측이 아니라 사용자가 직접 말한 내용이다.",
+            "- 현재 질문이 이전에 사용자가 말한 사실을 묻는 경우 위 내용을 우선 근거로 답한다.",
+            "- 사용자가 직접 지정한 이름, 프로젝트명, 명칭, 값은 임의의 일반적인 예시로 바꾸지 않는다.",
+            "- 위 내용에 답이 있으면 새 값을 추측하거나 만들어내지 않는다.",
+        ])
 
     titles = _document_titles(req)
     title_text = ", ".join(f'"{title}"' for title in titles) or "현재 내부 문서"
@@ -510,6 +582,7 @@ def _build_system_prompt(
         "15. 소속팀/직책/현재 상태처럼 시간이 지나면 바뀌는 사실은 너의 사전 지식보다 실제로 제공된 웹 검색 결과/내부 문서를 우선하라. 사전 지식과 참고자료가 다르면 참고자료를 따르고, 참고자료에 그 사실이 없으면 확인할 수 없다고 답하라.",
         "16. 참고자료에 구체적인 사실이 없으면, 사실이 없다는 것을 솔직히 답하라. '관심이 높아지고 있다', '중요한 시기를 맞이했다', '기대를 모으고 있다'처럼 실제 정보 없이 분량만 채우는 문장을 쓰지 마라.",
         "17. 사용자가 인물의 프로필/소속/약력을 요청하면, 문단형 설명 대신 참고자료에서 실제로 확인된 항목(이름/소속/생년월일/포지션 등)만 항목별로 정리해서 답하라. 참고자료에 없는 항목은 아예 언급하지 마라 - 빈칸을 채우려고 추측하지 마라.",
+        "18. 현재 질문이 이전 사용자 발화를 확인하거나 회상하는 질문이면, 사용자가 직접 말한 명칭과 값을 그대로 우선 사용하라. 일반적인 예시명이나 너의 추측으로 대체하지 마라.",
     ]
 
     if web_context != "없음":
@@ -534,7 +607,6 @@ def _build_system_prompt(
         ])
 
     return "\n".join(parts)
-
 
 
 def generate(

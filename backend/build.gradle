@@ -27,6 +27,7 @@ dependencies {
     // Phase 2-A 신규: 이전까지 backend에 테스트 의존성이 전혀 없었음.
     // PreferenceResolutionService 단위 테스트를 위해 최소한으로 추가.
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
