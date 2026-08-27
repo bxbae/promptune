@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 
 _NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
+def extract_numbers(text: str) -> set[str]:
+    return set(_NUMBER_RE.findall(text))
+
+
 _MAX_LENGTH_RE = re.compile(
     r"(?P<count>\d+)\s*(?:자|글자)\s*(?:이내|이하)"
 )

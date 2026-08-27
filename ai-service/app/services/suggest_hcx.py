@@ -21,6 +21,7 @@ from app.services.validation.semantic_validator import (
     calculate_similarities,
 )
 
+from app.services.validation.rule_validator import extract_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -431,16 +432,30 @@ def _generate_candidates(
 
     return candidates
 
+def _context_candidate_has_only_allowed_numbers(
+    *,
+    context: str,
+    candidate: str,
+) -> bool:
+    allowed_numbers = extract_numbers(context)
+    candidate_numbers = extract_numbers(candidate)
+
+    return candidate_numbers.issubset(allowed_numbers)
 
 def _merge_prompt_with_candidate(
     text: str,
     candidate: str,
+    *,
+    element: str,
 ) -> str:
     base = text.strip()
     addition = candidate.strip()
 
     if base and base[-1] not in ".!?。！？":
         base = f"{base}."
+
+    if element == "CONTEXT":
+        return f"{base}\n추가 배경 정보: {addition}".strip()
 
     return f"{base} {addition}".strip()
 
@@ -554,6 +569,7 @@ def _validate_generated_candidates(
         merged = _merge_prompt_with_candidate(
             text,
             candidate,
+            element=element,
         )
 
         try:
@@ -637,6 +653,25 @@ def suggest(
                 element,
             )
             continue
+
+        if element == "CONTEXT" and context:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if _context_candidate_has_only_allowed_numbers(
+                    context=context,
+                    candidate=candidate,
+                )
+            ]
+
+            if not candidates:
+                logger.warning(
+                    "No number-safe CONTEXT suggestion; "
+                    "using explicit context as fallback "
+                    "text=%r",
+                    req.text,
+                )
+                candidates = [context]
 
         grounded_candidates = candidates
 
