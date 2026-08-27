@@ -220,7 +220,7 @@ class DocumentIdsRoutingTest(unittest.TestCase):
 
         captured = {}
 
-        def fake_search_web(query, max_results):
+        def fake_search_web(query, max_results, time_range=None):
             captured["query"] = query
             return []
 
