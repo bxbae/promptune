@@ -110,11 +110,23 @@ def _is_non_music_sports_profile_query(query: str) -> bool:
 
 
 def _profile_domains(query: str) -> list[str]:
+    # 2026-08-27: "위키백과 링크만 나오는데, YTN/MBC/올림픽/그래미 사이트에도
+    # 검색 결과가 있으면 신뢰도를 높이기 위해 같이 넣어달라"는 사용자 요청이
+    # 확인됨. 기존에는 음악/체육인 프로필이면 위키+올림픽+그래미만, 비-음악/
+    # 체육 인물이면 위키+신뢰뉴스만 - 즉 둘 중 하나만 후보에 넣었어서, 예를
+    # 들어 아이돌 그룹처럼 grammy.com/olympics.com에 문서가 없는 음악인은
+    # 신뢰뉴스 도메인이 아예 후보에 없어 위키 링크만 나올 수밖에 없었다.
+    # include_domains는 "이 안에서만 찾아라"는 제약일 뿐이고 관련 없는
+    # 도메인을 넣어도 결과가 나빠지지 않으므로(그 도메인에 해당 인물 문서가
+    # 없으면 그냥 안 나올 뿐), 신뢰 뉴스 도메인을 항상 함께 후보에 넣어서
+    # Tavily가 실제로 찾은 도메인이면 어디든 결과에 섞여 나올 수 있게 한다.
     if _is_non_music_sports_profile_query(query):
         return list(
             dict.fromkeys(["ko.wikipedia.org", "namu.wiki"] + _trusted_domains())
         )
-    return list(_PROFILE_BASE_DOMAINS)
+    return list(
+        dict.fromkeys(_PROFILE_BASE_DOMAINS + _trusted_domains())
+    )
 
 
 # 2026-08-26: "최근 골 소식과 관련해서" 같은 요청에 몇 달~몇 년 전 기사가 섞여
