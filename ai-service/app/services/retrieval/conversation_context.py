@@ -7,6 +7,10 @@ import torch
 
 from app.schemas.models import ConversationMessage
 from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
+from app.services.conversation_memory import (
+    classify_conversation_context,
+    is_memory_set_request,
+)
 
 
 @dataclass(frozen=True)
@@ -258,7 +262,23 @@ def resolve_conversation_retrieval(
 ) -> ConversationRetrievalContext:
     original = query.strip()
 
-    if not original or not history:
+    if not original:
+        return ConversationRetrievalContext(
+            query=original,
+            route_override=None,
+            used_history=False,
+        )
+
+    # 사용자가 새 사실을 "기억해줘/기억해둬"라고 저장하는 요청은
+    # 검색이나 RAG 대상이 아니다.
+    if is_memory_set_request(original):
+        return ConversationRetrievalContext(
+            query=original,
+            route_override="no_retrieval",
+            used_history=False,
+        )
+
+    if not history:
         return ConversationRetrievalContext(
             query=original,
             route_override=None,
@@ -273,6 +293,17 @@ def resolve_conversation_retrieval(
         )
 
     text = original.lower()
+    context_mode = classify_conversation_context(original, history)
+
+    # "내 프로젝트명이 뭐라고?", "전에 말한 담당자 누구였지?"처럼
+    # 사용자가 과거에 직접 말한 사실을 회상하는 질문은 Web/BGE 검색 대상이 아니다.
+    # 실제 답변 근거 선택은 generate_hcx의 build_recall_evidence가 담당한다.
+    if context_mode == "memory_recall":
+        return ConversationRetrievalContext(
+            query=original,
+            route_override="no_retrieval",
+            used_history=True,
+        )
 
     contextual_internal_markers = (
         "그 문서",
@@ -375,10 +406,32 @@ def resolve_conversation_retrieval(
         for marker in external_markers
     )
 
-    is_followup = any(
+    marker_followup = any(
         marker in text
         for marker in followup_markers
     )
+
+    is_followup = (
+        context_mode == "immediate_followup"
+        or marker_followup
+    )
+
+    # "누구였지/뭐였지/어디였지" 자체는 대화 참조의 증거가 아니다.
+    # classifier가 standalone으로 판단했다면 기존 broad marker가
+    # history를 다시 끌어오지 못하게 한다.
+    if (
+        context_mode == "standalone"
+        and any(
+            marker in text
+            for marker in (
+                "누구였",
+                "뭐였",
+                "어디였",
+                "뭐라고 했",
+            )
+        )
+    ):
+        is_followup = False
 
     if has_contextual_internal:
         document_name = _find_recent_document_reference(history)

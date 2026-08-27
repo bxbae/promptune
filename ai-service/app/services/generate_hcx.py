@@ -8,6 +8,10 @@ import torch
 
 from app.schemas.models import GenerateRequest, GenerateResponse
 from app.services.hcx_runtime import hcx_lock, load_hcx_runtime
+from app.services.conversation_memory import (
+    build_recall_evidence,
+    select_relevant_history,
+)
 from app.services.retrieval.date_resolver import KST
 from app.services.retrieval.retrieval_context import build_internal_context
 
@@ -114,54 +118,14 @@ def _build_preference_context(preference: dict[str, str]) -> str:
 
 
 
-def _build_recent_user_evidence(req: GenerateRequest) -> str:
-    """최근 사용자 발화만 현재 요청 가까이에 다시 배치한다.
-
-    assistant의 이전 답변은 잘못됐을 수 있으므로 evidence로 승격하지 않는다.
-    """
-    items: list[str] = []
-    used_chars = 0
-
-    history = req.history or []
-
-    for message in reversed(history):
-        role = getattr(message, "role", None)
-        content = getattr(message, "content", None)
-
-        if isinstance(message, dict):
-            role = message.get("role")
-            content = message.get("content")
-
-        if role != "user":
-            continue
-
-        content = re.sub(
-            r"\s+",
-            " ",
-            str(content or "").strip(),
-        )
-
-        if not content:
-            continue
-
-        if len(content) > 450:
-            content = content[:450].rstrip() + "…"
-
-        items.append(content)
-        used_chars += len(content)
-
-        if len(items) >= 4 or used_chars >= 1400:
-            break
-
-    if not items:
-        return "없음"
-
-    items.reverse()
-
-    return "\n".join(
-        f"- {content}"
-        for content in items
+def _build_recent_user_evidence(
+    req: GenerateRequest,
+) -> str:
+    return build_recall_evidence(
+        req.prompt,
+        req.history or [],
     )
+
 
 def _build_effective_user_prompt(req: GenerateRequest) -> str:
     """
@@ -351,11 +315,10 @@ def _select_generation_history(req: GenerateRequest):
     "그 부분 더 자세히").
     """
     if not req.documents:
-        return [
-            message
-            for message in req.history
-            if message.content.strip()
-        ]
+        return select_relevant_history(
+            req.prompt,
+            req.history or [],
+        )
 
     if not _needs_previous_answer_context(req.prompt):
         return []
@@ -606,6 +569,7 @@ def _build_system_prompt(
         "20. 프로필처럼 여러 참고자료를 종합해 답할 때는, 문장이나 항목 끝에 그 사실이 어느 출처에서 나왔는지 '[숫자](출처 URL)' 형식으로 표시하라. 여러 출처가 같은 사실을 뒷받침하면 쉼표로 여러 개를 나열해도 된다. [웹 검색 결과]에 실제로 있는 URL만 쓰고, 없는 URL을 지어내지 마라.",
         f"21. '최근', '최신', '요즘' 소식을 요청받으면 위에서 알려준 오늘 날짜({today_str}) 기준으로 판단하라. [웹 검색 결과]가 실제로 오늘 날짜에 가까운 내용인지 확인할 수 없다면 임의의 과거 시점을 '기준'이라고 못 박지 말고, 참고자료에 날짜가 명시된 경우에만 그 날짜를 인용하라.",
         "22. 현재 질문이 이전 사용자 발화를 확인하거나 회상하는 질문이면, 사용자가 직접 말한 명칭과 값을 그대로 우선 사용하라. 일반적인 예시명이나 너의 추측으로 대체하지 마라.",
+        "23. 현재 요청이 독립적인 새 주제라면 이전 대화의 사람·회사·프로젝트·문서·사실을 답변에 끌어오지 마라. 과거 대화는 현재 요청이 명시적으로 참조할 때만 사용한다.",
     ]
 
     if web_context != "없음":
