@@ -159,6 +159,7 @@ class WebSearchResult(BaseModel):
     title: str = ""
     url: str = ""
     content: str = ""
+    score: float = 0.0
 
 
 # ---------- 14번: 최종 답변 생성 ----------

@@ -16,6 +16,7 @@ from app.services.retrieval.conversation_context import resolve_conversation_ret
 from app.services.retrieval.date_resolver import resolve_relative_dates
 from app.services.retrieval.search_query_cleanup import build_search_query
 from app.services.retrieval.search_plan import build_search_plan
+from app.services.retrieval.evidence_selector import select_web_evidence
 
 # app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
 # (거길 직접 import하면 순환참조라 동일 로직을 복제함)
@@ -323,16 +324,31 @@ def execute_retrieval(
             build_search_query(effective_query)
         )
 
-        # 내부 RAG top_k와 Web 검색 결과 수를 분리한다.
-        # 내부문서는 4개 chunk까지 사용할 수 있지만 Web은 최대 3건만 전달한다.
-        web_top_k = min(max(int(req.top_k), 1), 3)
+        # Tavily에서는 후보를 조금 넓게 가져온 뒤,
+        # Evidence Selector가 실제 generation에 전달할 최대 3건만 고른다.
+        final_web_top_k = min(
+            max(int(req.top_k), 1),
+            3,
+        )
+        candidate_web_top_k = max(
+            final_web_top_k,
+            5,
+        )
 
-        results = search_web(
+        raw_results = search_web(
             search_query,
-            max_results=web_top_k,
+            max_results=candidate_web_top_k,
             time_range=time_range,
             search_intent=search_plan.intent,
             entity=search_plan.entity,
+        )
+
+        results = select_web_evidence(
+            raw_results,
+            query=effective_query,
+            intent=search_plan.intent,
+            entity=search_plan.entity,
+            limit=final_web_top_k,
         )
 
         # 2026-08-26: "이강인 소속과 프로필" 질의가 검색어 정리(패치 13) 이후
@@ -352,7 +368,8 @@ def execute_retrieval(
             f"search_intent={search_plan.intent!r} "
             f"entity={search_plan.entity!r} "
             f"time_range={time_range!r} "
-            f"results={[(r.get('title'), r.get('url'), r.get('score')) for r in results]}"
+            f"raw_results={[(r.get('title'), r.get('url'), r.get('score')) for r in raw_results]} "
+            f"selected_results={[(r.get('title'), r.get('url'), r.get('score')) for r in results]}"
         )
 
         web_results = [
@@ -360,6 +377,9 @@ def execute_retrieval(
                 title=item.get("title", ""),
                 url=item.get("url", ""),
                 content=item.get("content", ""),
+                score=float(
+                    item.get("score") or 0.0
+                ),
             )
             for item in results
         ]
