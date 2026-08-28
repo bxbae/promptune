@@ -37,6 +37,7 @@ from app.services.diagnose_rules import (
     detect_task_type,
     detect_typos,
     needs_internal_docs,
+    should_force_missing_audience,
 )
 
 from app.services.spellcheck_bareun import check_spelling_hybrid
@@ -259,6 +260,19 @@ def predict_missing(text: str) -> dict[str, int]:
 
     return missing
 
+def predict_missing_with_rules(text: str) -> dict[str, int]:
+    """
+    KcELECTRA의 8요소 누락 판정에
+    고신뢰 진단 규칙을 적용한 최종 missing 결과를 반환한다.
+    """
+
+    missing = predict_missing(text)
+    task_type = detect_task_type(text)
+
+    if should_force_missing_audience(text, task_type):
+        missing["AUDIENCE"] = 1
+
+    return missing
 
 def diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
     """
@@ -272,9 +286,10 @@ def diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
 
     text = req.text
 
-    missing = predict_missing(text)
+    missing = predict_missing_with_rules(text)
 
     task_type = detect_task_type(text)
+
     if USE_REAL_SPELLCHECK:
         typos = check_spelling_hybrid(text)
     else:
