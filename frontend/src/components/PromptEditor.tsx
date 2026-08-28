@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
-import { uploadDocument, type DocumentItem } from "@/api/documents";
+import { uploadDocument, listDocuments, type DocumentItem } from "@/api/documents";
 
 interface ElementUiMeta {
   label: string;
@@ -642,29 +642,42 @@ export default function PromptEditor({
         "기타",
         undefined,
       )
-        .then((doc) => {
-          if (
-            doc.indexStatus &&
-            !["READY", "TEXT_READY"].includes(doc.indexStatus)
+        .then(async (doc) => {
+          // 업로드 자체(S3 저장 + DB row 생성)는 이미 성공한 상태.
+          // 인덱싱(검색 가능하게 만드는 작업)이 아직 안 끝났으면 실패가 아니라
+          // "처리 중"으로 보고, 최대 몇 차례 목록을 다시 조회하며 기다린다.
+          // (단일 조회 API가 없어서 목록 조회로 대체)
+          let current = doc;
+          let attempts = 0;
+          const maxAttempts = 5;
+
+          while (
+            current.indexStatus &&
+            !["READY", "TEXT_READY", "FAILED"].includes(current.indexStatus) &&
+            attempts < maxAttempts
           ) {
-            throw new Error(
-              doc.indexStatus === "FAILED"
-                ? `파일 분석에 실패했습니다: ${doc.indexError || file.name}`
-                : `파일이 아직 분석 준비 중입니다: ${file.name}`,
-            );
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const list = await listDocuments();
+            const found = list.find((d) => d.id === doc.id);
+            if (found) current = found;
+            attempts += 1;
           }
 
-          uploadedDocsRef.current.set(key, doc);
+          if (current.indexStatus === "FAILED") {
+            throw new Error(`파일 분석에 실패했습니다: ${current.indexError || file.name}`);
+          }
+
+          uploadedDocsRef.current.set(key, current);
 
           setAttachments((prev) =>
             prev.map((attachment) =>
               attachment.key === key
-                ? { ...attachment, status: "done", doc }
+                ? { ...attachment, status: "done", doc: current }
                 : attachment,
             ),
           );
 
-          return doc;
+          return current;
         })
         .catch((error) => {
           console.error("문서 업로드 실패:", error);
