@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 
 from app.schemas.models import (
@@ -9,7 +8,7 @@ from app.schemas.models import (
     RetrieveRequest,
     WebSearchResult,
 )
-from app.services import pipeline_mock
+
 from app.services.retrieval.ml_router import classify_ml_retrieval_route
 from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
@@ -17,16 +16,6 @@ from app.services.retrieval.date_resolver import resolve_relative_dates
 from app.services.retrieval.search_query_cleanup import build_search_query
 from app.services.retrieval.search_plan import build_search_plan
 from app.services.retrieval.evidence_selector import select_web_evidence
-
-# app/routers/pipeline.py의 USE_REAL_RETRIEVAL과 동일한 폴백 규칙.
-# (거길 직접 import하면 순환참조라 동일 로직을 복제함)
-USE_REAL_RETRIEVAL = (
-    os.getenv(
-        "USE_REAL_RETRIEVAL",
-        os.getenv("USE_REAL_MODELS", "false"),
-    ).lower()
-    == "true"
-)
 
 from app.services.retrieval.rag_retriever import (
     retrieve,
@@ -232,14 +221,6 @@ def execute_retrieval(
 
     # 1. 내부문서 검색
     if route == "internal_rag":
-        # 실제 첨부/내부문서를 요청했는데 retrieval flag가 꺼져 있으면 mock 문서로
-        # 조용히 대체하면 안 된다. 사용자가 올린 파일을 못 읽은 사실을 숨기는 대신
-        # 설정 오류를 즉시 드러내야 잘못된 문서 답변을 원천 차단할 수 있다.
-        if not USE_REAL_RETRIEVAL:
-            raise ValueError(
-                "내부 문서 분석에는 USE_REAL_RETRIEVAL=true가 필요합니다."
-            )
-
         if req.owner_user_id is None:
             raise ValueError(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
@@ -251,7 +232,6 @@ def execute_retrieval(
                 _is_document_overview_query(req.query)
                 or _is_document_transform_query(req.query)
             )
-            and USE_REAL_RETRIEVAL
         ):
             # "이거 무슨 내용이야?" / 전체 요약은 semantic Top-1이 아니라
             # document chunk를 원래 순서대로 읽는다.
@@ -267,18 +247,7 @@ def execute_retrieval(
                 document_ids=document_ids,
             )
 
-            result = (
-                retrieve(retrieve_req)
-                if USE_REAL_RETRIEVAL
-                else pipeline_mock.retrieve(retrieve_req)
-            )
-
-            if document_ids and not USE_REAL_RETRIEVAL:
-                result.documents = [
-                    doc
-                    for doc in result.documents
-                    if doc.document_id in document_ids
-                ]
+            result = retrieve(retrieve_req)
 
         documents = result.documents
         used_internal_rag = bool(documents)
