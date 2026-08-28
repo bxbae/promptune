@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from docx import Document as DocxDocument
 from openpyxl import load_workbook
+from pptx import Presentation as PptxPresentation
 import pymupdf
 
 from app.services.retrieval.chunker import chunk_text
@@ -18,7 +19,7 @@ from app.services.retrieval.rag_retriever import (
 )
 
 
-SUPPORTED_FILE_TYPES = {"pdf", "docx", "txt", "md", "xlsx"}
+SUPPORTED_FILE_TYPES = {"pdf", "docx", "txt", "md", "xlsx", "pptx"}
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
@@ -81,6 +82,21 @@ def extract_xlsx_text(file_bytes: bytes) -> str:
     return "\n".join(parts)
 
 
+def extract_pptx_text(file_bytes: bytes) -> str:
+    prs = PptxPresentation(io.BytesIO(file_bytes))
+    parts = []
+
+    for i, slide in enumerate(prs.slides, 1):
+        slide_parts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame and shape.text_frame.text.strip():
+                slide_parts.append(shape.text_frame.text.strip())
+        if slide_parts:
+            parts.append(f"[슬라이드 {i}]\n" + "\n".join(slide_parts))
+
+    return "\n\n".join(parts)
+
+
 def decode_text_file(file_bytes: bytes) -> str:
     for encoding in ("utf-8-sig", "utf-8", "cp949"):
         try:
@@ -104,6 +120,8 @@ def extract_text(file_bytes: bytes, file_type: str) -> str:
         text = extract_docx_text(file_bytes)
     elif file_type == "xlsx":
         text = extract_xlsx_text(file_bytes)
+    elif file_type == "pptx":
+        text = extract_pptx_text(file_bytes)
     elif file_type in {"txt", "md"}:
         text = decode_text_file(file_bytes)
     else:
