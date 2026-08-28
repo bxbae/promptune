@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
-import { uploadDocument, listDocuments, type DocumentItem } from "@/api/documents";
+import { uploadDocument, listDocuments, type DocumentItem, type DocType } from "@/api/documents";
 
 interface ElementUiMeta {
   label: string;
@@ -617,6 +617,20 @@ export default function PromptEditor({
     return `${base} ${addition}`.trim();
   }
 
+  // 파일명에 특정 키워드가 있으면 카테고리를 추측한다. 완벽한 분류는 아니고,
+  //"전부 기타로만 쌓이는" 문제를 줄이기 위한 간단한 휴리스틱.
+  // 더 정교하게 하려면 추후 AI 기반 분류로 교체 가능.
+  function guessDocumentType(filename: string): DocType {
+    const name = filename.toLowerCase();
+
+    if (/규정|정책|policy|규칙/.test(name)) return "규정";
+    if (/양식|템플릿|template|서식/.test(name)) return "양식";
+    if (/가이드|guide|매뉴얼|manual|안내/.test(name)) return "가이드";
+    if (/보고서|report|리포트/.test(name)) return "보고서";
+
+    return "기타";
+  }
+
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) {
       return;
@@ -639,7 +653,7 @@ export default function PromptEditor({
       const task = uploadDocument(
         file,
         file.name,
-        "기타",
+        guessDocumentType(file.name),
         undefined,
       )
         .then(async (doc) => {
