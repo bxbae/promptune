@@ -78,10 +78,10 @@ public class DocumentController {
                 normalizeUploadedContent(fileType, file);
 
         if (fileType == null
-                || !List.of("pdf", "docx", "txt", "md", "xlsx").contains(fileType)) {
+                || !List.of("pdf", "docx", "txt", "md", "xlsx", "pptx").contains(fileType)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "현재 AI 문서 분석은 PDF, DOCX, TXT, MD, XLSX 형식만 지원합니다.");
+                    "현재 AI 문서 분석은 PDF, DOCX, TXT, MD, XLSX, PPTX 형식만 지원합니다.");
         }
 
         String originalFilename =

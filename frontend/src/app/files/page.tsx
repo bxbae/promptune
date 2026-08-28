@@ -380,7 +380,7 @@ function UploadModal({
         <input
           className="modal-input"
           type="file"
-          accept=".pdf,.docx,.txt,.md,.xlsx"
+          accept=".pdf,.docx,.txt,.md,.xlsx,.pptx"
           onChange={handleFileChange}
         />
 
