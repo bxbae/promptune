@@ -17,17 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
 
 COPY requirements.txt .
 
-# GPU 테스트용 빌드. CPU 전용(Dockerfile)과 달리 CUDA 지원 torch를 설치한다.
-#
-# 2026-08-25: 이전엔 torch==2.12.1 을 cu121(CUDA 12.1) 전용 인덱스에서 고정 설치했는데,
-# PyTorch가 새 CUDA 인덱스(cu124/cu126/...)를 낼 때마다 오래된 cuXXX 인덱스는 더 이상
-# 새 torch 버전을 올려주지 않아서(cu121은 2.5.1까지만 존재) 빌드가 깨짐 — 실제로
-# g4dn.xlarge에서 "No matching distribution found for torch==2.12.1" 로 재현됨.
-# 특정 cuXXX 인덱스 + 버전을 직접 고정하는 대신, 기본 PyPI에서 받는다. 최근 torch
-# 배포판은 필요한 CUDA 런타임 라이브러리(nvidia-cublas-cu12 등)를 의존성으로 같이
-# 받아오므로, 호스트의 NVIDIA 드라이버(nvidia-smi로 확인한 CUDA Version 이하만
-# 지원되면 충분 — 드라이버는 하위 호환됨)만 맞으면 별도 인덱스 지정이 필요 없다.
-RUN pip install --no-cache-dir torch
+# 검증된 GPU 실행 환경을 재현하기 위해 PyTorch와 CUDA wheel 버전을 고정한다.
+# CUDA 12.8용 PyTorch wheel을 명시적으로 설치하고,
+# 호스트에서는 해당 CUDA runtime을 지원하는 NVIDIA 드라이버를 사용한다.
+RUN pip install --no-cache-dir \
+    torch==2.11.0 \
+    torchvision==0.26.0 \
+    --index-url https://download.pytorch.org/whl/cu128
 
 RUN pip install --no-cache-dir -r requirements.txt
 
