@@ -695,28 +695,65 @@ def suggest(
                 )
                 continue
 
-        if not grounded_candidates:
+                valid_candidates: list[str] = []
+
+        if grounded_candidates:
+            valid_candidates = _validate_generated_candidates(
+                text=req.text,
+                element=element,
+                candidates=grounded_candidates,
+                baseline=baseline_missing,
+            )
+        else:
             logger.warning(
                 "No context-grounded generated suggestion "
                 "element=%s text=%r",
                 element,
                 req.text,
             )
-            continue
 
-        valid_candidates = _validate_generated_candidates(
-            text=req.text,
-            element=element,
-            candidates=grounded_candidates,
-            baseline=baseline_missing,
-        )
+        # CONTEXT 후보가 Grounding 또는 Diagnosis Guard에서 모두 탈락하더라도,
+        # 사용자가 명시적으로 제공한 context가 있으면 마지막 안전 후보로 검증한다.
+        #
+        # 고정 fallback이나 새 사실을 생성하는 것이 아니라 사용자가 직접 제공한
+        # context를 그대로 사용하며, BGE grounding과 Diagnosis Guard를 우회하지 않는다.
+        if (
+            not valid_candidates
+            and element == "CONTEXT"
+            and context
+            and context not in grounded_candidates
+        ):
+            logger.warning(
+                "No safe generated CONTEXT suggestion; "
+                "trying explicit context fallback "
+                "text=%r",
+                req.text,
+            )
 
-        # Grounding과 Diagnosis Guard를 모두 통과한 후보만 노출한다.
-        # 안전한 후보가 없으면 고정 fallback이나 추가 재생성 없이 빈 추천으로 끝낸다.
+            try:
+                fallback_grounded = (
+                    _filter_context_grounded_candidates(
+                        context=context,
+                        candidates=[context],
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "BGE-M3 explicit CONTEXT fallback grounding failed"
+                )
+                fallback_grounded = []
+
+            if fallback_grounded:
+                valid_candidates = _validate_generated_candidates(
+                    text=req.text,
+                    element=element,
+                    candidates=fallback_grounded,
+                    baseline=baseline_missing,
+                )
 
         if not valid_candidates:
             logger.warning(
-                "No diagnosis-safe generated suggestion "
+                "No safe suggestion after grounding and diagnosis guard "
                 "element=%s text=%r",
                 element,
                 req.text,
