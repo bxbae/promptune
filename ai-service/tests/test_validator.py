@@ -204,5 +204,38 @@ class FinalValidatorTest(unittest.TestCase):
         self.assertTrue(result.rule_ok)
         self.assertTrue(result.passed)
 
+
+    @patch(
+        "app.services.validation.validator.ENABLE_SEMANTIC_VALIDATION_TELEMETRY",
+        False,
+    )
+    def test_item_count_range_passes_final_validation(self):
+        result = validate_response(
+            original="핵심 내용을 2~3가지로 정리해줘",
+            generated="- 첫째\n- 둘째",
+        )
+
+        self.assertTrue(result.rule_ok)
+        self.assertTrue(result.passed)
+        self.assertTrue(result.facts_preserved)
+
+    @patch(
+        "app.services.validation.validator.ENABLE_SEMANTIC_VALIDATION_TELEMETRY",
+        False,
+    )
+    def test_item_count_range_violation_fails_final_validation(self):
+        result = validate_response(
+            original="핵심 내용을 2~3가지로 정리해줘",
+            generated="- 첫째\n- 둘째\n- 셋째\n- 넷째",
+        )
+
+        self.assertFalse(result.rule_ok)
+        self.assertFalse(result.passed)
+        self.assertTrue(result.facts_preserved)
+        self.assertTrue(
+            any("항목 개수 조건 위반" in issue for issue in result.issues)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
