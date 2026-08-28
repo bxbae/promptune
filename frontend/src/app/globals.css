@@ -38,11 +38,11 @@ body {
 .page-fixed {
   height: 100vh;
   position: absolute;
-  left: max(0px, calc(50% - 366.5px)); /* 366.5px = min-width(733px)의 절반 */
-  min-width: 733px;
-  max-width: 80%;
+  width: 733px;
+  left: max(0px, calc(50% - 366.5px));
   padding: 48px 0;
 }
+
 .head { width: fit-content;position: relative; left: 50%; transform: translateX(-50%); }
 .head h1 { font-size: 32px; letter-spacing: -0.03em; }
 .head p { color: var(--muted); margin-top: 6px; }
