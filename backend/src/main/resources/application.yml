@@ -3,6 +3,10 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/promptune}
     username: ${SPRING_DATASOURCE_USERNAME:promptune}
     password: ${SPRING_DATASOURCE_PASSWORD:promptune}
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
   jpa:
     hibernate:
       ddl-auto: validate      # 스키마는 Flyway가 관리
