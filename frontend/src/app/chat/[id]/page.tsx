@@ -834,7 +834,8 @@ export default function ChatThreadPage() {
                         <span className="consent-done">저장했어요, 다음 추천에 반영할게요</span>
                       ) : (
                         <>
-                          <div className="consent-title">수신자 프로필 감지</div>
+                        {/* TODO: mock 문구 제거 */}
+                          <div className="consent-title">수신자 프로필 감지 (mock)</div>
                           <div className="consent-name">{pendingConsent.name}</div>
 
                           {/* TODO: (목업) 실제 스타일 분석 붙으면 MOCK_STYLE_HINTS 제거하고 이 블록 교체 */}
@@ -843,9 +844,6 @@ export default function ChatThreadPage() {
                               <li key={hint}>{hint}</li>
                             ))}
                           </ul>
-                          <div className="consent-mock-note">
-                            ※ 아래는 예시입니다. 실제 스타일 분석 기능은 아직 없어요.
-                          </div>
 
                           <div className="consent-question">
                             앞으로 <b>{pendingConsent.name}</b> 기본 스타일로 저장할까요?
@@ -881,6 +879,18 @@ export default function ChatThreadPage() {
               <div className="status-box">
                 <span className="loading-spinner" aria-hidden="true" />
                 <span className="status-title">답변 생성 중<span className="dots">···</span></span>
+                <button
+                  type="button"
+                  className="status-stop-btn"
+                  onClick={stopGenerating}
+                  aria-label="답변 생성 중단"
+                  title="답변 생성을 중단합니다"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                  중단
+                </button>
               </div>
             </div>
           )}
