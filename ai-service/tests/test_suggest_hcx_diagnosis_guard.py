@@ -177,8 +177,14 @@ class SuggestionDiagnosisGuardTest(unittest.TestCase):
             _candidate_is_audience_safe(
                 "관련 팀에 전달하였습니다."
             )
-        )    
+        )
 
-
+    def test_audience_guard_rejects_action_only_sentence(self):
+        self.assertFalse(
+            _candidate_is_audience_safe(
+                "프로젝트 일정 연기에 대한 사항을 팀원들에게 공유해 주세요."
+            )
+        )
+        
 if __name__ == "__main__":
     unittest.main()

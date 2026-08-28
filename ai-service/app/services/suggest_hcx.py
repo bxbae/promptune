@@ -300,6 +300,12 @@ def _build_generation_prompt(
             "완성된 이메일 본문 표현을 사용하지 마.\n"
             "- 후보는 '...에게 전달하는 메일로 작성해줘', "
             "'...을 대상으로 작성해줘' 같은 요청문 형태로 작성해.\n\n"
+            "- 출력 형식은 반드시 아래 두 형태 중 하나만 사용해.\n"
+            "  1) '[수신 대상]에게 보내는 메일로 작성해줘.'\n"
+            "  2) '수신자를 [수신 대상]으로 설정해줘.'\n"
+            "- '공유해줘', '보고해줘', '전달해줘'처럼 "
+            "메일 작성 요청이 사라지는 형태는 절대 출력하지 마.\n"
+            "- 위 두 형식 외의 문장은 후보로 출력하지 마.\n\n"
         )
 
     return (
@@ -572,6 +578,18 @@ def _candidate_is_audience_safe(candidate: str) -> bool:
     if any(
         re.search(pattern, normalized)
         for pattern in body_like_patterns
+    ):
+        return False
+
+    prompt_instruction_patterns = (
+        r"(?:메일|이메일).*(?:작성|써|보내)",
+        r"수신자.*(?:설정|지정)",
+        r"수신\s*대상.*(?:설정|지정)",
+    )
+
+    if not any(
+        re.search(pattern, normalized)
+        for pattern in prompt_instruction_patterns
     ):
         return False
 
