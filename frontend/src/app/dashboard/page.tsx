@@ -221,8 +221,8 @@ export default function DashboardPage() {
                   <div
                     key={t.label}
                     className="dash-tasktype-stackbar-seg"
-                    style={{ width: `${t.pct}%`, background: t.color }}
                     title={`${t.label} ${t.pct}%`}
+                    style={{ flexGrow: t.count, flexBasis: 0, background: t.color }}
                   />
                 ))}
               </div>
