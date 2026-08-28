@@ -158,7 +158,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         )
 
         with patch(
-            "app.services.suggest_hcx.predict_missing",
+            "app.services.suggest_hcx.predict_missing_with_rules",
             return_value=state(CONTEXT=1),
         ):
             result = suggest(req)
@@ -192,7 +192,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         )
 
         with patch(
-            "app.services.suggest_hcx.predict_missing",
+            "app.services.suggest_hcx.predict_missing_with_rules",
             side_effect=[
                 state(FORMAT=1),
                 state(FORMAT=0),
@@ -244,7 +244,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         mock_grounding.return_value = [context]
 
         with patch(
-            "app.services.suggest_hcx.predict_missing",
+            "app.services.suggest_hcx.predict_missing_with_rules",
             side_effect=[
                 state(CONTEXT=1),
                 state(CONTEXT=0),
@@ -304,7 +304,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         ]
 
         with patch(
-            "app.services.suggest_hcx.predict_missing",
+            "app.services.suggest_hcx.predict_missing_with_rules",
             side_effect=[
                 state(CONTEXT=1),
                 state(CONTEXT=1),

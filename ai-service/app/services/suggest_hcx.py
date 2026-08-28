@@ -12,7 +12,7 @@ from app.schemas.models import (
     SuggestResponse,
     Suggestion,
 )
-from app.services.diagnose_real import predict_missing
+from app.services.diagnose_real import predict_missing_with_rules
 from app.services.hcx_runtime import (
     hcx_lock,
     load_hcx_runtime,
@@ -282,6 +282,26 @@ def _build_generation_prompt(
         else "별도 업무 맥락 없음"
     )
 
+    element_specific_rules = ""
+
+    if element == "AUDIENCE":
+        element_specific_rules = (
+            "AUDIENCE 전용 규칙:\n"
+            "- 각 후보는 반드시 결과물을 누가 읽거나 받을지 명시해야 해.\n"
+            "- 일정, 원인, 진행 상황 등 원문의 내용을 다시 설명하는 문장을 만들지 마.\n"
+            "- 사용자가 제공하지 않은 특정 인물 이름, 실제 직급, 회사명은 만들지 마.\n"
+            "- 구체적인 수신자가 주어지지 않았다면 특정 사실을 단정하지 말고, "
+            "사용자가 선택할 수 있는 일반적인 업무상 수신 대상 범주를 제안해.\n"
+            "- 각 후보의 핵심은 반드시 수신 대상이어야 하고, "
+            "원문 뒤에 붙였을 때 그 대상이 명확해져야 해.\n"
+            "- 후보는 이메일 본문이 아니라 원문 프롬프트에 추가할 지시문이어야 해.\n"
+            "- 원문에 있는 일정, 날짜, 원인, 진행 상황을 후보에서 반복하지 마.\n"
+            "- '알려드립니다', '공유드립니다', '확인해 주시기 바랍니다'처럼 "
+            "완성된 이메일 본문 표현을 사용하지 마.\n"
+            "- 후보는 '...에게 전달하는 메일로 작성해줘', "
+            "'...을 대상으로 작성해줘' 같은 요청문 형태로 작성해.\n\n"
+        )
+
     return (
         f"사용자 원문:\n{text}\n\n"
         f"업무 맥락:\n{context_text}\n\n"
@@ -297,6 +317,8 @@ def _build_generation_prompt(
         "가장 중요한 원칙:\n"
         "- 추천은 제공된 정보를 재표현하거나 선택하기 쉽게 만드는 것이다.\n"
         "- 제공되지 않은 업무 상황이나 사실을 새로 만들어내는 것이 아니다.\n\n"
+
+        f"{element_specific_rules}"
 
         "규칙:\n"
         "1. 각 후보는 원문 뒤에 바로 붙여도 자연스러운 완결된 문장이어야 해.\n"
@@ -527,7 +549,43 @@ def _filter_context_grounded_candidates(
 
     return grounded_candidates
 
+def _candidate_is_audience_safe(candidate: str) -> bool:
+    """
+    AUDIENCE 추천 후보가 이메일 본문이 아니라
+    수신 대상을 보완하는 프롬프트 지시문인지 검사한다.
+    """
+    normalized = candidate.strip()
 
+    if not normalized:
+        return False
+
+    body_like_patterns = (
+        r"전달하였습니다",
+        r"전달했습니다",
+        r"공유하였습니다",
+        r"공유했습니다",
+        r"알려드립니다",
+        r"안내드립니다",
+        r"확인해\s*주시기",
+    )
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in body_like_patterns
+    ):
+        return False
+
+    audience_patterns = (
+        r"\S+\s*(?:에게|께|한테)",
+        r"\S+\s*(?:을|를)\s*대상으로",
+        r"수신자",
+        r"수신\s*대상",
+    )
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in audience_patterns
+    )
 
 
 
@@ -566,6 +624,17 @@ def _validate_generated_candidates(
     valid: list[str] = []
 
     for candidate in candidates:
+        if (
+            element == "AUDIENCE"
+            and not _candidate_is_audience_safe(candidate)
+        ):
+            logger.info(
+                "Generated AUDIENCE suggestion rejected by "
+                "audience guard candidate=%r",
+                candidate,
+            )
+            continue
+
         merged = _merge_prompt_with_candidate(
             text,
             candidate,
@@ -573,7 +642,7 @@ def _validate_generated_candidates(
         )
 
         try:
-            after = predict_missing(merged)
+            after = predict_missing_with_rules(merged)
 
         except Exception:
             logger.exception(
@@ -613,7 +682,7 @@ def suggest(
 
     suggestions: list[Suggestion] = []
 
-    baseline_missing = predict_missing(
+    baseline_missing = predict_missing_with_rules(
         req.text
     )
 
