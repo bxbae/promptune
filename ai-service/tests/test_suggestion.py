@@ -302,6 +302,31 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
             ],
         )
 
+    def test_constraint_prompt_contains_constraint_specific_rules(self):
+        from app.services.suggest_hcx import _build_generation_prompt
+
+        prompt = _build_generation_prompt(
+            text="회의 결과를 정리해줘",
+            context=None,
+            element="CONSTRAINT",
+        )
+
+        self.assertIn("CONSTRAINT 전용 규칙", prompt)
+        self.assertIn("제외 조건", prompt)
+
+
+    def test_example_prompt_contains_example_specific_rules(self):
+        from app.services.suggest_hcx import _build_generation_prompt
+
+        prompt = _build_generation_prompt(
+            text="회의 결과를 정리해줘",
+            context=None,
+            element="EXAMPLE",
+        )
+
+        self.assertIn("EXAMPLE 전용 규칙", prompt)
+        self.assertIn("형태나 구조", prompt)    
+
 
 if __name__ == "__main__":
     unittest.main()
