@@ -878,22 +878,31 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .files-grid {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;
 }
-@media (max-width: 900px) {
-  .files-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+/* @media (max-width: 1040px) {
+  .files-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+} */
 
-.file-card { display: flex; flex-direction: column; gap: 8px; }
+.file-card {
+  display: flex; flex-direction: column; gap: 8px;
+  /* grid item은 기본적으로 자기 내용물의 최소폭(min-content)만큼은 절대 안 줄어들려고 해서,
+    열이 늘어나 카드가 좁아져도 .file-edit-row 안 입력창들의 min-width 합만큼
+    카드가 억지로 넓어지며 그리드 전체가 깨지는 원인이 됐다. min-width:0으로 그 강제를 끈다. */
+  min-width: 0;
+}
 .file-thumb {
-  position: relative; height: 200px; border-radius: 12px;
+  position: relative; aspect-ratio: 3 / 4; border-radius: 12px;
   padding-top: 22px;
   background: var(--panel);
   border: 1px solid var(--line); overflow: hidden; display: flex;
   align-items: center; justify-content: center;
 }
+.file-name-wrap { position: relative; }
 .file-name {
   font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer;
-  display: flex; min-width: 0; max-width: 100%;
+  display: flex; min-width: 0; max-width: 100%; width: fit-content;
+  position: relative; left: 50%; transform: translateX(-50%);
 }
+.file-name.editing { visibility: hidden; } /* 자리(높이)는 유지하고 시각적으로만 숨김 - 드롭다운이 그 위에 겹쳐 뜬다 */
 .file-name-base {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex-shrink: 1;
 }
@@ -930,16 +939,31 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .file-menu button:hover { background: var(--panel-alt); }
 .file-menu button.danger { color: var(--block); }
 
-/* 파일명 인라인 수정 */
-.file-edit-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* 파일명 인라인 수정 - 드롭다운 오버레이 방식
+   예전엔 이 자리를 그대로 차지하는 in-flow 박스라서, 수정창이 뜨면 카드 높이가 늘어나며
+   같은 그리드 행의 다른 카드들까지 아래로 밀려버렸다("아랫줄 밀림" 버그).
+   그래서 position:absolute로 파일명 자리 위에 "떠 있는" 드롭다운으로 바꿨다 - 레이아웃 흐름에서
+   완전히 빠지기 때문에 카드 높이/그리드 행 높이에 전혀 영향을 안 준다.
+   (.file-name-wrap이 기준점 - .file-name엔 자체 transform:translateX(-50%)가 있어서
+   드롭다운은 file-name이 아니라 그 부모 wrap에 앵커링한다.)
+  가로로 다 욱여넣으면(제목+설명 입력창 min-width 80px씩 + select + 버튼 2개) 카드가 좁아졌을 때
+  절대 다 못 들어가서 그리드가 깨졌었다. 세로로 쌓아서 카드 폭에 관계없이 항상 안에 맞게 고쳤다.
+   버튼 2개(저장/취소)는 .file-edit-actions로 묶어서 오른쪽 정렬된 한 줄로 표시한다. */
+.file-edit-dropdown {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 10px;
+}
 .file-edit-input {
-  flex: 1; min-width: 80px; font-size: 13px; padding: 4px 6px; border-radius: 6px;
-  border: 1px solid var(--accent); font-family: inherit; color: var(--ink); background: var(--panel);
+  width: 100%; min-width: 0; box-sizing: border-box; font-size: 13px; padding: 4px 6px;
+  border-radius: 6px; border: 1px solid var(--accent); font-family: inherit; color: var(--ink); background: var(--panel);
 }
-.file-edit-row select {
-  font-size: 12px; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--panel); color: var(--ink); font-family: inherit;
+.file-edit-dropdown select {
+  width: 100%; min-width: 0; box-sizing: border-box; font-size: 12px; padding: 3px 4px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-family: inherit;
 }
+.file-edit-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .file-edit-save, .file-edit-cancel {
   font-size: 12px; padding: 4px 8px; border-radius: 6px; border: none; cursor: pointer; font-family: inherit;
 }
@@ -981,6 +1005,22 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 .preview-line { display: block; height: 4px; border-radius: 2px; background: var(--line); }
+
+/* txt/md 실제 텍스트 미리보기 - .preview-doc과 같은 카드 크기지만, 목업 줄이 아니라
+   실제 fetch해온 내용을 작은 글씨로 넣고 아래쪽은 흐리게 페이드아웃 처리 */
+.preview-doc-text {
+  width: 78%; height: 82%; background: #fff; border: 1px solid var(--line);
+  border-radius: 4px; padding: 10px 9px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden; position: relative;
+}
+.preview-doc-text pre {
+  margin: 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+}
+.preview-doc-text::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff);
+}
 
 /* 슬라이드(pptx) 미리보기 — 컬러 블록 */
 .preview-slide {

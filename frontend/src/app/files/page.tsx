@@ -29,6 +29,14 @@ function previewKind(fileType: string | null): "doc" | "slide" | "photo" {
   return "doc"; // docx / pdf / txt / 기타
 }
 
+// txt/md는 실제 내용을 그대로 텍스트로 보여줄 수 있는 타입 (pdf/docx는 별도 렌더링 필요해서 제외)
+function isTextPreviewType(fileType: string | null): boolean {
+  const t = (fileType || "").toLowerCase();
+  return t === "txt" || t === "md";
+}
+
+const TEXT_PREVIEW_MAX_CHARS = 220;
+
 export default function FilesPage() {
   const [tab, setTab] = useState<Category>("전체");
   const [files, setFiles] = useState<DocumentItem[]>([]);
@@ -41,6 +49,8 @@ export default function FilesPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editDocType, setEditDocType] = useState<DocType>("기타");
   const [showUpload, setShowUpload] = useState(false);
+  // 파일 id -> 실제로 읽어온 앞부분 텍스트 (txt/md 썸네일용). 아직 안 불러왔으면 키 자체가 없음.
+  const [textPreviews, setTextPreviews] = useState<Record<number, string>>({});
 
   function refresh() {
     setLoading(true);
@@ -51,6 +61,40 @@ export default function FilesPage() {
   }
 
   useEffect(() => { refresh(); }, []);
+
+  // txt/md 파일은 목업 줄 대신 실제 앞부분 내용을 썸네일에 보여준다.
+  // 목록에 아직 안 불러온 txt/md가 있으면 하나씩 fetch해서 textPreviews에 채워넣는다.
+  useEffect(() => {
+    const targets = files.filter(
+      (f) => isTextPreviewType(f.fileType) && textPreviews[f.id] === undefined
+    );
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const f of targets) {
+        try {
+          const blob = await fetchDocumentContent(f.id);
+          if (cancelled) return;
+          const buffer = await blob.arrayBuffer();
+          const text = new TextDecoder("utf-8").decode(buffer);
+          setTextPreviews((prev) => ({
+            ...prev,
+            [f.id]: text.slice(0, TEXT_PREVIEW_MAX_CHARS),
+          }));
+        } catch {
+          // 못 불러왔으면 빈 문자열로 표시해서 재시도 루프에 빠지지 않게만 하고, 렌더링에서 목업으로 대체
+          if (!cancelled) setTextPreviews((prev) => ({ ...prev, [f.id]: "" }));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
 
   const visible = tab === "전체" ? files : files.filter((f) => f.documentType === tab);
 
@@ -228,7 +272,10 @@ pre {
                   <img src="/icons/dots.png" />
                 </button>
 
-                <FilePreview kind={previewKind(file.fileType)} />
+                <FilePreview
+                  kind={previewKind(file.fileType)}
+                  textPreview={isTextPreviewType(file.fileType) ? textPreviews[file.id] : undefined}
+                />
 
                 {openMenuId === file.id && (
                   <div
@@ -241,9 +288,22 @@ pre {
                 )}
               </div>
 
-              {editingId === file.id ? (
+              {/* file-name-wrap: 원래 파일명 자리는 항상 유지하고(높이 그대로), 수정 중이면
+                  그 위에 드롭다운으로 편집창을 겹쳐서 띄운다. 예전엔 이 자리가 통째로
+                  edit-row로 바뀌면서 카드 높이가 늘어나 같은 행의 다른 카드들까지 밀렸는데,
+                  position:absolute 오버레이라 레이아웃에 영향을 안 준다. */}
+              <div className="file-name-wrap">
                 <div
-                    className="file-edit-row"
+                  className={`file-name${editingId === file.id ? " editing" : ""}`}
+                  title={file.title}
+                >
+                  <span className="file-name-base">{splitFilename(file.title).base}</span>
+                  <span className="file-name-ext">{splitFilename(file.title).ext}</span>
+                </div>
+
+                {editingId === file.id && (
+                <div
+                    className="file-edit-dropdown"
                     onClick={(e) => e.stopPropagation()}
                   >
                   <input
@@ -266,15 +326,13 @@ pre {
                     ))}
                   </select>
 
+                  <div className="file-edit-actions">
                   <button className="file-edit-save" onClick={() => saveEdit(file.id)}>저장</button>
                   <button className="file-edit-cancel" onClick={() => setEditingId(null)}>취소</button>
                 </div>
-              ) : (
-                <div className="file-name" title={file.title}>
-                  <span className="file-name-base">{splitFilename(file.title).base}</span>
-                  <span className="file-name-ext">{splitFilename(file.title).ext}</span>
                 </div>
               )}
+            </div>
             </div>
           ))}
         </div>
@@ -301,7 +359,21 @@ pre {
 }
 
 // 파일 썸네일
-function FilePreview({ kind }: { kind: "doc" | "slide" | "photo" }) {
+function FilePreview({
+  kind,
+  textPreview,
+}: {
+  kind: "doc" | "slide" | "photo";
+  textPreview?: string;
+}) {
+  // txt/md - 실제 파일 앞부분 텍스트를 그대로 보여줌 (fetch 완료된 경우만)
+  if (kind === "doc" && textPreview) {
+    return (
+      <div className="preview-doc-text">
+        <pre>{textPreview}</pre>
+      </div>
+    );
+  }
   if (kind === "slide") {
     return (
       <div className="preview-slide">
