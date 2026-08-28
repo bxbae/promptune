@@ -1267,7 +1267,7 @@ export default function PromptEditor({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.txt,.md"
+              accept=".pdf,.docx,.txt,.md,.xlsx"
               multiple
               hidden
               onChange={(e) => {

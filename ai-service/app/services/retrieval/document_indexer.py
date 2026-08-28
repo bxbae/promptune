@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from docx import Document as DocxDocument
+from openpyxl import load_workbook
 import pymupdf
 
 from app.services.retrieval.chunker import chunk_text
@@ -17,7 +18,7 @@ from app.services.retrieval.rag_retriever import (
 )
 
 
-SUPPORTED_FILE_TYPES = {"pdf", "docx", "txt", "md"}
+SUPPORTED_FILE_TYPES = {"pdf", "docx", "txt", "md", "xlsx"}
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
@@ -65,6 +66,21 @@ def extract_docx_text(file_bytes: bytes) -> str:
     return "\n".join(parts)
 
 
+def extract_xlsx_text(file_bytes: bytes) -> str:
+    """엑셀 각 시트를 순서대로 훑으며, 행마다 셀 값을 ' | '로 이어붙인 텍스트로 변환한다."""
+    workbook = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    parts = []
+
+    for sheet in workbook.worksheets:
+        parts.append(f"[시트: {sheet.title}]")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+
+    return "\n".join(parts)
+
+
 def decode_text_file(file_bytes: bytes) -> str:
     for encoding in ("utf-8-sig", "utf-8", "cp949"):
         try:
@@ -86,6 +102,8 @@ def extract_text(file_bytes: bytes, file_type: str) -> str:
         text = extract_pdf_text(file_bytes)
     elif file_type == "docx":
         text = extract_docx_text(file_bytes)
+    elif file_type == "xlsx":
+        text = extract_xlsx_text(file_bytes)
     elif file_type in {"txt", "md"}:
         text = decode_text_file(file_bytes)
     else:
