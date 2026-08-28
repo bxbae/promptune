@@ -394,7 +394,7 @@ public class DocumentController {
     @GetMapping
     public List<Document> myDocuments(Authentication authentication) {
         User user = currentUser(authentication);
-        return documentRepository.findByOwnerUserId(user.getId());
+        return documentRepository.findLibraryDocumentsByOwnerUserId(user.getId());
     }
 
     @PatchMapping("/{id}")
