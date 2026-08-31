@@ -39,6 +39,7 @@ from app.services import (
     prompt_rule,
     safety_rule,
     suggest_hcx,
+    title_summary_hcx,
 )
 
 router = APIRouter()
@@ -216,17 +217,8 @@ def validate(req: ValidateRequest):
     tags=["대화 제목 요약"],
 )
 def summarize_title(req: SummarizeTitleRequest):
-    """LLM을 사용하지 않고 첫 프롬프트에서 대화 제목을 만든다."""
-    text = " ".join((req.text or "").split()).strip()
-
-    if not text:
-        return SummarizeTitleResponse(title="새 대화")
-
-    max_length = 24
-    title = text if len(text) <= max_length else text[:max_length].rstrip() + "..."
-
-    return SummarizeTitleResponse(title=title)
-
+    """Generate a short conversation title using the shared HCX runtime."""
+    return title_summary_hcx.summarize(req)
 
 @router.post(
     "/index-document",

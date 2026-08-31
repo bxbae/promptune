@@ -173,21 +173,27 @@ def _ensure_model_loaded() -> None:
         local_files_only=True,
     )
 
-    _model = AutoModelForSequenceClassification.from_pretrained(
+    # Load model.safetensors explicitly as real CPU tensors.
+    # This avoids parameters remaining on the meta device.
+    # The model is moved to the resolved device after state loading.
+    from transformers import AutoConfig
+    from safetensors.torch import load_file
+
+    config = AutoConfig.from_pretrained(
         MODEL_PATH,
         local_files_only=True,
-        # 2026-08-31: accelerate가 설치돼있으면(FlagEmbedding의 전이 의존성으로
-        # 들어옴) transformers가 from_pretrained를 low_cpu_mem_usage=True로
-        # 기본 실행해서, 모델을 우선 meta 디바이스(실제 데이터 없는 placeholder)
-        # 위에 구성한 뒤 체크포인트를 그 위에 덮어써 채우는 방식으로 로딩한다.
-        # 이 앱은 GPU 없이도 도는 소형 분류 모델이라 그 최적화가 필요 없고,
-        # 오히려 일부 파라미터가 meta 상태로 남은 채 로딩이 "성공"으로 끝나버려서
-        # 바로 다음 줄의 _model.to(_device)에서
-        # "NotImplementedError: Cannot copy out of meta tensor; no data!"로
-        # 터지는 사례가 운영에서 확인됨(모델 파일 자체는 sha256 검증 결과
-        # 정상이었음 - 로딩 방식 문제였음). low_cpu_mem_usage=False로 강제해서
-        # 처음부터 실제 디바이스에 파라미터를 온전히 채워 넣도록 한다.
-        low_cpu_mem_usage=False,
+    )
+
+    _model = AutoModelForSequenceClassification.from_config(config)
+
+    state_dict = load_file(
+        str(MODEL_PATH / "model.safetensors"),
+        device="cpu",
+    )
+
+    _model.load_state_dict(
+        state_dict,
+        strict=True,
     )
 
     _model.to(_device)
