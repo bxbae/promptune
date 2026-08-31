@@ -54,41 +54,22 @@ export default function PersonalizationPage() {
         첫 이용 때 고른 3가지 설정이에요. 언제든 다시 바꿀 수 있어요.
       </p>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 16,
-          marginTop: 20,
-        }}
-      >
+      <div className="pref-questions">
         {PREF_QUESTIONS.map((q) => (
           <div
+            className="pref-question-card"
             key={q.key}
-            style={{
-              padding: 16, border: "1px solid var(--line)",
-              background: "var(--panel)", borderRadius: 12,
-              display: "flex", flexDirection: "column", gap: 10,
-            }}
           >
             <div style={{ fontWeight: 600, fontSize: 14 }}>{q.title}</div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="pref-question-btns">
               {q.options.map((opt) => {
                 const active = answers[q.key] === opt.value;
                 return (
                   <button
+                    className={`pref-question-btn ${active ? `active` : ""}`}
                     key={opt.value}
                     onClick={() => { setAnswers((a) => ({ ...a, [q.key]: opt.value })); setSaved(false); }}
-                    style={{
-                      flex: 1, padding: "8px 6px", borderRadius: 8,
-                      border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
-                      background: active ? "var(--accent-tint)" : "var(--bg)",
-                      color: active ? "var(--accent)" : "var(--ink)",
-                      fontWeight: active ? 600 : 400,
-                      fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-                      textAlign: "center", whiteSpace: "nowrap",
-                    }}
                   >
                     {opt.summaryLabel ?? opt.label}
                   </button>

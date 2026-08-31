@@ -1,27 +1,9 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  analyze,
-  execute,
-  recordBehaviorAction,
-  type AnalyzeResponse,
-  improve,
-  type ImproveResponse,
-  type PlaceholderSuggestion,
-} from "@/lib/api";
-import {
-  uploadDocument,
-  listDocuments,
-  type DocumentItem,
-  type DocType,
-} from "@/api/documents";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
+import { uploadDocument, listDocuments, type DocumentItem, type DocType } from "@/api/documents";
+import type { ReceiverProfile } from "@/api/receiverProfiles";
 
 interface ElementUiMeta {
   label: string;
@@ -130,6 +112,8 @@ interface PromptEditorProps {
   // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 참고시킬 때 사용.
   quotedMessage?: { role: "user" | "assistant"; content: string } | null;
   onClearQuote?: () => void;
+  receiverProfiles?: ReceiverProfile[];
+  onReceiverProfileChange?: (profile: ReceiverProfile | null) => void;
 }
 
 type AttachmentState = {
@@ -147,8 +131,13 @@ export default function PromptEditor({
   chatSessionId,
   quotedMessage,
   onClearQuote,
+  receiverProfiles = [],
+  onReceiverProfileChange,
 }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
+  const [selectedReceiverId, setSelectedReceiverId] = useState<number | null>(
+    null,
+  );
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const directEditsRef = useRef<DirectEdit[]>([]);
 
@@ -173,16 +162,10 @@ export default function PromptEditor({
   const [sending, setSending] = useState(false);
 
   // "다듬기" 모드 상태
-  const [improveResult, setImproveResult] = useState<ImproveResponse | null>(
-    null,
-  );
+  const [improveResult, setImproveResult] = useState<ImproveResponse | null>(null);
   const [improving, setImproving] = useState(false);
-  const [textBeforeImprove, setTextBeforeImprove] = useState<string | null>(
-    null,
-  );
-  const [activePlaceholderIndex, setActivePlaceholderIndex] = useState<
-    number | null
-  >(null);
+  const [textBeforeImprove, setTextBeforeImprove] = useState<string | null>(null);
+  const [activePlaceholderIndex, setActivePlaceholderIndex] = useState<number | null>(null);
   const [placeholderOptIdx, setPlaceholderOptIdx] = useState(0);
   const [placeholderCustomOpen, setPlaceholderCustomOpen] = useState(false);
   const [placeholderCustomValue, setPlaceholderCustomValue] = useState("");
@@ -191,9 +174,31 @@ export default function PromptEditor({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const receiverCandidate =
+    receiverProfiles
+      .filter((profile) => profile.receiverName && text.includes(profile.receiverName))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() -
+          new Date(a.updatedAt).getTime(),
+      )[0] ?? null;
+
+  useEffect(() => {
+    if (!text && selectedReceiverId !== null) {
+      setSelectedReceiverId(null);
+      onReceiverProfileChange?.(null);
+    }
+  }, [text, selectedReceiverId, onReceiverProfileChange]);
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
   const anchorMarkerRef = useRef<HTMLSpanElement>(null);
+  // 방향키로 옵션을 넘길 때, 목록이 스크롤되어 있으면(카드 높이 초과) 선택된
+  // 옵션이 화면 밖으로 나가있을 수 있다. 그 옵션을 담고 있는 스크롤 컨테이너(.ai-suggestion-card)
+  // 자체에 ref를 걸어두고, optIdx/placeholderOptIdx가 바뀔 때마다 안의 .active 요소를
+  // scrollIntoView로 따라오게 한다.
+  const activeSuggestionCardRef = useRef<HTMLDivElement>(null);
+  const activePlaceholderCardRef = useRef<HTMLDivElement>(null);
 
   const [anchorCardLeft, setAnchorCardLeft] = useState(0);
   const submittingRef = useRef(false);
@@ -223,16 +228,13 @@ export default function PromptEditor({
   // suggestions=[]는 AI가 hallucination 방지 차 의도적으로 비웠을 수 있는 정상 응답이라,
   // 그 경우에도 질문/직접입력/건너뛰기는 그대로 보여줘야 함.
   const targetElements = analysisResult?.recommend?.targetElements ?? [];
-  const unresolvedElements = targetElements.filter(
-    (element) => !resolved.has(element),
-  );
-  const activeElement =
-    unresolvedElements[activeSuggestionIndex] ?? unresolvedElements[0] ?? null;
+  const unresolvedElements = targetElements.filter((element) => !resolved.has(element));
+  const activeElement = unresolvedElements[activeSuggestionIndex] ?? unresolvedElements[0] ?? null;
 
   const activeSuggestion = activeElement
     ? (analysisResult?.suggest?.suggestions.find(
-        (suggestion) => suggestion.element === activeElement,
-      ) ?? null)
+      (suggestion) => suggestion.element === activeElement,
+    ) ?? null)
     : null;
 
   const activeAnchorOffset =
@@ -242,16 +244,16 @@ export default function PromptEditor({
 
   const activeMeta = activeElement
     ? (ELEMENT_UI[activeElement] ?? {
-        label: `${activeElement} 요소를 보완하면 좋아요`,
-        question: "어떤 내용을 추가할까요?",
-      })
+      label: `${activeElement} 요소를 보완하면 좋아요`,
+      question: "어떤 내용을 추가할까요?",
+    })
     : null;
 
   const activeOptions = activeSuggestion
     ? [activeSuggestion.primary, ...activeSuggestion.alternatives].filter(
-        (option, index, array) =>
-          option.trim().length > 0 && array.indexOf(option) === index,
-      )
+      (option, index, array) =>
+        option.trim().length > 0 && array.indexOf(option) === index,
+    )
     : [];
 
   const typoRanges = buildTypoRanges(
@@ -299,16 +301,11 @@ export default function PromptEditor({
   // 다듬기 카드에서 텍스트에 등장하는 순서대로 정렬된 placeholder 목록
   const orderedPlaceholders: PlaceholderSuggestion[] = improveResult
     ? splitTextByPlaceholders(text, improveResult.placeholders)
-        .filter(
-          (
-            seg,
-          ): seg is {
-            type: "placeholder";
-            content: string;
-            data: PlaceholderSuggestion;
-          } => seg.type === "placeholder",
-        )
-        .map((seg) => seg.data)
+      .filter(
+        (seg): seg is { type: "placeholder"; content: string; data: PlaceholderSuggestion } =>
+          seg.type === "placeholder"
+      )
+      .map((seg) => seg.data)
     : [];
 
   const scheduleAnalyze = useCallback((value: string) => {
@@ -425,6 +422,23 @@ export default function PromptEditor({
     };
   }, []);
 
+  // 방향키(↑↓)로 옵션을 넘길 때, 카드가 스크롤된 상태(옵션이 많아 maxHeight를 넘김)면
+  // 방금 선택된 옵션이 화면 밖에 있을 수 있다. .active로 표시된 옵션을 카드 안에서
+  // scrollIntoView로 따라오게 한다 (block:"nearest"라 이미 보이는 옵션이면 스크롤 안 함).
+  useEffect(() => {
+    const card = activeSuggestionCardRef.current;
+    if (!card) return;
+    const activeEl = card.querySelector(".active");
+    activeEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [optIdx, customOpen]);
+
+  useEffect(() => {
+    const card = activePlaceholderCardRef.current;
+    if (!card) return;
+    const activeEl = card.querySelector(".active");
+    activeEl?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [placeholderOptIdx, placeholderCustomOpen]);
+
   // 프롬프트가 길어질수록 textarea 높이를 내용에 맞게 늘려준다.
   // compact(대화 중 하단 컴포저)와 홈 화면 컴포저는 허용 높이를 다르게 둔다.
   // overlay는 mirror-div라 textarea와 정확히 같은 높이/스크롤 위치를 유지해야
@@ -501,10 +515,9 @@ export default function PromptEditor({
 
     const anchorOffset = activeSuggestion?.anchor?.charOffset;
 
-    const nextText =
-      anchorOffset !== undefined
-        ? insertSuggestionAtAnchor(text, trimmedValue, anchorOffset)
-        : mergePromptWithSuggestion(text, trimmedValue);
+    const nextText = anchorOffset !== undefined
+      ? insertSuggestionAtAnchor(text, trimmedValue, anchorOffset)
+      : mergePromptWithSuggestion(text, trimmedValue);
 
     setResolved((prev) => {
       const updated = new Set(prev);
@@ -551,23 +564,18 @@ export default function PromptEditor({
     textareaRef.current?.focus();
   }
 
-  function applyPlaceholderSuggestion(
-    placeholder: PlaceholderSuggestion,
-    chosenText: string,
-  ) {
+  function applyPlaceholderSuggestion(placeholder: PlaceholderSuggestion, chosenText: string) {
     if (!improveResult) return;
 
-    recordBehaviorAction(placeholder.element, "applied", chatSessionId).catch(
-      () => {
-        // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
-      },
-    );
+    recordBehaviorAction(placeholder.element, "applied", chatSessionId).catch(() => {
+      // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
+    });
 
     const newText = text.replace(placeholder.placeholderText, chosenText);
     setText(newText);
 
     const remaining = improveResult.placeholders.filter(
-      (p) => p.placeholderText !== placeholder.placeholderText,
+      (p) => p.placeholderText !== placeholder.placeholderText
     );
 
     if (remaining.length === 0) {
@@ -589,11 +597,9 @@ export default function PromptEditor({
   function removePlaceholder(placeholder: PlaceholderSuggestion) {
     if (!improveResult) return;
 
-    recordBehaviorAction(placeholder.element, "rejected", chatSessionId).catch(
-      () => {
-        // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
-      },
-    );
+    recordBehaviorAction(placeholder.element, "rejected", chatSessionId).catch(() => {
+      // 행동 기록 실패는 채팅 흐름을 막지 않음 (조용히 무시)
+    });
 
     // placeholder 문구와, 그 앞뒤에 붙은 쉼표/공백까지 같이 정리
     const newText = text
@@ -605,7 +611,7 @@ export default function PromptEditor({
     setText(newText);
 
     const remaining = improveResult.placeholders.filter(
-      (p) => p.placeholderText !== placeholder.placeholderText,
+      (p) => p.placeholderText !== placeholder.placeholderText
     );
 
     if (remaining.length === 0) {
@@ -617,7 +623,7 @@ export default function PromptEditor({
       setImproveResult({ ...improveResult, placeholders: remaining });
       setPlaceholderOptIdx(0);
       setActivePlaceholderIndex((prev) =>
-        prev === null ? null : Math.min(prev, remaining.length - 1),
+        (prev === null ? null : Math.min(prev, remaining.length - 1))
       );
     }
   }
@@ -629,26 +635,18 @@ export default function PromptEditor({
 
   function splitTextByPlaceholders(
     fullText: string,
-    placeholders: PlaceholderSuggestion[],
+    placeholders: PlaceholderSuggestion[]
   ): TextSegment[] {
     if (placeholders.length === 0) {
       return [{ type: "plain", content: fullText }];
     }
 
     // 각 placeholder가 실제로 text 안에서 몇 번째 글자에 있는지 찾기
-    const matches: {
-      start: number;
-      end: number;
-      data: PlaceholderSuggestion;
-    }[] = [];
+    const matches: { start: number; end: number; data: PlaceholderSuggestion }[] = [];
     for (const p of placeholders) {
       const idx = fullText.indexOf(p.placeholderText);
       if (idx !== -1) {
-        matches.push({
-          start: idx,
-          end: idx + p.placeholderText.length,
-          data: p,
-        });
+        matches.push({ start: idx, end: idx + p.placeholderText.length, data: p });
       }
     }
     matches.sort((a, b) => a.start - b.start);
@@ -657,16 +655,9 @@ export default function PromptEditor({
     let cursor = 0;
     for (const m of matches) {
       if (m.start > cursor) {
-        segments.push({
-          type: "plain",
-          content: fullText.slice(cursor, m.start),
-        });
+        segments.push({ type: "plain", content: fullText.slice(cursor, m.start) });
       }
-      segments.push({
-        type: "placeholder",
-        content: m.data.placeholderText,
-        data: m.data,
-      });
+      segments.push({ type: "placeholder", content: m.data.placeholderText, data: m.data });
       cursor = m.end;
     }
     if (cursor < fullText.length) {
@@ -704,9 +695,9 @@ export default function PromptEditor({
             onMouseDown={
               typo
                 ? (event) => {
-                    event.preventDefault();
-                    applyTypoCorrection(typo);
-                  }
+                  event.preventDefault();
+                  applyTypoCorrection(typo);
+                }
                 : undefined
             }
           >
@@ -793,20 +784,14 @@ export default function PromptEditor({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // 실시간 모드(다듬기 아님)에서 좌우 방향키로 카드 넘기기
-    if (
-      !improveResult &&
-      unresolvedElements.length > 0 &&
-      (e.key === "ArrowLeft" || e.key === "ArrowRight")
-    ) {
+    if (!improveResult && unresolvedElements.length > 0 && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       setOptIdx(0);
       setCustomOpen(false);
       setCustomValue("");
       setActiveSuggestionIndex((prev) => {
         const delta = e.key === "ArrowRight" ? 1 : -1;
-        return (
-          (prev + delta + unresolvedElements.length) % unresolvedElements.length
-        );
+        return (prev + delta + unresolvedElements.length) % unresolvedElements.length;
       });
       return;
     }
@@ -819,21 +804,21 @@ export default function PromptEditor({
         setActivePlaceholderIndex((prev) => {
           const current = prev ?? 0;
           const delta = e.key === "ArrowRight" ? 1 : -1;
-          return (
-            (current + delta + orderedPlaceholders.length) %
-            orderedPlaceholders.length
-          );
+          return (current + delta + orderedPlaceholders.length) % orderedPlaceholders.length;
         });
         return;
       }
 
       if (activePlaceholderIndex !== null && !placeholderCustomOpen) {
         const activePh = orderedPlaceholders[activePlaceholderIndex];
-        const options = activePh
-          ? [activePh.primary, ...activePh.alternatives]
-          : [];
+        const options = activePh ? [activePh.primary, ...activePh.alternatives] : [];
 
-        if (e.key === "Tab") {
+        if (e.key === "Enter" && !e.shiftKey) {
+          // 한글 등 조합 중인 Enter는 "적용"으로 취급하지 않음 (조합 확정 Enter가 여기로 새면
+          // 타이핑 중에 의도치 않게 제안이 적용돼버림 - 아래 전송용 Enter와 같은 이유)
+          if (isComposingRef.current || e.nativeEvent.isComposing) {
+            return;
+          }
           e.preventDefault();
           if (!activePh) return;
 
@@ -876,7 +861,11 @@ export default function PromptEditor({
     }
 
     if (activeElement && !customOpen) {
-      if (e.key === "Tab") {
+      if (e.key === "Enter" && !e.shiftKey) {
+        // 한글 등 조합 중인 Enter는 "적용"으로 취급하지 않음
+        if (isComposingRef.current || e.nativeEvent.isComposing) {
+          return;
+        }
         e.preventDefault();
 
         if (optIdx === activeOptions.length) {
@@ -1023,9 +1012,7 @@ export default function PromptEditor({
           }
 
           if (current.indexStatus === "FAILED") {
-            throw new Error(
-              `파일 분석에 실패했습니다: ${current.indexError || file.name}`,
-            );
+            throw new Error(`파일 분석에 실패했습니다: ${current.indexError || file.name}`);
           }
 
           uploadedDocsRef.current.set(key, current);
@@ -1121,9 +1108,7 @@ export default function PromptEditor({
 
     // 실패한 첨부를 조용히 빼고 텍스트만 보내면 사용자는 파일도 전달된
     // 것으로 오해한다. 실패 파일은 제거/재첨부하기 전까지 전송하지 않는다.
-    if (
-      selectedAttachments.some((attachment) => attachment.status === "error")
-    ) {
+    if (selectedAttachments.some((attachment) => attachment.status === "error")) {
       window.alert(
         "첨부파일 업로드에 실패했습니다. 실패한 파일을 제거한 뒤 다시 첨부해주세요.",
       );
@@ -1133,12 +1118,12 @@ export default function PromptEditor({
     submittingRef.current = true;
 
     try {
-      const selectedKeys = selectedAttachments.map(
-        (attachment) => attachment.key,
-      );
+      const selectedKeys = selectedAttachments.map((attachment) => attachment.key);
       const pendingUploads = selectedKeys
         .map((key) => uploadTasksRef.current.get(key))
-        .filter((task): task is Promise<DocumentItem | null> => Boolean(task));
+        .filter(
+          (task): task is Promise<DocumentItem | null> => Boolean(task),
+        );
 
       if (pendingUploads.length > 0) {
         // 버튼을 누른 뒤에는 중복 전송을 막고, 현재 업로드/인덱싱이
@@ -1164,8 +1149,7 @@ export default function PromptEditor({
       }
 
       // 텍스트 없이 파일만 첨부한 경우에도 정상적인 문서 읽기 요청으로 보낸다.
-      const baseText =
-        typedText || "첨부된 파일의 내용을 읽고 핵심 내용을 알려주세요.";
+      const baseText = typedText || "첨부된 파일의 내용을 읽고 핵심 내용을 알려주세요.";
 
       // 인용된 이전 메시지가 있으면 입력창 표시 텍스트는 그대로 두고
       // AI에 보내는 finalPrompt에만 인용 블록을 붙인다.
@@ -1214,17 +1198,73 @@ export default function PromptEditor({
       )}
 
       <div className="composer-box">
+        {receiverCandidate && (
+          <div
+            className={`receiver-candidate-card ${
+              selectedReceiverId === receiverCandidate.id ? "selected" : ""
+            }`}
+          >
+            <div className="receiver-candidate-main">
+              <div className="receiver-candidate-label">
+                개인화 수신자 후보
+              </div>
+
+              <div className="receiver-candidate-name">
+                👤 {receiverCandidate.receiverName}
+              </div>
+
+              <div className="receiver-candidate-meta">
+                {receiverCandidate.relationship && (
+                  <span>{receiverCandidate.relationship}</span>
+                )}
+
+                {receiverCandidate.preferredTone && (
+                  <span>선호 톤 {receiverCandidate.preferredTone}</span>
+                )}
+
+                {receiverCandidate.updatedAt && (
+                  <span>
+                    최근 학습{" "}
+                    {new Date(
+                      receiverCandidate.updatedAt,
+                    ).toLocaleDateString("ko-KR")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="receiver-candidate-action"
+              aria-pressed={selectedReceiverId === receiverCandidate.id}
+              onClick={() => {
+                const selecting =
+                  selectedReceiverId !== receiverCandidate.id;
+
+                setSelectedReceiverId(
+                  selecting ? receiverCandidate.id : null,
+                );
+
+                onReceiverProfileChange?.(
+                  selecting ? receiverCandidate : null,
+                );
+
+                textareaRef.current?.focus();
+              }}
+            >
+              {selectedReceiverId === receiverCandidate.id
+                ? "적용됨 ✓"
+                : "적용"}
+            </button>
+          </div>
+        )}
         {quotedMessage && (
           <div className="quote-preview">
             <div className="quote-preview-body">
               <span className="quote-preview-label">
-                {quotedMessage.role === "user"
-                  ? "내 메시지 인용"
-                  : "AI 응답 인용"}
+                {quotedMessage.role === "user" ? "내 메시지 인용" : "AI 응답 인용"}
               </span>
-              <span className="quote-preview-text">
-                {quotedMessage.content}
-              </span>
+              <span className="quote-preview-text">{quotedMessage.content}</span>
             </div>
             <button
               type="button"
@@ -1272,6 +1312,18 @@ export default function PromptEditor({
             onChange={(e) => {
               const value = e.target.value;
               setText(value);
+
+              if (selectedReceiverId !== null) {
+                const selected = receiverProfiles.find(
+                  (profile) => profile.id === selectedReceiverId,
+                );
+
+                if (!selected || !value.includes(selected.receiverName)) {
+                  setSelectedReceiverId(null);
+                  onReceiverProfileChange?.(null);
+                }
+              }
+
               scheduleAnalyze(value);
             }}
             onCompositionStart={() => {
@@ -1316,40 +1368,31 @@ export default function PromptEditor({
               있으면 같은 overlay 안에서 정확한 charOffset 위치에 marker도 함께 표시한다.
               suggestions=[]처럼 anchor가 없을 때 전체 문장을 밑줄 긋지는 않는다. */}
           <div className="overlay" ref={overlayRef} aria-hidden="true">
-            {improveResult && improveResult.placeholders.length > 0
-              ? (() => {
-                  let phIndex = -1;
-                  return splitTextByPlaceholders(
-                    text,
-                    improveResult.placeholders,
-                  ).map((seg, i) => {
-                    if (seg.type !== "placeholder") {
-                      return <span key={i}>{seg.content}</span>;
-                    }
-                    phIndex += 1;
-                    const idx = phIndex;
-                    const isDimmed =
-                      activePlaceholderIndex !== null &&
-                      activePlaceholderIndex !== idx;
-                    return (
-                      <span
-                        key={i}
-                        className="ov-underline-word placeholder-underline"
-                        style={{
-                          pointerEvents: "auto",
-                          opacity: isDimmed ? 0.35 : 1,
-                          transition: "opacity 0.2s ease",
-                        }}
-                        onMouseEnter={() => {
-                          setActivePlaceholderIndex(idx);
-                          setPlaceholderOptIdx(0);
-                        }}
-                      >
-                        {seg.content}
-                      </span>
-                    );
-                  });
-                })()
+            {improveResult && improveResult.placeholders.length > 0 ? (
+              () => {
+                let phIndex = -1;
+                return splitTextByPlaceholders(text, improveResult.placeholders).map((seg, i) => {
+                  if (seg.type !== "placeholder") {
+                    return <span key={i}>{seg.content}</span>;
+                  }
+                  phIndex += 1;
+                  const idx = phIndex;
+                  const isDimmed = activePlaceholderIndex !== null && activePlaceholderIndex !== idx;
+                  return (
+                    <span
+                      key={i}
+                      className="ov-underline-word placeholder-underline"
+                      style={{ pointerEvents: "auto", opacity: isDimmed ? 0.35 : 1, transition: "opacity 0.2s ease" }}
+                      onMouseEnter={() => {
+                        setActivePlaceholderIndex(idx);
+                        setPlaceholderOptIdx(0);
+                      }}
+                    >
+                      {seg.content}
+                    </span>
+                  );
+                });
+              })()
               : renderLiveOverlay()}
           </div>
 
@@ -1370,8 +1413,7 @@ export default function PromptEditor({
               {unresolvedElements.map((element, idx) => {
                 const offset = idx - activeSuggestionIndex;
                 const isActive = offset === 0;
-                const suggestion =
-                  analysisResult?.suggest?.suggestions.find(
+                const suggestion = analysisResult?.suggest?.suggestions.find(
                     (s) => s.element === element,
                   ) ?? null;
                 const meta = ELEMENT_UI[element] ?? {
@@ -1380,16 +1422,16 @@ export default function PromptEditor({
                 };
                 const options = suggestion
                   ? [suggestion.primary, ...suggestion.alternatives].filter(
-                      (option, index, array) =>
-                        option.trim().length > 0 &&
-                        array.indexOf(option) === index,
-                    )
+                    (option, index, array) =>
+                      option.trim().length > 0 && array.indexOf(option) === index,
+                  )
                   : [];
 
                 return (
                   <div
                     key={element}
                     className="ai-suggestion-card"
+                    ref={isActive ? activeSuggestionCardRef : undefined}
                     role="region"
                     aria-label={`${element} 요소 추천`}
                     style={{
@@ -1430,55 +1472,52 @@ export default function PromptEditor({
                       </button>
                     ))}
 
-                    {isActive &&
-                      (!customOpen ? (
-                        <button
-                          type="button"
-                          className={`popup-custom-btn input-style ${optIdx === activeOptions.length ? "active" : ""}`}
-                          onMouseDown={(e) => {
+                    {isActive && (!customOpen ? (
+                      <button
+                        type="button"
+                        className={`popup-custom-btn input-style ${optIdx === activeOptions.length ? "active" : ""}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setCustomOpen(true);
+                        }}
+                        onMouseEnter={() => setOptIdx(activeOptions.length)}
+                      >
+                        Enter로 직접 입력
+                      </button>
+                    ) : (
+                      <input
+                        className="popup-custom-input"
+                        autoFocus
+                        value={customValue}
+                        onChange={(e) => setCustomValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                             e.preventDefault();
-                            setCustomOpen(true);
-                          }}
-                          onMouseEnter={() => setOptIdx(activeOptions.length)}
-                        >
-                          Tab으로 직접 입력
-                        </button>
-                      ) : (
-                        <input
-                          className="popup-custom-input"
-                          autoFocus
-                          value={customValue}
-                          onChange={(e) => setCustomValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                              e.preventDefault();
-                              setCustomOpen(false);
-                              setCustomValue("");
-                              const total = activeOptions.length + 2;
-                              const delta = e.key === "ArrowDown" ? 1 : -1;
-                              setOptIdx(
-                                (index) => (index + delta + total) % total,
-                              );
-                              textareaRef.current?.focus();
-                              return;
-                            }
+                            setCustomOpen(false);
+                            setCustomValue("");
+                            const total = activeOptions.length + 2;
+                            const delta = e.key === "ArrowDown" ? 1 : -1;
+                            setOptIdx((index) => (index + delta + total) % total);
+                            textareaRef.current?.focus();
+                            return;
+                          }
 
-                            e.stopPropagation();
+                          e.stopPropagation();
 
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              applySuggestion(customValue, true);
-                            }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            applySuggestion(customValue, true);
+                          }
 
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              setCustomOpen(false);
-                              setCustomValue("");
-                            }
-                          }}
-                          placeholder="직접 입력 후 Enter"
-                        />
-                      ))}
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setCustomOpen(false);
+                            setCustomValue("");
+                          }
+                        }}
+                        placeholder="직접 입력 후 Enter"
+                      />
+                    ))}
 
                     {isActive && (
                       <button
@@ -1499,152 +1538,129 @@ export default function PromptEditor({
             </div>
           )}
 
-          {improveResult &&
-            activePlaceholderIndex !== null &&
-            orderedPlaceholders.length > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "calc(100% + 10px)",
-                  left: 0,
-                  zIndex: 100,
-                  width: "min(320px, 100%)",
-                }}
-              >
-                {orderedPlaceholders.map((ph, idx) => {
-                  const offset = idx - activePlaceholderIndex;
-                  const isActive = offset === 0;
-                  const options = [ph.primary, ...ph.alternatives];
-                  return (
-                    <div
-                      key={ph.placeholderText}
-                      className="ai-suggestion-card"
-                      role="region"
-                      aria-label={`${ph.element} 요소 추천`}
-                      style={{
-                        position: isActive ? "relative" : "absolute",
-                        bottom: 0,
-                        left: 0,
-                        width: "100%",
-                        transform: `translateX(${offset * 26}px) translateY(${Math.abs(offset) * -6}px) scale(${1 - Math.abs(offset) * 0.05})`,
-                        filter: isActive ? "none" : "blur(2.5px)",
-                        zIndex: 10 - Math.abs(offset),
-                        pointerEvents: isActive ? "auto" : "none",
-                        transition: "transform 0.2s ease, filter 0.2s ease",
-                        maxHeight: "38vh",
-                        overflowY: "auto",
-                      }}
-                    >
-                      <div className="popup-label">
-                        <span className="popup-dot" />
-                        {ELEMENT_UI[ph.element]?.label ??
-                          `${ph.element} 요소를 보완하면 좋아요`}
-                      </div>
-
-                      <div className="popup-question">
-                        {ELEMENT_UI[ph.element]?.question ??
-                          "어떤 내용을 추가할까요?"}
-                      </div>
-
-                      {options.map((option, i2) => (
-                        <button
-                          key={`${ph.element}-${i2}`}
-                          type="button"
-                          className={`popup-option ${isActive && i2 === placeholderOptIdx ? "active" : ""}`}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            applyPlaceholderSuggestion(ph, option);
-                          }}
-                          onMouseEnter={() => {
-                            if (isActive) setPlaceholderOptIdx(i2);
-                          }}
-                        >
-                          {option}
-                        </button>
-                      ))}
-
-                      {isActive &&
-                        (!placeholderCustomOpen ? (
-                          <button
-                            type="button"
-                            className={`popup-custom-btn input-style ${placeholderOptIdx === options.length ? "active" : ""}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setPlaceholderCustomOpen(true);
-                            }}
-                            onMouseEnter={() =>
-                              setPlaceholderOptIdx(options.length)
-                            }
-                          >
-                            Tab으로 직접 입력
-                          </button>
-                        ) : (
-                          <input
-                            className="popup-custom-input"
-                            autoFocus
-                            value={placeholderCustomValue}
-                            onChange={(e) =>
-                              setPlaceholderCustomValue(e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (
-                                e.key === "ArrowDown" ||
-                                e.key === "ArrowUp"
-                              ) {
-                                e.preventDefault();
-                                setPlaceholderCustomOpen(false);
-                                setPlaceholderCustomValue("");
-                                const total = options.length + 2;
-                                const delta = e.key === "ArrowDown" ? 1 : -1;
-                                setPlaceholderOptIdx(
-                                  (index) => (index + delta + total) % total,
-                                );
-                                textareaRef.current?.focus();
-                                return;
-                              }
-
-                              e.stopPropagation();
-
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                const trimmed = placeholderCustomValue.trim();
-                                if (trimmed) {
-                                  applyPlaceholderSuggestion(ph, trimmed);
-                                }
-                                setPlaceholderCustomOpen(false);
-                                setPlaceholderCustomValue("");
-                              }
-
-                              if (e.key === "Escape") {
-                                e.preventDefault();
-                                setPlaceholderCustomOpen(false);
-                                setPlaceholderCustomValue("");
-                              }
-                            }}
-                            placeholder="직접 입력 후 Enter"
-                          />
-                        ))}
-
-                      {isActive && (
-                        <button
-                          type="button"
-                          className={`popup-custom-btn ${placeholderOptIdx === options.length + 1 ? "active" : ""}`}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            removePlaceholder(ph);
-                          }}
-                          onMouseEnter={() =>
-                            setPlaceholderOptIdx(options.length + 1)
-                          }
-                        >
-                          이 요소는 건너뛰기
-                        </button>
-                      )}
+          {improveResult && activePlaceholderIndex !== null && orderedPlaceholders.length > 0 && (
+            <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: 0, zIndex: 100, width: "min(320px, 100%)" }}>
+              {orderedPlaceholders.map((ph, idx) => {
+                const offset = idx - activePlaceholderIndex;
+                const isActive = offset === 0;
+                const options = [ph.primary, ...ph.alternatives];
+                return (
+                  <div
+                    key={ph.placeholderText}
+                    className="ai-suggestion-card"
+                    ref={isActive ? activePlaceholderCardRef : undefined}
+                    role="region"
+                    aria-label={`${ph.element} 요소 추천`}
+                    style={{
+                      position: isActive ? "relative" : "absolute",
+                      bottom: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateX(${offset * 26}px) translateY(${Math.abs(offset) * -6}px) scale(${1 - Math.abs(offset) * 0.05})`,
+                      filter: isActive ? "none" : "blur(2.5px)",
+                      zIndex: 10 - Math.abs(offset),
+                      pointerEvents: isActive ? "auto" : "none",
+                      transition: "transform 0.2s ease, filter 0.2s ease",
+                      maxHeight: "38vh",
+                      overflowY: "auto",
+                    }}
+                  >
+                    <div className="popup-label">
+                      <span className="popup-dot" />
+                      {ELEMENT_UI[ph.element]?.label ?? `${ph.element} 요소를 보완하면 좋아요`}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+
+                    <div className="popup-question">
+                      {ELEMENT_UI[ph.element]?.question ?? "어떤 내용을 추가할까요?"}
+                    </div>
+
+                    {options.map((option, i2) => (
+                      <button
+                        key={`${ph.element}-${i2}`}
+                        type="button"
+                        className={`popup-option ${isActive && i2 === placeholderOptIdx ? "active" : ""}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applyPlaceholderSuggestion(ph, option);
+                        }}
+                        onMouseEnter={() => {
+                          if (isActive) setPlaceholderOptIdx(i2);
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+
+                    {isActive && (!placeholderCustomOpen ? (
+                      <button
+                        type="button"
+                        className={`popup-custom-btn input-style ${placeholderOptIdx === options.length ? "active" : ""}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPlaceholderCustomOpen(true);
+                        }}
+                        onMouseEnter={() => setPlaceholderOptIdx(options.length)}
+                      >
+                        Enter로 직접 입력
+                      </button>
+                    ) : (
+                      <input
+                        className="popup-custom-input"
+                        autoFocus
+                        value={placeholderCustomValue}
+                        onChange={(e) => setPlaceholderCustomValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setPlaceholderCustomOpen(false);
+                            setPlaceholderCustomValue("");
+                            const total = options.length + 2;
+                            const delta = e.key === "ArrowDown" ? 1 : -1;
+                            setPlaceholderOptIdx((index) => (index + delta + total) % total);
+                            textareaRef.current?.focus();
+                            return;
+                          }
+
+                          e.stopPropagation();
+
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const trimmed = placeholderCustomValue.trim();
+                            if (trimmed) {
+                              applyPlaceholderSuggestion(ph, trimmed);
+                            }
+                            setPlaceholderCustomOpen(false);
+                            setPlaceholderCustomValue("");
+                          }
+
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setPlaceholderCustomOpen(false);
+                            setPlaceholderCustomValue("");
+                          }
+                        }}
+                        placeholder="직접 입력 후 Enter"
+                      />
+                    ))}
+
+                    {isActive && (
+                      <button
+                        type="button"
+                        className={`popup-custom-btn ${placeholderOptIdx === options.length + 1 ? "active" : ""}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          removePlaceholder(ph);
+                        }}
+                        onMouseEnter={() => setPlaceholderOptIdx(options.length + 1)}
+                      >
+                        이 요소는 건너뛰기
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {attachments.length > 0 && (
@@ -1770,8 +1786,7 @@ export default function PromptEditor({
 
       {analyzeError && (
         <div className="gate-block">
-          ⚠ AI 추천을 불러오지 못했습니다. 직접 입력하거나 이 요소를 건너뛸 수
-          있습니다.
+          ⚠ AI 추천을 불러오지 못했습니다. 직접 입력하거나 이 요소를 건너뛸 수 있습니다.
         </div>
       )}
 

@@ -270,32 +270,10 @@ pre {
               }}
             >
               <div className="file-thumb">
-                <span className="file-badge">{file.documentType}</span>
-                <button
-                  className="file-menu-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenMenuId(openMenuId === file.id ? null : file.id);
-                  }}
-                  aria-label="파일 옵션"
-                >
-                  <img src="/icons/dots.png" />
-                </button>
-
                 <FilePreview
                   kind={previewKind(file.fileType)}
                   textPreview={isTextPreviewType(file.fileType) ? textPreviews[file.id] : undefined}
                 />
-
-                {openMenuId === file.id && (
-                  <div
-                    className="file-menu"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button onClick={() => startEdit(file)}>수정</button>
-                    <button className="danger" onClick={() => handleDelete(file)}>삭제</button>
-                  </div>
-                )}
               </div>
 
               {/* file-name-wrap: 원래 파일명 자리는 항상 유지하고(높이 그대로), 수정 중이면
@@ -343,6 +321,32 @@ pre {
                   </div>
                 )}
               </div>
+
+              {/* 배지/메뉴 버튼은 이제 file-thumb 밖(=file-card 바로 아래)에 둔다.
+                  file-card가 file-thumb과 같은 폭/원점을 가져서 absolute 좌표는 그대로 유지되고
+                  (데스크톱은 변화 없음), 모바일 1열 가로형 카드에서는 자연스럽게 행의 끝에
+                  오도록 만들 수 있다 (전에는 좁은 thumb 안에 갇혀서 재배치가 불가능했음). */}
+              <span className="file-badge">{file.documentType}</span>
+              <button
+                className="file-menu-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuId(openMenuId === file.id ? null : file.id);
+                }}
+                aria-label="파일 옵션"
+              >
+                <img src="/icons/dots.png" />
+              </button>
+
+              {openMenuId === file.id && (
+                <div
+                  className="file-menu"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button onClick={() => startEdit(file)}>수정</button>
+                  <button className="danger" onClick={() => handleDelete(file)}>삭제</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
