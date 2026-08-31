@@ -1200,7 +1200,7 @@ export default function PromptEditor({
         {receiverCandidate && (
           <div
             className={`receiver-candidate-card ${
-              selectedReceiverId === receiverCandidate.id ? "selected" : ""
+              selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
             }`}
           >
             <div className="receiver-candidate-main">
@@ -1237,17 +1237,9 @@ export default function PromptEditor({
               className="receiver-candidate-action"
               aria-pressed={selectedReceiverId === receiverCandidate.id}
               onClick={() => {
-                const selecting =
-                  selectedReceiverId !== receiverCandidate.id;
-
-                setSelectedReceiverId(
-                  selecting ? receiverCandidate.id : null,
-                );
-
-                onReceiverProfileChange?.(
-                  selecting ? receiverCandidate : null,
-                );
-
+                const selecting = selectedReceiverId !== receiverCandidate.id;
+                setSelectedReceiverId(selecting ? receiverCandidate.id : null);
+                onReceiverProfileChange?.(selecting ? receiverCandidate : null);
                 textareaRef.current?.focus();
               }}
             >
