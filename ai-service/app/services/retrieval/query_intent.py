@@ -27,6 +27,18 @@ _KIND_RE = re.compile(
     re.IGNORECASE,
 )
 
+
+_PROFILE_LOOKUP_RE = re.compile(
+    r"^\s*(?P<subject>.+?)(?:은|는|이|가|의)?\s+"
+    r"(?:이력서|프로필|경력|약력|학력|소속)"
+    r"(?:을|를|은|는|이|가|도)?\s*"
+    r"(?:알려줘|알려주세요|알려|정리해줘|정리해|"
+    r"보여줘|설명해줘|소개해줘|찾아줘)?"
+    r"\s*[?!.]*\s*$",
+    re.IGNORECASE,
+)
+
+
 _DEICTIC_SUBJECTS = {
     "그 사람",
     "그분",
@@ -50,7 +62,12 @@ def extract_external_entity_subject(query: str) -> str | None:
     if _FIRST_PERSON_RE.search(text):
         return None
 
-    for pattern in (_WHO_RE, _WHAT_RE, _KIND_RE):
+    for pattern in (
+        _WHO_RE,
+        _WHAT_RE,
+        _KIND_RE,
+        _PROFILE_LOOKUP_RE,
+    ):
         match = pattern.match(text)
 
         if not match:

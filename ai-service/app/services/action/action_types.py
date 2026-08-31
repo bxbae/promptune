@@ -23,3 +23,4 @@ class ActionPlan:
     sources: tuple[str, ...]
     retrieval_route: str
     reason: str
+    routing_query: str

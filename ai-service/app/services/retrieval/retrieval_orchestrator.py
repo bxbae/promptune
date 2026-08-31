@@ -214,7 +214,10 @@ def execute_retrieval(
             route = conversation.route_override
             action_plan = None
         else:
-            action_plan = resolve_action(effective_query)
+            action_plan = resolve_action(
+                effective_query,
+                req.routing_user_context,
+            )
 
             if action_plan.retrieval_route:
                 route = action_plan.retrieval_route
@@ -225,7 +228,7 @@ def execute_retrieval(
                 # 대신 문서/실시간 사실/외부 entity/profile처럼 ML과 무관하게
                 # source가 명확한 strong signal만 허용한다.
                 strong_route = resolve_strong_retrieval_route(
-                    effective_query
+                    action_plan.routing_query
                 )
 
                 route = (
@@ -239,7 +242,8 @@ def execute_retrieval(
                 f"action={action_plan.action.value!r} "
                 f"confidence={action_plan.confidence:.3f} "
                 f"sources={action_plan.sources!r} "
-                f"reason={action_plan.reason!r}"
+                f"reason={action_plan.reason!r} "
+                f"routing_query={action_plan.routing_query!r}"
             )
 
     print(f"[Retrieval] route={route!r} effective_query={effective_query!r}")

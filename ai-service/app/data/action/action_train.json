@@ -294,5 +294,33 @@
   {
     "text": "프로젝트 레인보우라는 회사가 실제로 있는지 찾아줘",
     "action": "WEB_FACT"
+  },
+  {
+    "text": "손흥민 이력서 알려줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "이강인 경력 알려줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "박지성 학력 알려줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "김연아 직무 경력 알려줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "내 이름으로 나온 최근 뉴스 찾아줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "김연아 경력 정리해줘",
+    "action": "WEB_FACT"
+  },
+  {
+    "text": "손흥민 업무 경력 알려줘",
+    "action": "WEB_FACT"
   }
 ]

@@ -83,3 +83,69 @@ class StrongRetrievalSignalTest(unittest.TestCase):
         self.assertIsNone(
             resolve_strong_retrieval_route("안녕")
         )
+
+
+class ExecutionContextActionResolverTest(unittest.TestCase):
+
+    def test_current_user_name_is_normalized_to_self_context(self):
+        plan = resolve_action(
+            "차승연 이력서 알려줘",
+            {
+                "name": "차승연",
+                "displayName": "차승연",
+            },
+        )
+
+        self.assertEqual(
+            plan.routing_query,
+            "내 이력서 알려줘",
+        )
+        self.assertEqual(
+            plan.action.value,
+            "USER_CONTEXT",
+        )
+        self.assertEqual(
+            plan.retrieval_route,
+            "user_context",
+        )
+
+    def test_current_user_possessive_name_is_self_context(self):
+        plan = resolve_action(
+            "차승연의 경력 정리해줘",
+            {"name": "차승연"},
+        )
+
+        self.assertEqual(
+            plan.routing_query,
+            "내 경력 정리해줘",
+        )
+        self.assertEqual(
+            plan.action.value,
+            "USER_CONTEXT",
+        )
+
+    def test_other_person_is_not_normalized_to_self(self):
+        plan = resolve_action(
+            "손흥민 이력서 알려줘",
+            {"name": "차승연"},
+        )
+
+        self.assertEqual(
+            plan.routing_query,
+            "손흥민 이력서 알려줘",
+        )
+        self.assertEqual(
+            plan.action.value,
+            "WEB_FACT",
+        )
+
+    def test_current_user_web_news_remains_web(self):
+        plan = resolve_action(
+            "차승연 최근 뉴스 찾아줘",
+            {"name": "차승연"},
+        )
+
+        self.assertNotEqual(
+            plan.action.value,
+            "USER_CONTEXT",
+        )

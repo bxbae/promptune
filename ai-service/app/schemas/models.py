@@ -213,6 +213,9 @@ class RetrievalExecuteRequest(BaseModel):
     owner_user_id: int | None = None
     top_k: int = 3
     history: list[ConversationMessage] = Field(default_factory=list)
+    # Action routing에서 현재 사용자 본인 여부를 판별하기 위한 최소 identity.
+    # 생성용 전체 user_context와 분리하며 name/email/displayName 정도만 전달한다.
+    routing_user_context: dict[str, str] = Field(default_factory=dict)
     # 사용자가 명시적으로 Web 검색을 요청한 경우.
     # document_ids와 동시에 주어질 수 있으며 이 경우 INTERNAL + WEB을 모두 실행한다.
     use_web_search: bool = False

@@ -265,6 +265,25 @@ public class AiServiceClient {
             List<Long> documentIds,
             boolean useWebSearch) {
 
+        return retrievalExecute(
+                query,
+                ownerUserId,
+                topK,
+                history,
+                documentIds,
+                useWebSearch,
+                Map.of());
+    }
+
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
+            int topK,
+            List<Map<String, String>> history,
+            List<Long> documentIds,
+            boolean useWebSearch,
+            Map<String, String> routingUserContext) {
+
         long start = System.currentTimeMillis();
 
         try {
@@ -283,6 +302,11 @@ public class AiServiceClient {
             body.put(
                     "use_web_search",
                     useWebSearch);
+            body.put(
+                    "routing_user_context",
+                    routingUserContext == null
+                            ? Map.of()
+                            : routingUserContext);
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")

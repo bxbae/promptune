@@ -96,6 +96,29 @@ def _authority_bonus(
     return 0.0
 
 
+def _contains_entity(
+    item: dict,
+    entity: str | None,
+) -> bool:
+    if not entity:
+        return True
+
+    normalized_entity = _normalize(entity)
+
+    if not normalized_entity:
+        return True
+
+    haystack = _normalize(
+        " ".join([
+            str(item.get("title") or ""),
+            str(item.get("content") or ""),
+            str(item.get("url") or ""),
+        ])
+    )
+
+    return normalized_entity in haystack
+
+
 def _score_result(
     item: dict,
     *,
@@ -195,6 +218,21 @@ def select_web_evidence(
             seen_titles.add(title_key)
 
         unique.append(item)
+
+    # PROFILE 질의는 대상 인물/조직이 틀린 evidence를 사용할 수 없다.
+    #
+    # 예:
+    #   query="손흥민 이력서 알려줘", entity="손흥민"
+    #   홍명보/김연경/정몽규 문서는 Tavily score가 높더라도 제거한다.
+    #
+    # GENERAL/RESEARCH는 간접적으로 관련된 문서가 유효할 수 있으므로
+    # hard filtering을 적용하지 않는다.
+    if intent == "PROFILE" and entity:
+        unique = [
+            item
+            for item in unique
+            if _contains_entity(item, entity)
+        ]
 
     ranked = sorted(
         unique,

@@ -278,6 +278,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 그걸 그대로 흘려보내면 /api/execute 전체가 실패해서 채팅 자체가 안 됐음
     // (아래 user_context/Microsoft 미연동과 동일한 부류의 fail-open 처리 필요 -
     // 검색이 안 되면 검색 없이라도 답변은 계속 생성돼야 함).
+    Map<String, String> routingUserContext =
+            buildRoutingUserContext(authentication);
+
     Map<String, Object> retrieval;
     try {
         // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
@@ -291,7 +294,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 4,
                 conversationHistory,
                 retrievalDocumentIds,
-                Boolean.TRUE.equals(req.useWebSearch()));
+                Boolean.TRUE.equals(req.useWebSearch()),
+                routingUserContext);
     } catch (Exception e) {
         // 첨부/이전 문서가 명확한 요청에서 Retrieval 실패를 숨기고 일반 HCX 답변으로
         // 넘어가면 모델이 과거 문서나 임의 문서를 근거로 답하는 치명적 오류가 난다.
@@ -348,7 +352,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // (다른 보조 조회들과 동일하게) 실패는 조용히 무시하고 컨텍스트 없이 진행한다.
     // (안 그러면 user_context 라우트로 분류된 모든 메시지가 Microsoft 미연동
     // 사용자에게는 통째로 실패해버림 - 2026-08-24 채팅 전체 실패 이슈)
-    Map<String, String> userContext = new java.util.HashMap<>();
+    Map<String, String> userContext =
+            new java.util.HashMap<>(routingUserContext);
 
     if ("user_context".equals(retrieval.get("route"))) {
         try {
@@ -506,6 +511,34 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         // 중복 없이 항상 최소 1개는 남는다.
         throw e;
     }
+    }
+
+    private Map<String, String> buildRoutingUserContext(
+            org.springframework.security.core.Authentication authentication) {
+
+        Map<String, String> context =
+                new java.util.HashMap<>();
+
+        if (authentication == null
+                || authentication.getName() == null
+                || authentication.getName().isBlank()) {
+            return context;
+        }
+
+        userRepository.findByEmail(authentication.getName())
+                .ifPresent(user -> {
+                    if (user.getName() != null
+                            && !user.getName().isBlank()) {
+                        context.put("name", user.getName());
+                    }
+
+                    if (user.getEmail() != null
+                            && !user.getEmail().isBlank()) {
+                        context.put("email", user.getEmail());
+                    }
+                });
+
+        return context;
     }
 
     private java.util.List<java.util.Map<String, String>> buildSources(

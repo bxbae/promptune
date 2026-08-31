@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from app.services.action.action_classifier import classify_action
 from app.services.action.action_types import ActionPlan, ActionType
 
@@ -33,14 +35,84 @@ _RETRIEVAL_ACTIONS = {
     ActionType.MIXED_RESEARCH,
 }
 
-# 8개 클래스의 random baseline은 약 0.125.
-# 현재 소규모 데이터셋에서는 정답 Top-1도 0.25~0.50 범위가 많으므로
-# 절대 확률 0.40을 요구하면 올바른 예측을 대부분 버리게 된다.
 _MIN_ACTION_CONFIDENCE = 0.25
 
 
-def resolve_action(query: str) -> ActionPlan:
-    predicted, confidence = classify_action(query)
+def _self_aliases(user_context: dict[str, str] | None) -> list[str]:
+    if not user_context:
+        return []
+
+    aliases: list[str] = []
+
+    for key in (
+        "name",
+        "displayName",
+        "email",
+        "microsoftEmail",
+    ):
+        value = str(user_context.get(key, "") or "").strip()
+
+        if not value:
+            continue
+
+        # 한 글자 이름이나 지나치게 짧은 값은 일반 문장 오치환 위험이 있다.
+        if len(value) < 2:
+            continue
+
+        if value not in aliases:
+            aliases.append(value)
+
+    return sorted(aliases, key=len, reverse=True)
+
+
+def normalize_action_query(
+    query: str,
+    user_context: dict[str, str] | None = None,
+) -> str:
+    """
+    Action classification에서만 현재 사용자 실명/메일을 1인칭 표현으로 정규화한다.
+
+    예:
+      현재 사용자 name=차승연
+      "차승연 이력서 알려줘" -> "내 이력서 알려줘"
+      "차승연의 경력 알려줘" -> "내 경력 알려줘"
+
+    원래 query 자체는 변경하지 않는다.
+    """
+    text = str(query or "").strip()
+
+    for alias in _self_aliases(user_context):
+        escaped = re.escape(alias)
+
+        # "차승연의 이력서" -> "내 이력서"
+        text = re.sub(
+            rf"{escaped}\s*의(?=\s|$)",
+            "내",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # "차승연 이력서" -> "내 이력서"
+        text = re.sub(
+            escaped,
+            "내",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def resolve_action(
+    query: str,
+    user_context: dict[str, str] | None = None,
+) -> ActionPlan:
+    routing_query = normalize_action_query(
+        query,
+        user_context,
+    )
+
+    predicted, confidence = classify_action(routing_query)
 
     try:
         action = ActionType(predicted)
@@ -52,9 +124,9 @@ def resolve_action(query: str) -> ActionPlan:
             sources=(),
             retrieval_route="no_retrieval",
             reason="unknown_action_safe_fallback",
+            routing_query=routing_query,
         )
 
-    # 충분한 의미 신호가 있는 경우 Action 결과를 그대로 사용한다.
     if confidence >= _MIN_ACTION_CONFIDENCE:
         return ActionPlan(
             action=action,
@@ -62,14 +134,14 @@ def resolve_action(query: str) -> ActionPlan:
             retrieval_required=action in _RETRIEVAL_ACTIONS,
             sources=_SOURCES_BY_ACTION[action],
             retrieval_route=_ROUTE_BY_ACTION[action],
-            reason="action_classifier",
+            reason=(
+                "action_classifier:self_reference_normalized"
+                if routing_query != str(query or "").strip()
+                else "action_classifier"
+            ),
+            routing_query=routing_query,
         )
 
-    # 중요한 정책:
-    # classifier가 확신하지 못한다고 해서 자동으로 Web 검색하지 않는다.
-    #
-    # 실제 Web/Internal의 강한 deterministic signal은 orchestrator의
-    # 기존 retrieval rule이 별도로 확인할 수 있게 빈 route를 반환한다.
     return ActionPlan(
         action=action,
         confidence=confidence,
@@ -77,4 +149,5 @@ def resolve_action(query: str) -> ActionPlan:
         sources=(),
         retrieval_route="",
         reason="low_confidence_needs_strong_signal",
+        routing_query=routing_query,
     )
