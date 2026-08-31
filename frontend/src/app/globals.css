@@ -842,3 +842,60 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
     padding: 7px 12px; font-size: 12px;
   }
 }
+
+
+.receiver-candidate-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-alt);
+}
+
+.receiver-candidate-card.selected {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.receiver-candidate-main {
+  min-width: 0;
+}
+
+.receiver-candidate-label {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.receiver-candidate-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.receiver-candidate-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.receiver-candidate-action {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.receiver-candidate-card.selected .receiver-candidate-action {
+  font-weight: 700;
+}

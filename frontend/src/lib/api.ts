@@ -112,7 +112,7 @@ export async function recordBehaviorAction(
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       element,
-      action,
+      action: action === "applied" ? "APPLY" : "REJECT",
       chatSessionId: chatSessionId ?? null,
     }),
   });

@@ -1,4 +1,5 @@
 "use client";
+import type { ReceiverProfile } from "@/api/receiverProfiles";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
