@@ -15,6 +15,7 @@ psycopg[binary]
 tavily-python
 pypdf
 python-docx
+python-pptx
 python-multipart
 PyMuPDF
 scikit-learn==1.7.2

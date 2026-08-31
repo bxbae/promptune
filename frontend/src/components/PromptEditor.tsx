@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
-import { uploadDocument, type DocumentItem } from "@/api/documents";
+import { uploadDocument, listDocuments, type DocumentItem, type DocType } from "@/api/documents";
 
 interface ElementUiMeta {
   label: string;
@@ -617,6 +617,20 @@ export default function PromptEditor({
     return `${base} ${addition}`.trim();
   }
 
+  // 파일명에 특정 키워드가 있으면 카테고리를 추측한다. 완벽한 분류는 아니고,
+  //"전부 기타로만 쌓이는" 문제를 줄이기 위한 간단한 휴리스틱.
+  // 더 정교하게 하려면 추후 AI 기반 분류로 교체 가능.
+  function guessDocumentType(filename: string): DocType {
+    const name = filename.toLowerCase();
+
+    if (/규정|정책|policy|규칙/.test(name)) return "규정";
+    if (/양식|템플릿|template|서식/.test(name)) return "양식";
+    if (/가이드|guide|매뉴얼|manual|안내/.test(name)) return "가이드";
+    if (/보고서|report|리포트/.test(name)) return "보고서";
+
+    return "기타";
+  }
+
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) {
       return;
@@ -639,32 +653,45 @@ export default function PromptEditor({
       const task = uploadDocument(
         file,
         file.name,
-        "기타",
+        guessDocumentType(file.name),
         undefined,
       )
-        .then((doc) => {
-          if (
-            doc.indexStatus &&
-            !["READY", "TEXT_READY"].includes(doc.indexStatus)
+        .then(async (doc) => {
+          // 업로드 자체(S3 저장 + DB row 생성)는 이미 성공한 상태.
+          // 인덱싱(검색 가능하게 만드는 작업)이 아직 안 끝났으면 실패가 아니라
+          // "처리 중"으로 보고, 최대 몇 차례 목록을 다시 조회하며 기다린다.
+          // (단일 조회 API가 없어서 목록 조회로 대체)
+          let current = doc;
+          let attempts = 0;
+          const maxAttempts = 5;
+
+          while (
+            current.indexStatus &&
+            !["READY", "TEXT_READY", "FAILED"].includes(current.indexStatus) &&
+            attempts < maxAttempts
           ) {
-            throw new Error(
-              doc.indexStatus === "FAILED"
-                ? `파일 분석에 실패했습니다: ${doc.indexError || file.name}`
-                : `파일이 아직 분석 준비 중입니다: ${file.name}`,
-            );
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const list = await listDocuments();
+            const found = list.find((d) => d.id === doc.id);
+            if (found) current = found;
+            attempts += 1;
           }
 
-          uploadedDocsRef.current.set(key, doc);
+          if (current.indexStatus === "FAILED") {
+            throw new Error(`파일 분석에 실패했습니다: ${current.indexError || file.name}`);
+          }
+
+          uploadedDocsRef.current.set(key, current);
 
           setAttachments((prev) =>
             prev.map((attachment) =>
               attachment.key === key
-                ? { ...attachment, status: "done", doc }
+                ? { ...attachment, status: "done", doc: current }
                 : attachment,
             ),
           );
 
-          return doc;
+          return current;
         })
         .catch((error) => {
           console.error("문서 업로드 실패:", error);
@@ -1254,7 +1281,7 @@ export default function PromptEditor({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.txt,.md"
+              accept=".pdf,.docx,.txt,.md,.xlsx,.pptx"
               multiple
               hidden
               onChange={(e) => {
@@ -1317,9 +1344,7 @@ export default function PromptEditor({
 
       {!compact && (
         <div className="hint">
-          <b>왜 이렇게 표시되나요?</b> KcELECTRA가 프롬프트의 8요소 충족 여부를
-          진단하고, 보완이 필요한 요소 중 우선순위가 높은 항목에 대해 추천
-          문구를 제안해요.
+          PrompTune이 프롬프트의 모호함을 진단하고, 보완이 필요한 요소 중 우선순위가 높은 항목에 대해 추천 문구를 제안해요.
         </div>
       )}
 
