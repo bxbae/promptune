@@ -1,4 +1,5 @@
 "use client";
+import type { ReceiverProfile } from "@/api/receiverProfiles";
 
 import {
   useCallback,
@@ -130,6 +131,8 @@ interface PromptEditorProps {
   // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 참고시킬 때 사용.
   quotedMessage?: { role: "user" | "assistant"; content: string } | null;
   onClearQuote?: () => void;
+  receiverProfiles?: ReceiverProfile[];
+  onReceiverProfileChange?: (profile: ReceiverProfile | null) => void;
 }
 
 type AttachmentState = {
@@ -147,8 +150,13 @@ export default function PromptEditor({
   chatSessionId,
   quotedMessage,
   onClearQuote,
+  receiverProfiles = [],
+  onReceiverProfileChange,
 }: PromptEditorProps = {}) {
   const [text, setText] = useState("");
+  const [selectedReceiverId, setSelectedReceiverId] = useState<number | null>(
+    null,
+  );
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const directEditsRef = useRef<DirectEdit[]>([]);
 
@@ -191,6 +199,26 @@ export default function PromptEditor({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const receiverCandidate =
+    receiverProfiles
+      .filter(
+        (profile) =>
+          profile.receiverName &&
+          text.includes(profile.receiverName),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() -
+          new Date(a.updatedAt).getTime(),
+      )[0] ?? null;
+
+  useEffect(() => {
+    if (!text && selectedReceiverId !== null) {
+      setSelectedReceiverId(null);
+      onReceiverProfileChange?.(null);
+    }
+  }, [text, selectedReceiverId, onReceiverProfileChange]);
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
   const anchorMarkerRef = useRef<HTMLSpanElement>(null);
@@ -1214,6 +1242,66 @@ export default function PromptEditor({
       )}
 
       <div className="composer-box">
+        {receiverCandidate && (
+          <div
+            className={`receiver-candidate-card ${
+              selectedReceiverId === receiverCandidate.id ? "selected" : ""
+            }`}
+          >
+            <div className="receiver-candidate-main">
+              <div className="receiver-candidate-label">
+                개인화 수신자 후보
+              </div>
+
+              <div className="receiver-candidate-name">
+                👤 {receiverCandidate.receiverName}
+              </div>
+
+              <div className="receiver-candidate-meta">
+                {receiverCandidate.relationship && (
+                  <span>{receiverCandidate.relationship}</span>
+                )}
+
+                {receiverCandidate.preferredTone && (
+                  <span>선호 톤 {receiverCandidate.preferredTone}</span>
+                )}
+
+                {receiverCandidate.updatedAt && (
+                  <span>
+                    최근 학습{" "}
+                    {new Date(
+                      receiverCandidate.updatedAt,
+                    ).toLocaleDateString("ko-KR")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="receiver-candidate-action"
+              aria-pressed={selectedReceiverId === receiverCandidate.id}
+              onClick={() => {
+                const selecting =
+                  selectedReceiverId !== receiverCandidate.id;
+
+                setSelectedReceiverId(
+                  selecting ? receiverCandidate.id : null,
+                );
+
+                onReceiverProfileChange?.(
+                  selecting ? receiverCandidate : null,
+                );
+
+                textareaRef.current?.focus();
+              }}
+            >
+              {selectedReceiverId === receiverCandidate.id
+                ? "적용됨 ✓"
+                : "적용"}
+            </button>
+          </div>
+        )}
         {quotedMessage && (
           <div className="quote-preview">
             <div className="quote-preview-body">
@@ -1272,6 +1360,18 @@ export default function PromptEditor({
             onChange={(e) => {
               const value = e.target.value;
               setText(value);
+
+              if (selectedReceiverId !== null) {
+                const selected = receiverProfiles.find(
+                  (profile) => profile.id === selectedReceiverId,
+                );
+
+                if (!selected || !value.includes(selected.receiverName)) {
+                  setSelectedReceiverId(null);
+                  onReceiverProfileChange?.(null);
+                }
+              }
+
               scheduleAnalyze(value);
             }}
             onCompositionStart={() => {

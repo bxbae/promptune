@@ -48,8 +48,13 @@ interface Message {
 // 실제 개체명 인식X >> **님, **씨 패턴만 잡아내는 정규식
 // 정식 8요소 분석 파이프라인이 붙기 전까지의 임시 로직
 function detectReceiverName(prompt: string): string | null {
-  const match = prompt.match(/([가-힣]{2,4})(님|씨)/);
-  return match ? match[1] : null;
+  const titleMatch = prompt.match(
+    /([가-힣]{1,4}(?:사원|대리|과장|차장|팀장|부장|이사|상무|전무))(?:님|씨)?(?=께|에게|한테|\s|$)/,
+  );
+  if (titleMatch) return titleMatch[1];
+
+  const honorificMatch = prompt.match(/([가-힣]{2,4})(?:님|씨)/);
+  return honorificMatch ? honorificMatch[1] : null;
 }
 
 // TODO: 목업 - 나중에 백엔드/ai-service 실제 스타일 분석 붙으면 이 배열 자체를 없애고
@@ -172,6 +177,9 @@ export default function ChatThreadPage() {
 
   // 저장된 개인화 데이터가 없는 수신자가 감지됐을 때 뜨는 동의 카드 (한 번에 1개)
   const [receiverProfiles, setReceiverProfiles] = useState<ReceiverProfile[]>([]);
+  const [selectedReceiverProfileId, setSelectedReceiverProfileId] = useState<
+    number | null
+  >(null);
   const [pendingConsent, setPendingConsent] = useState<
     { name: string; forMessageId: string; saving: boolean; done: boolean } | null
   >(null);
@@ -427,10 +435,12 @@ export default function ChatThreadPage() {
     abortControllerRef.current = controller;
 
     // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
-    const detectedBeforeGen = detectReceiverName(prompt);
-    const matchedProfile = detectedBeforeGen
-      ? receiverProfiles.find((p) => p.receiverName === detectedBeforeGen)
-      : undefined;
+    const matchedProfile =
+      selectedReceiverProfileId !== null
+        ? receiverProfiles.find(
+            (profile) => profile.id === selectedReceiverProfileId,
+          )
+        : undefined;
 
     try {
       const documentIds = attachments.map((a) => a.id);
@@ -907,6 +917,10 @@ export default function ChatThreadPage() {
         chatSessionId={chatSessionId}
         quotedMessage={quotedMessage}
         onClearQuote={() => setQuotedMessage(null)}
+        receiverProfiles={receiverProfiles}
+        onReceiverProfileChange={(profile) =>
+          setSelectedReceiverProfileId(profile?.id ?? null)
+        }
       />
     </div>
   )
