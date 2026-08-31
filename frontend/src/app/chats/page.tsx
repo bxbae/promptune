@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { listChatSessions, updateChatTitle, deleteChatSession, ChatSession } from "@/api/chatSessions";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -28,6 +29,8 @@ export default function ChatsPage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     listChatSessions()
@@ -92,19 +95,28 @@ export default function ChatsPage() {
     }
   }
 
-  // 채팅 삭제
-  async function handleDeleteChat(c: ChatSession) {
+  // 채팅 삭제 - 모달 띄움
+  function handleDeleteChat(c: ChatSession) {
     setOpenMenuId(null);
-    if (!confirm(`"${c.title || `대화 #${c.id}`}" 대화를 삭제할까요?`)) return;
+    setDeleteTarget(c);
+  }
+
+  async function confirmDeleteChat() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
     try {
-      await deleteChatSession(c.id);
-      setChats((prev) => prev.filter((x) => x.id !== c.id));
+      await deleteChatSession(deleteTarget.id);
+      setChats((prev) => prev.filter((x) => x.id !== deleteTarget.id));
       // AppShell 사이드바가 이미 듣고 있는 이벤트 재사용 - 이 페이지에서 지워도 사이드바 목록에서 같이 빠짐
       window.dispatchEvent(
-        new CustomEvent("chat-session-deleted", { detail: { chatSessionId: c.id } })
+        new CustomEvent("chat-session-deleted", { detail: { chatSessionId: deleteTarget.id } })
       );
+      setDeleteTarget(null);
     } catch (e: any) {
       alert(e.message || "삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -196,6 +208,17 @@ export default function ChatsPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="채팅 삭제"
+        message={`"${deleteTarget?.title || `대화 #${deleteTarget?.id}`}" 대화를 삭제할까요?`}
+        confirmLabel="삭제"
+        danger
+        loading={deleting}
+        onConfirm={confirmDeleteChat}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

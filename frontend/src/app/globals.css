@@ -11,10 +11,10 @@
   --accent: #55806a;     /* Primary 초록 (버튼·선택 칩·뱃지) */
   --accent-soft: #a8c5b1;/* 선택 상태 연한 초록 */
   --accent-tint: #e4ede7;/* 아주 옅은 초록 배경 */
-  --miss: #e64b3c;       /* 모호/누락 표시, 빨간 밑줄 */
+  --miss: #dd5e3e;       /* 모호/누락 표시, 빨간 밑줄 */
   --miss-tint: #fce6e2;  /* 빨간 계열 옅은 배경(호버·삭제) */
   --ok: #55806a;         /* 충족/완료 = Primary와 동일 */
-  --block: #e64b3c;      /* 차단·에러 = 빨강과 동일 */
+  --block: #dd5e3e;      /* 차단·에러 = 빨강과 동일 */
   --mono: "맑은 고딕", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -22,8 +22,8 @@
 [data-theme="dark"] {
   --bg: #272727; --panel: #313131; --panel-alt: #464646; --sidebar-tint: #3d413d;
   --line: #4f5250; --ink: #e8eef4; --muted: #adb3af; --accent: #55806a;
-  --accent-soft: #2f5d47; --accent-tint: rgba(74, 222, 131, 0.12);
-  --miss: #f0a04b; --miss-tint: rgba(240,160,75,0.12); --ok: #55806a; --block: #e06060;
+  --accent-soft: #2f5d47; --accent-tint: #4ade831f;
+  --miss: #f0a04b; --miss-tint: #f0a04b1f; --ok: #55806a; --block: #e08460;
   --active: #d4d4d4;
 }
 * { box-sizing: border-box; margin: 0; }
@@ -36,22 +36,16 @@ body {
 
 /* 파일관리/히스토리/대시보드/설정 전용 레이아웃. */
 .page-fixed {
-  height: 100vh;
+  min-height: 100vh;
   position: absolute;
   width: 733px;
   left: max(0px, calc(50% - 366.5px));
-  padding: 48px 0;
+  padding: 48px 0 20px;
 }
 
 .head { width: fit-content;position: relative; left: 50%; transform: translateX(-50%); }
 .head h1 { font-size: 32px; letter-spacing: -0.03em; }
 .head p { color: var(--muted); margin-top: 6px; }
-// TODO: 실제 배포 시 mock-tag 문구 제거
-.mock-tag {
-  display: inline-block; margin-top: 12px; padding: 3px 10px;
-  font-size: 12px; color: var(--accent); border: 1px solid var(--line);
-  border-radius: 99px; font-family: var(--mono);
-}
 
 .eyebrow {
   font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
@@ -997,6 +991,9 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: inherit;
 }
 .modal-submit:disabled { opacity: 0.6; cursor: default; }
+
+.confirm-dialog-message { margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.modal-submit-danger { background: var(--block); }
 
 /* 문서형(doc/pdf) 미리보기 — 텍스트 줄 목업 */
 .preview-doc {

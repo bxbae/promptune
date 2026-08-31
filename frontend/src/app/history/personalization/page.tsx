@@ -1,36 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getPreference, upsertPreference } from "@/api/userPreferences";
+import { PREF_QUESTIONS, type QKey } from "@/lib/preferenceQuestions";
 import PersonalizationDataActions from "./PersonalizationDataActions";
-
-// TODO: onboarding/page.tsx의 QUESTIONS와 완전히 동일. 공용 상수 파일로 분리 고려
-type QKey = "speed" | "detail" | "preserve";
-const QUESTIONS: { key: QKey; title: string; options: { value: string; label: string; desc: string }[] }[] = [
-  {
-    key: "speed",
-    title: "1. 속도 vs 정확도",
-    options: [
-      { value: "fast", label: "빠르게", desc: "짧게 다듬고 바로 다음 작업으로" },
-      { value: "accurate", label: "정확하게", desc: "시간이 걸려도 꼼꼼하게 검토" },
-    ],
-  },
-  {
-    key: "detail",
-    title: "2. 설명 분량",
-    options: [
-      { value: "brief", label: "간결하게", desc: "핵심만 짧게, 바로 적용" },
-      { value: "detailed", label: "자세하게", desc: "추천 근거까지 알고 싶어요" },
-    ],
-  },
-  {
-    key: "preserve",
-    title: "3. 원문 존중도",
-    options: [
-      { value: "keep", label: "최대한 유지", desc: "빠진 조건만 채우고 말투는 그대로" },
-      { value: "improve", label: "적극적 보완", desc: "더 매끄러운 쪽으로 바꿔도 OK" },
-    ],
-  },
-];
 
 export default function PersonalizationPage() {
   const [answers, setAnswers] = useState<Partial<Record<QKey, string>>>({});
@@ -90,7 +62,7 @@ export default function PersonalizationPage() {
           marginTop: 20,
         }}
       >
-        {QUESTIONS.map((q) => (
+        {PREF_QUESTIONS.map((q) => (
           <div
             key={q.key}
             style={{
@@ -118,7 +90,7 @@ export default function PersonalizationPage() {
                       textAlign: "center", whiteSpace: "nowrap",
                     }}
                   >
-                    {opt.label}
+                    {opt.summaryLabel ?? opt.label}
                   </button>
                 );
               })}

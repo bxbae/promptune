@@ -9,6 +9,7 @@ import {
   DocumentItem,
   DocType,
 } from "@/api/documents";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Category = "전체" | DocType;
 const TABS: Category[] = ["전체", "규정", "양식", "가이드", "보고서", "기타"];
@@ -51,6 +52,8 @@ export default function FilesPage() {
   const [showUpload, setShowUpload] = useState(false);
   // 파일 id -> 실제로 읽어온 앞부분 텍스트 (txt/md 썸네일용). 아직 안 불러왔으면 키 자체가 없음.
   const [textPreviews, setTextPreviews] = useState<Record<number, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function refresh() {
     setLoading(true);
@@ -122,15 +125,23 @@ export default function FilesPage() {
     }
   }
 
-  // 삭제
-  async function handleDelete(f: DocumentItem) {
+  // 삭제 - 모달 띄움
+  function handleDelete(f: DocumentItem) {
     setOpenMenuId(null);
-    if (!confirm(`"${f.title}" 파일을 삭제할까요?`)) return;
+    setDeleteTarget(f);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(f.id);
-      setFiles((prev) => prev.filter((x) => x.id !== f.id));
+      await deleteDocument(deleteTarget.id);
+      setFiles((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+      setDeleteTarget(null);
     } catch (e: any) {
       alert(e.message || "삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -252,21 +263,20 @@ pre {
         <div className="files-grid">
           {visible.map((file) => (
             <div
-                className="file-card"
-                key={file.id}
-                onClick={() => {
-                  if (editingId !== file.id) void handleOpen(file);
-                }}
-              >
+              className="file-card"
+              key={file.id}
+              onClick={() => {
+                if (editingId !== file.id) void handleOpen(file);
+              }}
+            >
               <div className="file-thumb">
-                {/* TODO: 카테고리별 배지 색상 구분 원하면 documentType 기준으로 클래스 분기 추가 */}
                 <span className="file-badge">{file.documentType}</span>
                 <button
                   className="file-menu-btn"
                   onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenMenuId(openMenuId === file.id ? null : file.id);
-                    }}
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === file.id ? null : file.id);
+                  }}
                   aria-label="파일 옵션"
                 >
                   <img src="/icons/dots.png" />
@@ -279,9 +289,9 @@ pre {
 
                 {openMenuId === file.id && (
                   <div
-                      className="file-menu"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    className="file-menu"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <button onClick={() => startEdit(file)}>수정</button>
                     <button className="danger" onClick={() => handleDelete(file)}>삭제</button>
                   </div>
@@ -302,37 +312,37 @@ pre {
                 </div>
 
                 {editingId === file.id && (
-                <div
+                  <div
                     className="file-edit-dropdown"
                     onClick={(e) => e.stopPropagation()}
                   >
-                  <input
-                    className="file-edit-input"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    placeholder="제목"
-                    autoFocus
-                  />
-                  <input
-                    className="file-edit-input"
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    placeholder="설명 (선택)"
-                  />
+                    <input
+                      className="file-edit-input"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="제목"
+                      autoFocus
+                    />
+                    <input
+                      className="file-edit-input"
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      placeholder="설명 (선택)"
+                    />
 
-                  <select value={editDocType} onChange={(e) => setEditDocType(e.target.value as DocType)}>
-                    {DOC_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    <select value={editDocType} onChange={(e) => setEditDocType(e.target.value as DocType)}>
+                      {DOC_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
 
-                  <div className="file-edit-actions">
-                  <button className="file-edit-save" onClick={() => saveEdit(file.id)}>저장</button>
-                  <button className="file-edit-cancel" onClick={() => setEditingId(null)}>취소</button>
-                </div>
-                </div>
-              )}
-            </div>
+                    <div className="file-edit-actions">
+                      <button className="file-edit-save" onClick={() => saveEdit(file.id)}>저장</button>
+                      <button className="file-edit-cancel" onClick={() => setEditingId(null)}>취소</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -346,7 +356,7 @@ pre {
       )}
 
       {showUpload && (
-        <UploadModal 
+        <UploadModal
           onClose={() => setShowUpload(false)}
           onUploaded={(doc) => {
             setFiles((prev) => [doc, ...prev]);
@@ -354,6 +364,17 @@ pre {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="파일 삭제"
+        message={`"${deleteTarget?.title}" 파일을 삭제할까요?`}
+        confirmLabel="삭제"
+        danger
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
