@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { listChatSessions, updateChatTitle, deleteChatSession, ChatSession } from "@/api/chatSessions";
 import { getCurrentUser, logout, CurrentUser } from "@/lib/auth";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
 
@@ -19,7 +20,6 @@ interface AppShellProps {
   onNewChat?: () => void;
   userEmail?: string;
   onLogout?: () => void;
-  // onSwitchAccount?: () => void;
   children: React.ReactNode;
 }
 
@@ -29,7 +29,6 @@ export default function AppShell({
   onNewChat,
   userEmail,
   onLogout,
-  // onSwitchAccount,
   children,
 }: AppShellProps) {
   const [dark, setDark] = useState(false);
@@ -39,10 +38,11 @@ export default function AppShell({
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const router = useRouter();
   const pathname = usePathname();
-  // const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   // 실제 백엔드에서 채팅 목록을 다시 조회
@@ -98,27 +98,36 @@ export default function AppShell({
     }
   }
 
-  // 채팅 삭제
-  async function handleDeleteChat(c: ChatSession) {
+  // 채팅 삭제 - 모달 띄움
+  function handleDeleteChat(c: ChatSession) {
     setOpenMenuId(null);
-    if (!confirm(`"${c.title || `대화 #${c.id}`}" 대화를 삭제할까요?`)) return;
+    setDeleteTarget(c);
+  }
+    
+  async function confirmDeleteChat() { 
+    if (!deleteTarget) return;
+    setDeleting(true);
+
     try {
-      await deleteChatSession(c.id);
-      setRecentChats((prev) => prev.filter((x) => x.id !== c.id));
+      await deleteChatSession(deleteTarget.id);
+      setRecentChats((prev) => prev.filter((x) => x.id !== deleteTarget.id));
 
       // /chats 목록 페이지가 열려있는 경우 그쪽 목록도 실시간으로 갱신되도록 알림
       window.dispatchEvent(
         new CustomEvent("chat-session-deleted", {
-          detail: { chatSessionId: c.id },
+          detail: { chatSessionId: deleteTarget.id },
         })
       );
       
       // 지금 보고 있는 대화를 삭제한 경우 채팅 목록으로 이동
-      if (pathname === `/chat/${c.id}`) {
+      if (pathname === `/chat/${deleteTarget.id}`) {
         router.push("/chats");
       }
+      setDeleteTarget(null);
     } catch (e: any) {
       alert(e.message || "삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -141,13 +150,6 @@ export default function AppShell({
     };
   }, []);
 
-  /* // 최근 채팅 목록 — 경로가 바뀔 때마다 다시 불러와서, 방금 만든 대화가 바로 보이게 함
-  useEffect(() => {
-    listChatSessions()
-      .then((chats) => setRecentChats(chats))
-      .catch(() => setRecentChats([])); // 로그인 전이거나 실패하면 그냥 빈 목록
-  }, [pathname]); */
-
   // 저장된 다크모드 · 사이드바 접힘 상태 복원
   useEffect(() => {
     if (localStorage.getItem("pt_theme") === "dark") setDark(true);
@@ -169,19 +171,6 @@ export default function AppShell({
   useEffect(() => {
     localStorage.setItem("pt_sidebar_collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
-
-  // 계정 메뉴 바깥 클릭 시 닫기
-  /* useEffect(() => {
-    if (!accountMenuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
-        setAccountMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [accountMenuOpen]); */
-
 
   // 프로필 사진 대신 이메일 첫 글자와 이름 표시
   const displayEmail = currentUser?.email || userEmail || "guest@promptune.dev";
@@ -333,9 +322,7 @@ export default function AppShell({
             <button
               type="button"
               className="user-row"
-              // onClick={() => setAccountMenuOpen((v) => !v)}
               aria-haspopup="menu"
-              // aria-expanded={accountMenuOpen}
               title={displayEmail}
             >
               <span className="avatar">{initial}</span>
@@ -344,22 +331,6 @@ export default function AppShell({
                 <span className="user-email">{displayEmail}</span>
               </span>
             </button>
-
-            {/*{accountMenuOpen && (
-              <div className="account-menu" role="menu">
-                <button
-                  type="button"
-                  className="account-menu-item"
-                  role="menuitem"
-                  onClick={() => {
-                    setAccountMenuOpen(false);
-                    onSwitchAccount?.();
-                  }}
-                >
-                  계정 전환
-                </button>
-              </div>
-            )}*/}
           </div>
 
           {/* 로그아웃 버튼 */}
@@ -373,6 +344,17 @@ export default function AppShell({
 
       {/* 메인 컨텐츠 */}
       <main className="content">{children}</main>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="채팅 삭제"
+        message={`"${deleteTarget?.title || `대화 #${deleteTarget?.id}`}" 대화를 삭제할까요?`}
+        confirmLabel="삭제"
+        danger
+        loading={deleting}
+        onConfirm={confirmDeleteChat}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

@@ -1747,8 +1747,7 @@ export default function PromptEditor({
 
       {!compact && (
         <div className="hint">
-          PrompTune이 프롬프트의 모호함을 진단하고, 보완이 필요한 요소 중
-          우선순위가 높은 항목에 대해 추천 문구를 제안해요.
+          <b>PrompTune</b>이 프롬프트의 모호함을 진단하고, 보완이 필요한 요소 중 우선순위가 높은 항목에 대해 추천 문구를 제안해요.
         </div>
       )}
 
