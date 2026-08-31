@@ -11,7 +11,10 @@ from app.schemas.models import (
     SuggestRequest,
     SuggestResponse,
     Suggestion,
+    SuggestionAnchor,
 )
+
+from app.services.anchor_selector import select_anchor
 from app.services.diagnose_real import predict_missing_with_rules
 from app.services.hcx_runtime import (
     hcx_lock,
@@ -871,11 +874,20 @@ def suggest(
             :MAX_EXPOSED_CANDIDATES
         ]
 
+        anchor = select_anchor(
+            req.text,
+            element,
+        )
+
         suggestions.append(
             Suggestion(
                 element=element,
                 primary=exposed_candidates[0],
                 alternatives=exposed_candidates[1:],
+                anchor=SuggestionAnchor(
+                    sentence_index=anchor.sentence_index,
+                    char_offset=anchor.char_offset,
+                ),
             )
         )
 
