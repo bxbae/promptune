@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from functools import lru_cache
 
 import numpy as np
@@ -333,6 +334,207 @@ def retrieve_scoped_lexical(
 
     return RetrieveResponse(documents=documents)
 
+
+
+_INTERNAL_QUERY_STOP_WORDS = {
+    "우리회사",
+    "우리",
+    "회사",
+    "사내",
+    "내부",
+    "내부문서",
+    "문서함",
+    "업로드한",
+    "있는",
+    "있어",
+    "있나요",
+    "알려줘",
+    "알려주세요",
+    "보여줘",
+    "찾아줘",
+    "해줘",
+}
+
+
+def _nfc_text(value) -> str:
+    return unicodedata.normalize(
+        "NFC",
+        str(value or ""),
+    )
+
+
+def _metadata_query_tokens(query: str) -> list[str]:
+    tokens = re.findall(
+        r"[가-힣A-Za-z0-9_]{2,}",
+        _nfc_text(query).lower(),
+    )
+
+    return [
+        token
+        for token in tokens
+        if token not in _INTERNAL_QUERY_STOP_WORDS
+    ]
+
+
+def retrieve_document_catalog(
+    owner_user_id: int,
+    *,
+    limit: int = 50,
+) -> RetrieveResponse:
+    """
+    '내부문서에 뭐 있어?' 같은 catalog 요청.
+
+    chunk embedding 검색을 하지 않고 사용자가 접근 가능한 documents
+    metadata를 직접 조회한다.
+    """
+    sql = """
+SELECT
+    d.id,
+    d.title,
+    d.document_type,
+    d.description
+FROM documents d
+WHERE d.owner_user_id = %s
+ORDER BY d.id DESC
+LIMIT %s
+"""
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (
+                    owner_user_id,
+                    max(1, min(int(limit), 100)),
+                ),
+            )
+            rows = cur.fetchall()
+
+    documents = []
+
+    for (
+        document_id,
+        title,
+        document_type,
+        description,
+    ) in rows:
+        metadata_text = (
+            f"파일명: {title}\n"
+            f"문서 유형: {document_type or 'OTHER'}"
+        )
+
+        if description:
+            metadata_text += (
+                f"\n설명: {description}"
+            )
+
+        documents.append(
+            Document(
+                document_id=int(document_id),
+                chunk_id=None,
+                chunk_index=None,
+                title=str(title or ""),
+                document_type=(
+                    document_type or "OTHER"
+                ),
+                description=description,
+                content=metadata_text,
+                score=1.0,
+            )
+        )
+
+    return RetrieveResponse(
+        documents=documents
+    )
+
+
+def find_metadata_document_ids(
+    owner_user_id: int,
+    query: str,
+    *,
+    limit: int = 5,
+) -> list[int]:
+    """
+    내부문서 lookup의 1단계.
+
+    title / description / document_type metadata를 이용해 문서 후보를
+    먼저 고른다. 이후 실제 내용 retrieval은 해당 document_id 안에서
+    수행한다.
+    """
+    tokens = _metadata_query_tokens(query)
+
+    if not tokens:
+        return []
+
+    sql = """
+SELECT
+    d.id,
+    d.title,
+    d.document_type,
+    d.description
+FROM documents d
+WHERE d.owner_user_id = %s
+ORDER BY d.id DESC
+"""
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (owner_user_id,),
+            )
+            rows = cur.fetchall()
+
+    scored = []
+
+    for (
+        document_id,
+        title,
+        document_type,
+        description,
+    ) in rows:
+        title_text = _nfc_text(title).lower()
+        description_text = _nfc_text(
+            description
+        ).lower()
+        type_text = _nfc_text(
+            document_type
+        ).lower()
+
+        score = 0.0
+
+        for token in tokens:
+            if token in title_text:
+                score += 4.0
+
+            if token in description_text:
+                score += 2.0
+
+            if token in type_text:
+                score += 1.5
+
+        if score > 0:
+            scored.append(
+                (
+                    score,
+                    int(document_id),
+                )
+            )
+
+    scored.sort(
+        key=lambda item: (
+            item[0],
+            item[1],
+        ),
+        reverse=True,
+    )
+
+    return [
+        document_id
+        for _, document_id in scored[
+            : max(1, min(limit, 10))
+        ]
+    ]
 
 def retrieve(req: RetrieveRequest) -> RetrieveResponse:
     top_k = max(1, min(int(req.top_k), 10))

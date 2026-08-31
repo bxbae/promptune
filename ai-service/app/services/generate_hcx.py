@@ -30,6 +30,65 @@ def _build_internal_context(
     return build_internal_context(req.documents)
 
 
+_WEB_FACT_MARKERS = (
+    "본명",
+    "실명",
+    "생년월일",
+    "출생",
+    "소속",
+    "직책",
+    "등번호",
+    "경력",
+    "프로필",
+)
+
+
+def _compact_web_content(
+    content: str,
+    *,
+    max_chars: int = 700,
+) -> str:
+    """
+    검색 결과의 첫 N자만 자르면 프로필의 본명/소속 같은 핵심 사실이
+    뒤쪽에 있을 때 HCX가 실제 evidence를 보지 못한다.
+
+    전체 본문을 넣어 context를 폭증시키지 않고,
+    첫 부분 + 중요 사실 marker 주변 snippet만 보존한다.
+    """
+    text = str(content or "").strip()
+
+    if len(text) <= max_chars:
+        return text
+
+    segments = [text[:260]]
+    seen = {segments[0]}
+
+    for marker in _WEB_FACT_MARKERS:
+        position = text.find(marker)
+
+        if position < 0:
+            continue
+
+        start = max(
+            0,
+            position - 80,
+        )
+        end = min(
+            len(text),
+            position + 220,
+        )
+
+        snippet = text[start:end].strip()
+
+        if snippet and snippet not in seen:
+            segments.append(snippet)
+            seen.add(snippet)
+
+    compact = "\n...\n".join(segments)
+
+    return compact[:max_chars]
+
+
 def _build_web_context(web_results: list[dict]) -> str:
     if not web_results:
         return "없음"
@@ -55,8 +114,9 @@ def _build_web_context(web_results: list[dict]) -> str:
         # PipelineController.java) 결과당 본문도 600자로 다시 늘림 -
         # 3개 x 600자 = 최대 1800자로, 문제가 됐던 3600자보다는 여전히
         # 작게 유지해 안전 마진을 둠.
-        if len(content) > 600:
-            content = content[:600]
+        content = _compact_web_content(
+            content
+        )
 
         parts.append(
             f"[웹 검색 결과 {index}]\n"

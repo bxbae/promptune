@@ -187,6 +187,8 @@ class GenerateResponse(BaseModel):
 class ValidateRequest(BaseModel):
     original: str
     generated: str
+    documents: list[Document] = Field(default_factory=list)
+    web_results: list[WebSearchResult] = Field(default_factory=list)
 
 
 class ValidateResponse(BaseModel):

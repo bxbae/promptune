@@ -25,6 +25,8 @@ from app.services.retrieval.evidence_selector import select_web_evidence
 from app.services.retrieval.rag_retriever import (
     retrieve,
     retrieve_document_overview,
+    retrieve_document_catalog,
+    find_metadata_document_ids,
 )
 
 
@@ -188,6 +190,66 @@ def _should_auto_use_web_with_internal(
     return has_comparison and has_external_reference
 
 
+
+_DOCUMENT_CATALOG_PHRASES = (
+    "내부문서에 뭐",
+    "내부 문서에 뭐",
+    "내부문서에는 뭐",
+    "내부 문서에는 뭐",
+    "내부문서 무슨 파일",
+    "내부 문서 무슨 파일",
+    "내부문서에는 무슨 파일",
+    "내부 문서에는 무슨 파일",
+    "사내문서에 뭐",
+    "사내 문서에 뭐",
+    "문서함에 뭐",
+    "문서함에는 뭐",
+)
+
+
+def _is_document_catalog_query(
+    query: str,
+) -> bool:
+    text = " ".join(
+        str(query or "").lower().split()
+    )
+
+    compact = "".join(
+        text.split()
+    )
+
+    if any(
+        "".join(phrase.split()) in compact
+        for phrase in _DOCUMENT_CATALOG_PHRASES
+    ):
+        return True
+
+    has_internal_scope = any(
+        marker in compact
+        for marker in (
+            "내부문서",
+            "사내문서",
+            "문서함",
+        )
+    )
+
+    has_catalog_intent = any(
+        marker in compact
+        for marker in (
+            "뭐있",
+            "무슨파일",
+            "목록",
+            "리스트",
+            "어떤문서",
+        )
+    )
+
+    return (
+        has_internal_scope
+        and has_catalog_intent
+    )
+
+
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
@@ -219,23 +281,18 @@ def execute_retrieval(
                 req.routing_user_context,
             )
 
-            if action_plan.retrieval_route:
+            # 명시적인 내부 문서 범위, 실시간 사실, 외부 entity/profile 등
+            # source가 확실한 deterministic signal은 ML Action보다 우선한다.
+            strong_route = resolve_strong_retrieval_route(
+                action_plan.routing_query
+            )
+
+            if strong_route is not None:
+                route = strong_route
+            elif action_plan.retrieval_route:
                 route = action_plan.retrieval_route
             else:
-                # ActionClassifier가 확신하지 못한 경우에는 기존 LinearSVC의
-                # 결과를 그대로 사용하지 않는다.
-                #
-                # 대신 문서/실시간 사실/외부 entity/profile처럼 ML과 무관하게
-                # source가 명확한 strong signal만 허용한다.
-                strong_route = resolve_strong_retrieval_route(
-                    action_plan.routing_query
-                )
-
-                route = (
-                    strong_route
-                    if strong_route is not None
-                    else "no_retrieval"
-                )
+                route = "no_retrieval"
 
             print(
                 "[Action] "
@@ -261,28 +318,65 @@ def execute_retrieval(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
             )
 
-        if (
-            document_ids
-            and (
+        if document_ids:
+            # 이미 Backend가 실제 문서 ID를 확정해서 보냈다면
+            # catalog/metadata discovery보다 이 ID가 가장 강한 source of truth다.
+            if (
                 _is_document_overview_query(req.query)
                 or _is_document_transform_query(req.query)
-            )
-        ):
-            # "이거 무슨 내용이야?" / 전체 요약은 semantic Top-1이 아니라
-            # document chunk를 원래 순서대로 읽는다.
-            result = retrieve_document_overview(
+            ):
+                result = retrieve_document_overview(
+                    owner_user_id=req.owner_user_id,
+                    document_ids=document_ids,
+                )
+            else:
+                retrieve_req = RetrieveRequest(
+                    query=effective_query,
+                    owner_user_id=req.owner_user_id,
+                    top_k=req.top_k,
+                    document_ids=document_ids,
+                )
+
+                result = retrieve(
+                    retrieve_req
+                )
+
+        elif _is_document_catalog_query(req.query):
+            # "내부문서에는 무슨 파일이 있어?"는 chunk 검색이 아니라
+            # 접근 가능한 documents metadata 목록을 조회한다.
+            result = retrieve_document_catalog(
                 owner_user_id=req.owner_user_id,
-                document_ids=document_ids,
-            )
-        else:
-            retrieve_req = RetrieveRequest(
-                query=effective_query,
-                owner_user_id=req.owner_user_id,
-                top_k=req.top_k,
-                document_ids=document_ids,
             )
 
-            result = retrieve(retrieve_req)
+        else:
+            # 명시적으로 선택된 document_id가 없으면 title/type/description을
+            # 사용해 관련 내부문서 후보를 먼저 찾는다.
+            metadata_document_ids = find_metadata_document_ids(
+                owner_user_id=req.owner_user_id,
+                query=effective_query,
+                limit=5,
+            )
+
+            if metadata_document_ids:
+                # 문서 자체가 특정된 경우에는 semantic Top-K 한 조각보다
+                # 해당 문서의 실제 내용을 순서대로 읽는 편이 안전하다.
+                result = retrieve_document_overview(
+                    owner_user_id=req.owner_user_id,
+                    document_ids=metadata_document_ids,
+                )
+            else:
+                # metadata에서도 특정 문서를 찾지 못한 경우에만
+                # 기존 BGE-M3 semantic retrieval로 fallback한다.
+                retrieve_req = RetrieveRequest(
+                    query=effective_query,
+                    owner_user_id=req.owner_user_id,
+                    top_k=req.top_k,
+                    document_ids=[],
+                )
+
+                result = retrieve(
+                    retrieve_req
+                )
 
         documents = result.documents
         used_internal_rag = bool(documents)
