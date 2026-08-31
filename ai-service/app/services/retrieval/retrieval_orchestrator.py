@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.action.action_resolver import resolve_action
+
 import re
 
 from app.schemas.models import (
@@ -9,7 +11,10 @@ from app.schemas.models import (
     WebSearchResult,
 )
 
-from app.services.retrieval.ml_router import classify_ml_retrieval_route
+from app.services.retrieval.ml_router import (
+    classify_ml_retrieval_route,
+    resolve_strong_retrieval_route,
+)
 from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
@@ -205,11 +210,37 @@ def execute_retrieval(
             history=req.history,
         )
         effective_query = conversation.query
-        route = (
-            conversation.route_override
-            if conversation.route_override is not None
-            else classify_ml_retrieval_route(effective_query)
-        )
+        if conversation.route_override is not None:
+            route = conversation.route_override
+            action_plan = None
+        else:
+            action_plan = resolve_action(effective_query)
+
+            if action_plan.retrieval_route:
+                route = action_plan.retrieval_route
+            else:
+                # ActionClassifier가 확신하지 못한 경우에는 기존 LinearSVC의
+                # 결과를 그대로 사용하지 않는다.
+                #
+                # 대신 문서/실시간 사실/외부 entity/profile처럼 ML과 무관하게
+                # source가 명확한 strong signal만 허용한다.
+                strong_route = resolve_strong_retrieval_route(
+                    effective_query
+                )
+
+                route = (
+                    strong_route
+                    if strong_route is not None
+                    else "no_retrieval"
+                )
+
+            print(
+                "[Action] "
+                f"action={action_plan.action.value!r} "
+                f"confidence={action_plan.confidence:.3f} "
+                f"sources={action_plan.sources!r} "
+                f"reason={action_plan.reason!r}"
+            )
 
     print(f"[Retrieval] route={route!r} effective_query={effective_query!r}")
 

@@ -270,7 +270,13 @@ def _is_external_subject_summary_query(query: str) -> bool:
     return has_about and has_ask and not has_first_person and not has_internal_topic
 
 
-def classify_ml_retrieval_route(query: str) -> str:
+def resolve_strong_retrieval_route(query: str) -> str | None:
+    """
+    ML 예측과 무관하게 retrieval source가 명확한 질의를 먼저 판정한다.
+
+    이 함수의 반환값은 confidence가 낮은 ActionClassifier 결과보다 우선할 수 있다.
+    명백한 문서 참조, 실시간 사실, 외부 entity/profile 같은 경우만 다룬다.
+    """
     if _is_restricted(query):
         return "not_rag_or_restricted"
 
@@ -285,6 +291,15 @@ def classify_ml_retrieval_route(query: str) -> str:
 
     if _is_third_party_profile_query(query):
         return "external_or_realtime"
+
+    return None
+
+
+def classify_ml_retrieval_route(query: str) -> str:
+    strong_route = resolve_strong_retrieval_route(query)
+
+    if strong_route is not None:
+        return strong_route
 
     predicted = _ROUTER.predict(query)
 
