@@ -76,10 +76,16 @@ class SuggestRequest(BaseModel):
     context: str | None = None   # 업무 맥락, 없으면 원문만 사용
 
 
+class SuggestionAnchor(BaseModel):
+    sentence_index: int
+    char_offset: int
+
+
 class Suggestion(BaseModel):
     element: str
-    primary: str                 # 자동완성 문장 1개
-    alternatives: list[str]      # 대안 최대 2개
+    primary: str
+    alternatives: list[str]
+    anchor: SuggestionAnchor
 
 
 class SuggestResponse(BaseModel):
