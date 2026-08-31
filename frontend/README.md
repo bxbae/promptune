@@ -36,19 +36,31 @@ API 베이스 URL은 docker-compose.yml의 `NEXT_PUBLIC_API_URL` 환경변수로
 ```
 src/
 ├── app/
+│   ├── icon.svg                # 사이트 파비콘
 │   ├── page.tsx                # 로그인 진입 화면
 │   ├── layout.tsx              # 루트 레이아웃 (ShellSwitch로 감쌈)
 │   ├── globals.css             # 디자인 토큰 + 전체 페이지/컴포넌트 CSS
-│   ├── onboarding/             # 최초 로그인 시 선호도 3문항 (스토리보드 0)
-│   ├── oauth/callback/         # 소셜 로그인 콜백 처리
+│   ├── onboarding/page.tsx     # 최초 로그인 시 선호도 3문항 (스토리보드 0)
+│   ├── oauth/callback/page.tsx # 소셜 로그인 콜백 처리
 │   ├── chat/
 │   │   ├── page.tsx            # 새 채팅 — 빈 컴포저, 메인화면
 │   │   └── [id]/page.tsx       # 채팅 스레드 — 실행/생성중단/재시도/인용/만족도 조사 등 핵심 로직
 │   ├── chats/page.tsx          # 채팅 목록 — 제목 수정/삭제
 │   ├── files/page.tsx          # 파일관리 — 업로드/썸네일/인라인 수정
 │   ├── history/                # 히스토리 — 개인화 설정 · 수신자별 스타일 · 수정 이력 탭
+│   │   ├── personalization     # 개인화 설정
+│   │   │   ├── page.tsx
+│   │   │   └── PersonalizationDataActions.tsx
+│   │   ├── styles/page.tsx     # 수신자별 스타일
+│   │   ├── logs/page.tsx       # 수정 이력
+│   │   ├── page.tsx
+│   │   └── layout.tsx
 │   ├── dashboard/page.tsx      # 대시보드 — 습관 확인
 │   └── settings/               # 계정/MS 연동 설정
+│       ├── components
+│       │   ├── MicrosoftMembersView.tsx
+│       │   └── MicrosoftProfileView.tsx
+│       └── page.tsx
 │
 ├── components/
 │   ├── AppShell.tsx            # 사이드바 + 전체 레이아웃 뼈대
@@ -77,32 +89,32 @@ src/
     └── users.ts                # UsersController
 ```
 
-## 레이아웃 규칙 (임시, 반응형 추후 적용 예정)
-<!-- TODO: 반응형 적용 후 변경 -->
+## 레이아웃 규칙
 
+- 어떤 라우트가 어느 클래스를 쓸지는 `ShellSwitch.tsx`의 `FIXED_WIDTH_PAGES` 배열이 결정한다.
 - `.page` — 채팅류 페이지(좁은 폭, 최대 720px, `margin: 0 auto`로 중앙 정렬)
-- `.page-fixed` — 파일관리·히스토리·대시보드·설정 전용. 가로 중앙 정렬은 `margin` 대신
-  `position`(`left` + `calc`)만으로 처리하고, 최소 폭 733px 보장. 세로는 `min-height: 100vh`
-  + `padding: 48px 0 20px`(스크롤 끝까지 내려도 마지막 박스 아래 20px 여백 유지 — `height`를
-  쓰면 콘텐츠가 100vh보다 길 때 padding-bottom이 안 먹으니 반드시 `min-height` 유지).
-  어떤 라우트가 어느 클래스를 쓸지는 `ShellSwitch.tsx`의 `FIXED_WIDTH_PAGES` 배열이 결정한다.
+- `.page-fixed` — 파일관리·히스토리·대시보드·설정 전용. 
+  + 가로 중앙 정렬은 `margin` 대신 `position`(`left` + `calc`)만으로 처리하고, 최소 폭 733px 보장. 
+  + 세로는 `min-height: 100vh`
+  + `padding: 48px 0 20px`
+    + 스크롤 끝까지 내려도 마지막 박스 아래 20px 여백 유지,
+    + `height`를 쓰면 콘텐츠가 100vh보다 길 때 padding-bottom이 안 먹으니 반드시 `min-height` 유지.
+- 반응형 레이아웃 추가.
+  + BreakPoint: 768px
 
 ## 공용 UI 패턴
 
-- **확인 모달** — 삭제·연결해제·로그아웃처럼 되돌릴 수 없는 액션은 `window.confirm()` 대신
-  `components/ConfirmDialog.tsx`를 쓴다. 버튼 클릭 시 바로 실행하지 않고 대상(예:
-  `deleteTarget`)을 state에 담아 모달을 열고, 모달의 확인 버튼에서 실제 API를 호출하는
-  패턴 (`history/styles`, `history/personalization/PersonalizationDataActions`, `chats`,
-  `files`, `settings`, `AppShell` 6곳에 적용됨). 새로 파괴적 액션을 추가할 땐 `confirm()`을
-  다시 쓰지 말고 이 컴포넌트를 재사용할 것.
-- **온보딩 선호도 3문항** — `onboarding`(최초 입력, 자세한 설명 포함) / `history/personalization`
-  (요약 편집) / `dashboard`(현재 값 pill 표시) 세 곳이 같은 문항·값을 쓰므로
-  `lib/preferenceQuestions.ts`에서 가져다 쓴다. 라벨은 두 종류 — `label`(자세히,
-  온보딩용) / `summaryLabel`(간결히, 요약 화면용. 값이 `label`과 같으면 생략 가능하고
-  화면에서 `summaryLabel ?? label`로 폴백). `key`/`value`/`desc`는 두 화면 다 동일해야
-  하며(같은 `user_preferences` 컬럼 값으로 저장되므로), 새 문항을 추가/수정할 땐 반드시
-  이 파일 하나만 고치면 된다 — 예전엔 페이지마다 따로 복붙돼 있어서 라벨 문구가
-  드리프트(온보딩 "적극적으로 보완" vs 요약 "적극적 보완"이 우연히 갈라짐)된 적 있음.
+- **확인 모달**
+  - 삭제·연결해제·로그아웃처럼 되돌릴 수 없는 액션은 `window.confirm()` 대신 `components/ConfirmDialog.tsx`를 쓴다. 
+  - 버튼 클릭 시 바로 실행하지 않고 대상(예: `deleteTarget`)을 state에 담아 모달을 열고, 모달의 확인 버튼에서 실제 API를 호출하는 패턴
+  - `history/styles`, `history/personalization/PersonalizationDataActions`, `chats`, `files`, `settings`, `AppShell`에 적용. 
+  - 새로 파괴적 액션을 추가할 땐 `confirm()`을 다시 쓰지 말고 이 컴포넌트를 재사용할 것.
+- **온보딩 선호도 3문항**
+  - `onboarding`(최초 입력, 자세한 설명 포함) / `history/personalization` (요약 편집) / `dashboard`(현재 값 pill 표시) 에서 같은 값을 공유.
+  - 따라서 `lib/preferenceQuestions.ts`라는 상수 파일에서 가져다 쓴다.
+  - `key`/`value`/`desc`는 두 화면 다 동일해야 함(같은 `user_preferences` 컬럼 값으로 저장되므로)
+  - 새 문항을 추가/수정할 땐 반드시 이 파일 하나만 고치면 된다.
+    - 예전엔 페이지마다 따로 복붙되어 있어서 라벨 문구가 드리프트(온보딩 "적극적으로 보완" vs 요약 "적극적 보완"이 우연히 갈라짐)된 적 있음.
 
 ## 교체/확장 (예진)
 

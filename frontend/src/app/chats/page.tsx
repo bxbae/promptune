@@ -122,7 +122,7 @@ export default function ChatsPage() {
 
 
   return (
-    <div>
+    <div className="chat-list-page">
       <h1>채팅</h1>
 
       {loading && <div style={{ color: "var(--muted)" }}>불러오는 중...</div>}
