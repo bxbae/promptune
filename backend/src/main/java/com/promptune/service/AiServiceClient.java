@@ -265,6 +265,25 @@ public class AiServiceClient {
             List<Long> documentIds,
             boolean useWebSearch) {
 
+        return retrievalExecute(
+                query,
+                ownerUserId,
+                topK,
+                history,
+                documentIds,
+                useWebSearch,
+                Map.of());
+    }
+
+    public Map<String, Object> retrievalExecute(
+            String query,
+            Long ownerUserId,
+            int topK,
+            List<Map<String, String>> history,
+            List<Long> documentIds,
+            boolean useWebSearch,
+            Map<String, String> routingUserContext) {
+
         long start = System.currentTimeMillis();
 
         try {
@@ -283,6 +302,11 @@ public class AiServiceClient {
             body.put(
                     "use_web_search",
                     useWebSearch);
+            body.put(
+                    "routing_user_context",
+                    routingUserContext == null
+                            ? Map.of()
+                            : routingUserContext);
 
             Map result = client.post()
                     .uri("/api/ai/retrieval-execute")
@@ -573,24 +597,66 @@ public class AiServiceClient {
     }
 
 
-    public Map validate(String original, String generated) {
+    public Map validate(
+            String original,
+            String generated,
+            List<Map<String, Object>> documents,
+            List<Map<String, Object>> webResults) {
+
         long start = System.currentTimeMillis();
+
         try {
+            Map<String, Object> body =
+                    new java.util.HashMap<>();
+
+            body.put("original", original);
+            body.put("generated", generated);
+            body.put(
+                    "documents",
+                    documents == null
+                            ? List.of()
+                            : documents);
+            body.put(
+                    "web_results",
+                    webResults == null
+                            ? List.of()
+                            : webResults);
+
             Map result = client.post()
                     .uri("/api/ai/validate")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of(
-                            "original", original,
-                            "generated", generated))
+                    .body(body)
                     .retrieve()
                     .body(Map.class);
 
-            log("ai-service", "/api/ai/validate", start, "success");
+            log(
+                    "ai-service",
+                    "/api/ai/validate",
+                    start,
+                    "success");
+
             return result;
+
         } catch (Exception e) {
-            log("ai-service", "/api/ai/validate", start, "error");
+            log(
+                    "ai-service",
+                    "/api/ai/validate",
+                    start,
+                    "error");
+
             throw e;
         }
+    }
+
+    public Map validate(
+            String original,
+            String generated) {
+
+        return validate(
+                original,
+                generated,
+                List.of(),
+                List.of());
     }
 
     public String summarizeTitle(String text) {

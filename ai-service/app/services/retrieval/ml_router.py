@@ -270,11 +270,64 @@ def _is_external_subject_summary_query(query: str) -> bool:
     return has_about and has_ask and not has_first_person and not has_internal_topic
 
 
-def classify_ml_retrieval_route(query: str) -> str:
+_COMPANY_INTERNAL_SCOPE_MARKERS = (
+    "우리회사",
+    "우리 회사",
+    "사내",
+    "내부",
+    "우리팀",
+    "우리 팀",
+)
+
+_INTERNAL_ARTIFACT_MARKERS = (
+    "보고서",
+    "양식",
+    "템플릿",
+    "규정",
+    "정책",
+    "지침",
+    "가이드",
+    "매뉴얼",
+    "문서",
+    "파일",
+)
+
+
+def _is_company_internal_artifact_query(query: str) -> bool:
+    text = str(query or "").strip().lower()
+
+    if not text:
+        return False
+
+    compact = "".join(text.split())
+
+    has_scope = any(
+        "".join(marker.split()) in compact
+        for marker in _COMPANY_INTERNAL_SCOPE_MARKERS
+    )
+
+    has_artifact = any(
+        marker in text
+        for marker in _INTERNAL_ARTIFACT_MARKERS
+    )
+
+    return has_scope and has_artifact
+
+
+def resolve_strong_retrieval_route(query: str) -> str | None:
+    """
+    ML 예측과 무관하게 retrieval source가 명확한 질의를 먼저 판정한다.
+
+    이 함수의 반환값은 confidence가 낮은 ActionClassifier 결과보다 우선할 수 있다.
+    명백한 문서 참조, 실시간 사실, 외부 entity/profile 같은 경우만 다룬다.
+    """
     if _is_restricted(query):
         return "not_rag_or_restricted"
 
-    if _is_explicit_internal_rag(query):
+    if (
+        _is_explicit_internal_rag(query)
+        or _is_company_internal_artifact_query(query)
+    ):
         return "internal_rag"
 
     if is_external_entity_lookup_query(query):
@@ -285,6 +338,15 @@ def classify_ml_retrieval_route(query: str) -> str:
 
     if _is_third_party_profile_query(query):
         return "external_or_realtime"
+
+    return None
+
+
+def classify_ml_retrieval_route(query: str) -> str:
+    strong_route = resolve_strong_retrieval_route(query)
+
+    if strong_route is not None:
+        return strong_route
 
     predicted = _ROUTER.predict(query)
 

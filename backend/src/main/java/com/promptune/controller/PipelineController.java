@@ -278,6 +278,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // 그걸 그대로 흘려보내면 /api/execute 전체가 실패해서 채팅 자체가 안 됐음
     // (아래 user_context/Microsoft 미연동과 동일한 부류의 fail-open 처리 필요 -
     // 검색이 안 되면 검색 없이라도 답변은 계속 생성돼야 함).
+    Map<String, String> routingUserContext =
+            buildRoutingUserContext(authentication);
+
     Map<String, Object> retrieval;
     try {
         // 2026-08-25: TAVILY_API_KEY 등록 후 실제 웹검색 결과가 붙자, 결과 하나당
@@ -291,7 +294,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 4,
                 conversationHistory,
                 retrievalDocumentIds,
-                Boolean.TRUE.equals(req.useWebSearch()));
+                Boolean.TRUE.equals(req.useWebSearch()),
+                routingUserContext);
     } catch (Exception e) {
         // 첨부/이전 문서가 명확한 요청에서 Retrieval 실패를 숨기고 일반 HCX 답변으로
         // 넘어가면 모델이 과거 문서나 임의 문서를 근거로 답하는 치명적 오류가 난다.
@@ -348,9 +352,14 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     // (다른 보조 조회들과 동일하게) 실패는 조용히 무시하고 컨텍스트 없이 진행한다.
     // (안 그러면 user_context 라우트로 분류된 모든 메시지가 Microsoft 미연동
     // 사용자에게는 통째로 실패해버림 - 2026-08-24 채팅 전체 실패 이슈)
-    Map<String, String> userContext = new java.util.HashMap<>();
+    // routingUserContext는 retrieval에서 "현재 사용자 본인" 여부를
+    // 판별하기 위한 정보다. 일반 CHAT 생성 프롬프트에는 절대 주입하지 않는다.
+    Map<String, String> userContext =
+            new java.util.HashMap<>();
 
     if ("user_context".equals(retrieval.get("route"))) {
+        // 실제로 사용자 자신의 정보를 묻는 경우에만 생성 컨텍스트로 전달한다.
+        userContext.putAll(routingUserContext);
         try {
             com.fasterxml.jackson.databind.JsonNode profile =
                     microsoftGraphService.getProfile(userId);
@@ -506,6 +515,34 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         // 중복 없이 항상 최소 1개는 남는다.
         throw e;
     }
+    }
+
+    private Map<String, String> buildRoutingUserContext(
+            org.springframework.security.core.Authentication authentication) {
+
+        Map<String, String> context =
+                new java.util.HashMap<>();
+
+        if (authentication == null
+                || authentication.getName() == null
+                || authentication.getName().isBlank()) {
+            return context;
+        }
+
+        userRepository.findByEmail(authentication.getName())
+                .ifPresent(user -> {
+                    if (user.getName() != null
+                            && !user.getName().isBlank()) {
+                        context.put("name", user.getName());
+                    }
+
+                    if (user.getEmail() != null
+                            && !user.getEmail().isBlank()) {
+                        context.put("email", user.getEmail());
+                    }
+                });
+
+        return context;
     }
 
     private java.util.List<java.util.Map<String, String>> buildSources(
@@ -1178,7 +1215,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         Map validation =
                 ai.validate(
                         originalPrompt,
-            generatedText.toString());
+                        generatedText.toString(),
+                        documents,
+                        webResults);
 
         boolean passed =
                 Boolean.TRUE.equals(
@@ -1193,23 +1232,21 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
         String issues =
                 issuesObject == null
-                        ? "요청 형식 또는 필수 조건을 지키지 못했습니다."
+                        ? "요청 형식 또는 근거 사실을 지키지 못했습니다."
                         : issuesObject.toString();
 
-        if (issues.length() > 800) {
-            issues = issues.substring(0, 800);
-        }
-
-        String correctionPrompt =
+        String retryPrompt =
                 originalPrompt
-                        + "\n\n[재생성 시 반드시 수정할 검증 오류]\n"
+                        + "\n\n[재생성 검증 지시]"
+                        + "\n이전 답변에 다음 문제가 있었습니다: "
                         + issues
-                        + "\n위 오류만 바로잡아 사용자의 원래 요청에 다시 답하세요."
-                        + "\n검증 오류에 없는 새로운 사실이나 조건은 추가하지 마세요.";
+                        + "\n제공된 내부 문서/웹 검색 근거에 있는 사실만 사용하세요."
+                        + "\n특히 이름, 본명, 소속, 날짜, 수치 등을 추측하지 마세요."
+                        + "\n이 지시문 자체는 최종 답변에서 언급하지 마세요.";
 
         Map retryResult =
                 ai.generate(
-                        correctionPrompt,
+                        retryPrompt,
                         taskType,
                         documents,
                         webResults,
@@ -1231,7 +1268,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         Map retryValidation =
                 ai.validate(
                         originalPrompt,
-                        retryText.toString());
+                        retryText.toString(),
+                        documents,
+                        webResults);
 
         boolean retryPassed =
                 Boolean.TRUE.equals(
@@ -1240,7 +1279,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         if (!retryPassed) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "요청한 형식 또는 필수 조건을 만족하는 답변을 생성하지 못했습니다.");
+                    "검증을 통과하는 답변을 생성하지 못했습니다.");
         }
 
         return retryResult;
