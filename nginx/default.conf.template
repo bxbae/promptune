@@ -28,7 +28,9 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
-    client_max_body_size 20m;
+    # 2026-09-01: backend max-file-size가 25MB로 올라감에 따라 동일하게 맞춤
+    # (nginx가 backend보다 먼저 요청을 받아서 여기서 먼저 잘리면 Spring 설정이 무의미해짐)
+    client_max_body_size 25m;
 
     # 2026-08-25: /api/execute는 real HyperCLOVA X 답변 생성(USE_REAL_GENERATION)이
     # CPU에서 최대 768토큰까지 순차 생성하느라 60초(nginx 기본 timeout)를 넘기는 경우가
