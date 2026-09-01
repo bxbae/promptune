@@ -292,25 +292,6 @@ _DOCUMENT_OVERVIEW_MARKERS = (
     "핵심내용",
 )
 
-_PREVIOUS_ANSWER_DEPENDENT_MARKERS = (
-    "방금 답변",
-    "앞 답변",
-    "이전 답변",
-    "앞에서 말한",
-    "위에서 말한",
-    "그 부분",
-    "그 항목",
-    "그 설명",
-    "첫 번째",
-    "두 번째",
-    "세 번째",
-    "더 자세",
-    "좀 더",
-    "이어서",
-    "계속 설명",
-)
-
-
 def _is_document_overview_request(prompt: str) -> bool:
     text = str(prompt or "").strip().lower()
     return any(marker in text for marker in _DOCUMENT_OVERVIEW_MARKERS)
@@ -324,12 +305,6 @@ def _document_titles(req: GenerateRequest) -> list[str]:
             if document.title and document.title.strip()
         )
     )
-
-
-def _needs_previous_answer_context(prompt: str) -> bool:
-    text = str(prompt or "").strip().lower()
-    return any(marker in text for marker in _PREVIOUS_ANSWER_DEPENDENT_MARKERS)
-
 
 def _build_overview_evidence(req: GenerateRequest) -> str:
     """Build a compact, broad evidence view for document overview questions.
@@ -390,11 +365,11 @@ def _select_generation_history(req: GenerateRequest):
             selected
         )
 
-    if not _needs_previous_answer_context(
-        req.prompt
-    ):
-        return []
-
+    # 2026-09-01: 기존엔 "방금 답변", "이전 답변" 등 정해진 키워드가
+    # 프롬프트에 없으면 히스토리를 통째로 버려서, "그거 다시 설명해줘"처럼
+    # 자연스러운 후속질문에서 직전 대화 맥락을 완전히 놓치는 버그가 있었음
+    # (재현 테스트로 확정, 승득님 확인 결과 의도된 설계 아니었음).
+    # 문서가 첨부된 경우에도 키워드 판별 없이 항상 최근 대화 일부를 포함하도록 단순화.
     selected = [
         message
         for message in req.history[-2:]
