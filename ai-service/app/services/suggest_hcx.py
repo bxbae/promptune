@@ -446,7 +446,7 @@ def _generate_candidates(
 
     inputs = inputs.to(device)
 
-    with hcx_lock(timeout=60):
+    with hcx_lock():
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,

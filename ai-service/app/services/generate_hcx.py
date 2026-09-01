@@ -773,7 +773,7 @@ def generate(
         inputs["input_ids"].shape[1],
     )
 
-    with hcx_lock(timeout=120):
+    with hcx_lock():
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
@@ -783,7 +783,7 @@ def generate(
                 # 시간(다른 요청의 생성이 끝날 때까지 대기)에서 나오는 것으로 확인됨.
                 # 토큰 상한을 줄여도 체감 속도는 거의 개선되지 않으면서 답변만 짧아지는
                 # 손해였으므로, 답변 완성도를 우선해 750으로 원복.
-                # (락 자체는 hcx_lock(timeout=120)이 이미 처리 — 대기가 길어지면
+                # (락 자체는 hcx_lock()이 이미 처리 — 대기가 길어지면
                 # 조용히 멈추는 대신 명확한 503을 반환함.)
                 max_new_tokens=750,
                 do_sample=False,

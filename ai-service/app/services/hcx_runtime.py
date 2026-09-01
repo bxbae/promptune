@@ -27,6 +27,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
 
 HCX_MODEL_LOCK = threading.Lock()
+HCX_LOAD_LOCK = threading.Lock()
 
 
 def _resolve_hcx_device(requested: str) -> str:
@@ -94,7 +95,7 @@ class HcxBusyError(RuntimeError):
 
 
 @contextmanager
-def hcx_lock(timeout: float = 120.0):
+def hcx_lock(timeout: float | None = None):
     """
     HCX_MODEL_LOCK을 무한정 blocking으로 기다리지 않고, timeout 안에 못 얻으면
     HcxBusyError를 던진다.
@@ -108,6 +109,9 @@ def hcx_lock(timeout: float = 120.0):
     504/네트워크 오류로 실패했음. 이제는 더 짧게(기본 120초) 실패해서, 호출부가
     빠르고 명확하게 "지금 바쁘다"고 응답할 수 있게 한다.
     """
+    if timeout is None:
+        timeout = float(os.getenv("HCX_LOCK_TIMEOUT_SECONDS", "120"))
+
     acquired = HCX_MODEL_LOCK.acquire(timeout=timeout)
     if not acquired:
         raise HcxBusyError(
@@ -120,7 +124,7 @@ def hcx_lock(timeout: float = 120.0):
 
 
 @lru_cache(maxsize=1)
-def load_hcx_runtime():
+def _load_hcx_runtime_cached():
     model_name = os.getenv(
         "HF_HCX_MODEL",
         "naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B",
@@ -165,3 +169,8 @@ def load_hcx_runtime():
     )
 
     return tokenizer, model, device
+
+def load_hcx_runtime():
+    """Return the single shared HCX runtime without duplicate first-load races."""
+    with HCX_LOAD_LOCK:
+        return _load_hcx_runtime_cached()
