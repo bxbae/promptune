@@ -60,7 +60,11 @@ jobs:
                 # 새로 발급한 3.38.254.149로 대신 연결함)
                 # 이전엔 EC2 퍼블릭 IP가 고정이 아니어서(EIP 미연결) 재시작마다
                 # 바뀔 수 있었는데, 지금은 EIP라서 앞으로는 고정됨.
-                if curl -fsS --max-time 5 -o /dev/null https://3-38-254-149.nip.io/; then
+                # frontend뿐 아니라 backend(/health)까지 함께 확인.
+                # frontend만 보면 backend/ai-service가 죽어도 "배포 성공"으로
+                # 오판하는 사각지대가 있었음 (2026-09-01 확인, HealthController 추가로 해결).
+                if curl -fsS --max-time 5 -o /dev/null https://3-38-254-149.nip.io/ \
+                   && curl -fsS --max-time 5 -o /dev/null https://3-38-254-149.nip.io/health; then
                   healthy=true
                   break
                 fi
