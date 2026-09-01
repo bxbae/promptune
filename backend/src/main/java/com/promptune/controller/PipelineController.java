@@ -49,6 +49,7 @@ public class PipelineController {
     private final com.promptune.repository.ReceiverProfileRepository receiverProfileRepository; // 추가
     private final com.promptune.repository.DocumentRepository documentRepository; // 추가
     private final com.promptune.service.DocumentIntentResolver documentIntentResolver;
+    private final com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -61,7 +62,8 @@ public class PipelineController {
         com.promptune.service.PreferenceResolutionService preferenceResolutionService,
         com.promptune.repository.ReceiverProfileRepository receiverProfileRepository,
         com.promptune.repository.DocumentRepository documentRepository,
-        com.promptune.service.DocumentIntentResolver documentIntentResolver) {
+        com.promptune.service.DocumentIntentResolver documentIntentResolver,
+        com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -76,6 +78,7 @@ public class PipelineController {
         this.receiverProfileRepository = receiverProfileRepository;
         this.documentRepository = documentRepository;
         this.documentIntentResolver = documentIntentResolver;
+        this.documentFollowupClassifier = documentFollowupClassifier;
     }
 
     /**
@@ -906,7 +909,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             return ownedCurrent;
         }
 
-        if (chatSessionId == null || !looksLikeDocumentFollowup(prompt)) {
+        if (chatSessionId == null || !documentFollowupClassifier.looksLikeDocumentFollowup(prompt)) {
             return java.util.List.of();
         }
 
@@ -919,9 +922,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         // 첨부가 있을 때만 문서 참조로 해석하고, 명시적 "그 파일/거기서/문서 요약"
         // 표현은 더 이전 첨부까지 찾는다.
         int maxLookback =
-                isVerificationFollowup(prompt)
+                documentFollowupClassifier.isVerificationFollowup(prompt)
                         ? 1
-                        : (isGenericDocumentReference(prompt)
+                        : (documentFollowupClassifier.isGenericDocumentReference(prompt)
                                 ? 2
                                 : sessions.size());
 
@@ -943,51 +946,6 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         }
 
         return java.util.List.of();
-    }
-
-    private boolean isVerificationFollowup(String prompt) {
-        String text = prompt == null
-                ? ""
-                : prompt.trim().toLowerCase();
-
-        return containsAnyText(
-                text,
-                "확실해",
-                "확실한가",
-                "맞아",
-                "맞나요",
-                "진짜야",
-                "정말이야",
-                "근거 있어",
-                "근거있어",
-                "출처 맞아",
-                "출처가 맞아",
-                "다시 확인",
-                "재확인");
-    }
-
-    private boolean isGenericDocumentReference(String prompt) {
-        String text = prompt == null ? "" : prompt.trim().toLowerCase();
-
-        boolean hasGenericPronoun = containsAnyText(
-                text,
-                "이거", "이걸", "그거", "그걸", "그것", "저거");
-
-        return hasGenericPronoun
-                && !containsAnyText(
-                        text,
-                        "문서", "파일", "이력서", "보고서",
-                        "거기서", "아까", "전에 올린",
-                        "내용", "요약", "프로젝트", "경력");
-    }
-
-    private boolean containsAnyText(String text, String... markers) {
-        for (String marker : markers) {
-            if (text.contains(marker)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void ensureActiveDocumentsReady(
@@ -1106,79 +1064,6 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 .map(com.promptune.domain.Document::getId)
                 .distinct()
                 .toList();
-    }
-
-    private boolean looksLikeDocumentFollowup(String prompt) {
-        String text = prompt == null
-                ? ""
-                : prompt.trim().toLowerCase();
-
-        if (text.isBlank()) {
-            return false;
-        }
-
-        String[] markers = {
-                "거기서",
-                "그 문서",
-                "그 파일",
-                "그 이력서",
-                "그 보고서",
-                "해당 문서",
-                "해당 파일",
-                "아까 문서",
-                "아까 파일",
-                "아까 올린",
-                "전에 올린",
-                "이 문서",
-                "이 파일",
-                "이거",
-                "이걸",
-                "그거",
-                "그걸",
-                "그것",
-                "저거",
-                "방금",
-                "무슨 내용",
-                "각 항목",
-                "각항목",
-                "항목에",
-                "항목은",
-                "항목들",
-                "어떤 항목",
-                "구성은",
-                "구성 항목",
-                "목차",
-                "더 자세히",
-                "자세히 알려",
-                "뭐 있는데",
-                "뭐있는데",
-                "내용이야",
-                "내용 알려",
-                "문서 요약",
-                "파일 요약",
-                "프로젝트만",
-                "경력만",
-                "확실해",
-                "확실한가",
-                "맞아",
-                "맞나요",
-                "진짜야",
-                "정말이야",
-                "근거 있어",
-                "근거있어",
-                "출처 맞아",
-                "출처가 맞아",
-                "다시 확인",
-                "재확인"
-        };
-
-        for (String marker : markers) {
-            if (text.contains(marker)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private String compactHistoryText(String text) {
