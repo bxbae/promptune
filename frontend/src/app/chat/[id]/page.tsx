@@ -48,22 +48,13 @@ interface Message {
 // 실제 개체명 인식X >> **님, **씨 패턴만 잡아내는 정규식
 // 정식 8요소 분석 파이프라인이 붙기 전까지의 임시 로직
 function detectReceiverName(prompt: string): string | null {
-  const titleMatch = prompt.match(
-    /([가-힣]{1,4}(?:사원|대리|과장|차장|팀장|부장|이사|상무|전무))(?:님|씨)?(?=께|에게|한테|\s|$)/,
-  );
-  if (titleMatch) return titleMatch[1];
-
-  const honorificMatch = prompt.match(/([가-힣]{2,4})(?:님|씨)/);
-  return honorificMatch ? honorificMatch[1] : null;
+  const match = prompt.match(
+    /([가-힣]{1,4}(?:사원|대리|과장|차장|팀장|부장|이사|상무|전무)?)(?:님|씨)(?=께|에게|한테)/);
+  return match ? match[1] : null;
 }
 
 // TODO: 목업 - 나중에 백엔드/ai-service 실제 스타일 분석 붙으면 이 배열 자체를 없애고
 // 백엔드가 내려주는 진짜 분석 결과로 교체할 것. 지금은 수신자와 무관하게 항상 같은 문구.
-const MOCK_STYLE_HINTS = [
-  "정중하지만 간결한 사내 업무체",
-  "요청사항을 첫 문단에 배치",
-  "마감일과 회신 요청을 자주 포함",
-];
 
 // PromptEditor가 인용해서 보낼 때 finalPrompt에 붙이는 wrapper 포맷.
 // 인용 메타데이터(누구 메시지를 인용했는지)를 따로 저장하는 DB 컬럼이 없어서,
@@ -844,16 +835,9 @@ export default function ChatThreadPage() {
                         <span className="consent-done">저장했어요, 다음 추천에 반영할게요</span>
                       ) : (
                         <>
-                        {/* TODO: mock 문구 제거 */}
-                          <div className="consent-title">수신자 프로필 감지 (mock)</div>
+                          <div className="consent-title">수신자 프로필 감지</div>
                           <div className="consent-name">{pendingConsent.name}</div>
 
-                          {/* TODO: (목업) 실제 스타일 분석 붙으면 MOCK_STYLE_HINTS 제거하고 이 블록 교체 */}
-                          <ul className="consent-hints">
-                            {MOCK_STYLE_HINTS.map((hint) => (
-                              <li key={hint}>{hint}</li>
-                            ))}
-                          </ul>
 
                           <div className="consent-question">
                             앞으로 <b>{pendingConsent.name}</b> 기본 스타일로 저장할까요?

@@ -39,6 +39,7 @@ services:
       HF_HCX_MODEL: "${HF_HCX_MODEL:-naver-hyperclovax/HyperCLOVAX-SEED-Vision-Instruct-3B}"
       HF_HCX_DEVICE: "${HF_HCX_DEVICE:-auto}"
       HF_HCX_DTYPE: "${HF_HCX_DTYPE:-auto}"
+      HCX_LOCK_TIMEOUT_SECONDS: "${HCX_LOCK_TIMEOUT_SECONDS:-120}"
       HF_HOME: /root/.cache/huggingface
       BGE_M3_MODEL: "${BGE_M3_MODEL:-BAAI/bge-m3}"
       BGE_M3_DEVICE: "${BGE_M3_DEVICE:-auto}"
@@ -74,14 +75,15 @@ services:
       SPRING_DATASOURCE_USERNAME: promptune
       SPRING_DATASOURCE_PASSWORD: promptune
       AI_SERVICE_URL: http://ai-service:8000
-      APP_FRONTEND_URL: http://localhost:3000
+      APP_FRONTEND_URL: "${APP_FRONTEND_URL:-http://localhost:3000}"
+      OAUTH_REDIRECT_BASE: "${OAUTH_REDIRECT_BASE:-http://localhost:8080}"
       APP_CORS_ORIGINS: http://localhost:3000,chrome-extension://hpfngnomdmlpbmllblohccacgdnidhgp
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-dummy-client-id}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-dummy-client-secret}
-      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-dummy-client-id}
-      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-dummy-client-secret}
-      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-dummy-client-id}
-      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-dummy-client-secret}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
       JWT_SECRET: ${JWT_SECRET:-promptune-dev-secret-key-change-in-production-please}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}

@@ -266,7 +266,7 @@ export default function DashboardPage() {
         {/* 추천 적용률 */}
         <div className="dash-panel">
           <div className="dash-section-title">추천 적용률</div>
-          <div className="dash-mock-note">
+          <div className="dash-rate-note">
             전체 적용률(실제):{" "}
             {applyRate ? `${Math.round(applyRate.applyRate * 100)}%` : "-"}
           </div>

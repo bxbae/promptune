@@ -69,7 +69,7 @@ def summarize(req: SummarizeTitleRequest) -> SummarizeTitleResponse:
         return_tensors="pt",
     ).to(device)
 
-    with hcx_lock(timeout=120):
+    with hcx_lock():
         with torch.inference_mode():
             outputs = model.generate(
                 **inputs,
