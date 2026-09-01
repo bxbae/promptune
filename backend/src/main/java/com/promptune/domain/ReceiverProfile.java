@@ -48,6 +48,9 @@ public class ReceiverProfile {
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getReceiverName() { return receiverName; }
+    // ← 신규 추가: 동명이인 통합 시 더 완전한 이름(성+이름+직함)으로 갱신하는 용도.
+    // updatedAt은 굳이 안 건드림 - 이름 정정일 뿐 학습 데이터가 바뀐 게 아니라서.
+    public void setReceiverName(String receiverName) { this.receiverName = receiverName; }
     public String getRelationship() { return relationship; }
     public String getPreferredTone() { return preferredTone; }
     public int getAvgLength() { return avgLength; }

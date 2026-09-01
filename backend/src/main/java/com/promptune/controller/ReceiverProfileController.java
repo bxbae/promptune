@@ -48,7 +48,7 @@ public class ReceiverProfileController {
             @RequestBody UpdateReceiverProfileRequest req,
             Authentication authentication) {
         User user = currentUser(authentication);
-        return receiverProfileService.update(user.getId(), id, req.relationship(), req.preferredTone());
+        return receiverProfileService.update(user.getId(), id, req.relationship(), req.preferredTone(), req.receiverName());
     }
 
     // ← 신규 추가: 수신자 프로필 삭제 (개인화 데이터 초기화용)

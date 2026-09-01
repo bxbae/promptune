@@ -251,7 +251,7 @@ export default function DashboardPage() {
                 <div className="dash-receiver-row" key={r.id}>
                   <div>
                     <div className="dash-receiver-name">{r.receiverName}</div>
-                    <div className="dash-receiver-relationship">{r.relationship || "-"}</div>
+                    <div className="dash-receiver-relationship">{r.relationship || "관계 미설정"}</div>
                   </div>
                   <div className="dash-receiver-rate">
                     적용률 {r.applyRate != null ? `${Math.round(r.applyRate * 100)}%` : "-"}

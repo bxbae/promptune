@@ -27,7 +27,7 @@ public class ReceiverProfileService {
     }
 
     // ← 신규 추가: PATCH /api/receiver-profiles/{id}
-    public ReceiverProfile update(Long userId, Long id, String relationship, String preferredTone) {
+    public ReceiverProfile update(Long userId, Long id, String relationship, String preferredTone, String receiverName) {
         ReceiverProfile profile = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "수신자 프로필을 찾을 수 없습니다."));
@@ -40,6 +40,8 @@ public class ReceiverProfileService {
         // null이 아닌 필드만 부분 수정 (PATCH 시맨틱 — DocumentController.update()와 동일 패턴)
         if (relationship != null) profile.setRelationship(relationship);
         if (preferredTone != null) profile.setPreferredTone(preferredTone);
+        // 동명이인 통합 시 더 완전한 이름(성+이름+직함)으로 정정하는 용도.
+        if (receiverName != null && !receiverName.isBlank()) profile.setReceiverName(receiverName);
 
         return repository.save(profile);
     }

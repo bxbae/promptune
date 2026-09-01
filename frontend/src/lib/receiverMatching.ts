@@ -71,3 +71,20 @@ export function matchReceiverProfile(
     profiles.find((p) => partsLikelyMatch(parts, parseReceiverName(p.receiverName))) ?? null;
   return { exact: null, candidate };
 }
+
+// 동명이인 확인 다이얼로그에서 "네, 같은 사람이에요"를 눌렀을 때 쓰는 이름 합성기.
+// 두 표기(기존 저장명 vs 새로 감지된 이름) 중 한쪽에만 있는 조각(성/이름/직함)을 서로
+// 채워 넣어서 "성+이름+직함"이 다 갖춰진 가장 완전한 형태를 만든다.
+export function buildCanonicalReceiverName(nameA: string, nameB: string): string {
+  const a = parseReceiverName(nameA);
+  const b = parseReceiverName(nameB);
+
+  const surname = a.surname || b.surname;
+  const givenName = a.givenName || b.givenName;
+  const title = a.title || b.title;
+
+  if (givenName) {
+    return title ? `${surname}${givenName} ${title}` : `${surname}${givenName}`;
+  }
+  return title ? `${surname}${title}` : surname;
+}
