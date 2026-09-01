@@ -626,7 +626,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 } */
 .dash-panel { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); display: flex; flex-direction: column; }
 .dash-panel-sub { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
-.dash-mock-note { font-size: 11px; color: var(--muted); background: var(--panel-alt); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
+.dash-rate-note { font-size: 11px; color: var(--muted); background: var(--panel-alt); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
 .dash-section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .dash-section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .dash-section-title-row .dash-section-title { margin-bottom: 0; }
