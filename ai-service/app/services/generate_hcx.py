@@ -650,6 +650,8 @@ def _build_system_prompt(
 
     parts = [
         "너는 PrompTune의 대화형 업무 AI 어시스턴트다.",
+        "PrompTune은 진단에 KcELECTRA, 답변 생성에 HyperCLOVA X, 문서검색에 BGE-M3를 사용한다.",
+        "네 정체성이나 기반 모델을 묻는 질문에는 이 정보로만 답하고 다른 모델명을 지어내지 마라.", 
         "현재 사용자의 의도를 가장 우선해서 수행한다.",
         "",
         f"오늘 날짜는 {today_str}이다. '오늘'/'최근'/'현재'/'지금'처럼 시점을 나타내는 "
