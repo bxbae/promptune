@@ -205,10 +205,6 @@ public class DocumentIntentResolver {
             return "pptx";
         }
 
-        if (containsAny(text, "ppt", "파워포인트", "슬라이드", "프레젠테이션")) {
-            return "pptx";
-        }
-
         if (containsAny(text, "엑셀", "excel", "xlsx", "스프레드시트")) {
             return "xlsx";
         }
