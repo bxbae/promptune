@@ -21,7 +21,7 @@ function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours() + 9)}:${pad(d.getMinutes())}`;
 }
 
 export default function LogsPage() {

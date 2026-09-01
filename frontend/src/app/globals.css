@@ -134,6 +134,19 @@ textarea:focus { outline: none; }
   * { transition: none !important; }
 }
 
+/* 프롬프트 하단 보완 추천 */
+/* 프롬프트 하단 진단 요약 - 대시보드 배지(.dash-pref-pill 등)와 같은 알약(pill) 언어 재사용.
+  색상도 새로 만들지 않고 기존 조합 그대로 씀: 보완필요=miss-tint/block(.file-badge.work와 동일),
+  우선추천=accent-tint/accent(.dash-pref-pill과 동일), 오탈자=panel-alt/muted(.activity-badge.rejected와 동일). */
+.prompt-analysis-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 10px; }
+.prompt-analysis-summary .pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.prompt-analysis-summary .pill.missing { background: var(--miss-tint); color: var(--block); }
+.prompt-analysis-summary .pill.suggest { background: var(--accent-tint); color: var(--accent); }
+.prompt-analysis-summary .pill.typo { background: var(--panel-alt); color: var(--muted); }
+
 /* ---- AppShell / 사이드바 ---- */
 .shell { display: flex; height: 100vh; background: var(--bg); }
 .sidebar {
@@ -311,21 +324,14 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .document-export-btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer; }
 .document-export-btn:hover { background: var(--panel-alt); color: var(--ink); }
 .document-export-btn:disabled { opacity: 0.55; cursor: default; }
-.generated-file-card { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; max-width: 520px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
-.generated-file-icon { font-size: 24px; flex-shrink: 0; }
+.generated-file-card { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 11px 12px; width: calc(100% / 0.9); border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-sizing: border-box; }
+.generated-file-icon { position: relative; width: 30px; height: 34px; flex: 0 0 30px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-alt); font-size: 24px; flex-shrink: 0; }
+.generated-file-icon::after { content: ""; position: absolute; left: 7px; right: 7px; top: 10px; height: 1px; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); opacity: 0.45; }
 .generated-file-info { flex: 1; min-width: 0; }
 .generated-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
 .generated-file-type { margin-top: 3px; font-size: 11px; color: var(--muted); }
 .generated-file-download { flex-shrink: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; cursor: pointer; }
 .generated-file-download:hover { background: var(--panel-alt); }
-.generated-file-card { width: 100%; max-width: none; box-sizing: border-box; display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; }
-.generated-file-icon { position: relative; width: 30px; height: 34px; flex: 0 0 30px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-alt); font-size: 0; }
-.generated-file-icon::after { content: ""; position: absolute; left: 7px; right: 7px; top: 10px; height: 1px; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); opacity: 0.45; }
-.generated-file-info { flex: 1; min-width: 0; }
-.generated-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
-.generated-file-type { margin-top: 2px; font-size: 11px; color: var(--muted); }
-.generated-file-download { flex-shrink: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font-size: 12px; cursor: pointer; }
-.generated-file-download:hover { ackground: var(--panel-alt); }
 
 /* 만족도 응답(.msg-assistant)에 마우스를 올렸을 때만 작게 나타남 - 평소엔 화면을 거슬리지 않게 숨김.
   opacity+pointer-events로 숨겨서 항상 같은 공간을 차지 → hover 시 레이아웃이 흔들리지 않음.
@@ -571,6 +577,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 /* 히스토리 > 수신자별 스타일 관리 */
 .receiver-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .receiver-row { display: grid; grid-template-columns: 1.2fr 1.3fr 1.3fr 0.9fr 0.8fr 1.3fr; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.receiver-row > div {  text-align: center; }
 .receiver-row:last-child { border-bottom: none; }
 .receiver-row-head { background: var(--panel-alt); color: var(--muted); font-size: 12px; font-weight: 600; }
 .receiver-name { font-weight: 600; }
@@ -804,8 +811,8 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
   /* --- 수신자별 스타일 표: 6열 그리드는 좁은 화면에서 못 버텨서 헤더 숨기고 flex-wrap 카드형으로 --- */
   .receiver-row-head { display: none; }
   .receiver-row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-  .receiver-row > div { flex: 1 1 45%; min-width: 0; }
-  .receiver-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .receiver-row > div { flex: 1 1; min-width: 0;}
+  .receiver-actions { flex: 1 1 100%; justify-content: flex-end; flex-direction: column;}
 
   /* --- 채팅 말풍선: 80% 제한이 좁은 화면에선 너무 타이트해서 여유를 더 줌 --- */
   .msg-user-col { max-width: 92%; }
@@ -813,7 +820,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 
   .files-grid { grid-template-columns: 1fr !important; }
   .dash-kpi-row { grid-template-columns: 1fr; }
-  .receiver-row > div { flex: 1 1 100%; }
+  .generated-file-card { width: calc(100% / 0.92);}
 
   /* --- 파일 카드: 1열일 땐 세로로 긴 썸네일 카드 대신 .generated-file-card처럼
      가로로 넓고 세로로 짧은 카드로 (작은 아이콘 + 파일명, 목록처럼 훑어보기 좋게) --- */

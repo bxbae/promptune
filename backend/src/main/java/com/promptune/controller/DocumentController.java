@@ -1,34 +1,43 @@
 package com.promptune.controller;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.promptune.domain.Document;
 import com.promptune.domain.User;
 import com.promptune.dto.DocumentDtos.UpdateDocumentRequest;
 import com.promptune.repository.DocumentRepository;
 import com.promptune.repository.UserRepository;
 import com.promptune.service.AiServiceClient;
-import com.promptune.service.S3StorageService;
 import com.promptune.service.DocumentTemplateResolver;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaTypeFactory;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.charset.CodingErrorAction;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
-import java.time.LocalDateTime;
+import com.promptune.service.S3StorageService;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -135,7 +144,9 @@ public class DocumentController {
             String title,
             String content,
             String format,
-            Long templateDocumentId) {
+            Long templateDocumentId,
+            Long promptSessionId) {  // ← 신규 추가: 생성된 파일을 이 대화로 연결해서, 나중에
+                                      //   /messages 조회 시 attachments로 다시 보이게 하기 위함
     }
 
     @PostMapping(
@@ -222,13 +233,14 @@ public class DocumentController {
             }
         }
 
+        ResponseEntity<byte[]> response;
+
         if (template == null) {
-            return aiServiceClient.generateDocument(
+            response = aiServiceClient.generateDocument(
                     req.title().trim(),
                     req.content(),
                     format);
-        }
-
+        } else {
         byte[] templateBytes =
                 s3StorageService.download(template.getS3Key());
 
@@ -243,12 +255,59 @@ public class DocumentController {
                     templateFilename + "." + template.getFileType();
         }
 
-        return aiServiceClient.generateDocument(
+            response = aiServiceClient.generateDocument(
                 req.title().trim(),
                 req.content(),
                 format,
                 templateBytes,
                 templateFilename);
+    }
+
+        // 생성된 파일을 S3에 저장 + documents 행 생성 + 이 대화(prompt_session)에 연결.
+        // 그래야 채팅방을 나갔다 들어와도 /messages 응답의 attachments로 다시 보임
+        // (업로드 파일이 attachments에 뜨는 것과 완전히 동일한 경로 재사용).
+        // 실패해도 사용자는 이미 파일을 다운로드할 수 있어야 하므로, 여기서 에러가 나도
+        // 다운로드 자체를 막지 않고 로그만 남긴다.
+        if (req.promptSessionId() != null && response.getBody() != null) {
+            try {
+                persistGeneratedDocument(
+                        user.getId(),
+                        req.promptSessionId(),
+                        req.title().trim(),
+                        format,
+                        response.getBody());
+            } catch (Exception e) {
+                System.err.println("[문서 생성 결과 저장 실패, 다운로드는 정상 진행] " + e.getMessage());
+            }
+        }
+
+        return response;
+    }
+
+    // generateDocument()에서 생성된 파일을 업로드 문서와 동일한 방식(S3 + documents 행)으로
+    // 남기고, prompt_session_documents 연결 테이블에 이어붙인다. 이 연결이 있어야
+    // ChatSessionController.messages()가 findByPromptSessionId로 조회할 때 같이 잡힌다.
+    private void persistGeneratedDocument(
+            Long userId, Long promptSessionId, String title, String format, byte[] fileBytes) {
+
+        String filename = title.toLowerCase(Locale.ROOT).endsWith("." + format)
+                ? title
+                : title + "." + format;
+
+        String contentType = MediaTypeFactory.getMediaType(filename)
+                .map(MediaType::toString)
+                .orElse("application/octet-stream");
+
+        String s3Key = s3StorageService.uploadDocument(userId, filename, contentType, fileBytes);
+
+        Document generated = new Document(userId, filename, s3Key, format);
+        generated.setIndexStatus("READY");  // AI가 생성한 결과물이라 별도 인덱싱 불필요
+        // 업로드 첨부와 구분하는 용도. attachments 응답에 documentType까지 실어보내서
+        // 프론트가 "이건 업로드가 아니라 생성된 파일"이라고 구분해서 다시 칩으로 그릴 수 있게 함.
+        generated.setDocumentType("GENERATED");
+        generated = documentRepository.save(generated);
+
+        documentRepository.linkPromptSessionDocument(promptSessionId, generated.getId());
     }
 
 
@@ -395,7 +454,10 @@ public class DocumentController {
     @GetMapping
     public List<Document> myDocuments(Authentication authentication) {
         User user = currentUser(authentication);
-        return documentRepository.findByOwnerUserId(user.getId());
+        // 채팅에서 쓰인(prompt_session_documents에 연결된) 문서는 파일관리 목록에서 제외.
+        // 원래 이 필터링 쿼리(findLibraryDocumentsByOwnerUserId)가 있었는데 여기서 안 쓰고
+        // 있어서 채팅 첨부/생성 파일이 다 같이 보이고 있었음 - 이제 제대로 연결.
+        return documentRepository.findLibraryDocumentsByOwnerUserId(user.getId());
     }
 
     @PatchMapping("/{id}")

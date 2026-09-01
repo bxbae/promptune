@@ -1,34 +1,35 @@
 package com.promptune.controller;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.promptune.domain.ChatSession;
 import com.promptune.domain.User;
 import com.promptune.dto.BehaviorDtos.BehaviorActionRequest;
 import com.promptune.repository.ChatSessionRepository;
 import com.promptune.repository.UserRepository;
 import com.promptune.service.BehaviorLogService;
-import com.promptune.service.ConsentService;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/behavior-actions")
 public class BehaviorController {
 
   private final BehaviorLogService behaviorLogService;
-  private final ConsentService consentService;
   private final UserRepository userRepository;
   private final ChatSessionRepository chatSessionRepository;
 
   public BehaviorController(
       BehaviorLogService behaviorLogService,
-      ConsentService consentService,
       UserRepository userRepository,
       ChatSessionRepository chatSessionRepository) {
 
     this.behaviorLogService = behaviorLogService;
-    this.consentService = consentService;
     this.userRepository = userRepository;
     this.chatSessionRepository = chatSessionRepository;
   }
@@ -42,10 +43,6 @@ public class BehaviorController {
     User user = currentUser(authentication);
 
     validateChatSession(user.getId(), req.chatSessionId());
-
-    if (!consentService.canUsePersonalization(user.getId())) {
-      return;
-    }
 
     try {
       behaviorLogService.recordAction(

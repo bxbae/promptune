@@ -60,6 +60,10 @@ export async function deleteChatSession(id: number): Promise<void> {
 export interface MessageAttachment {
   id: number;
   title: string;
+  // 업로드 첨부와 AI가 생성한 문서를 구분하는 용도. 생성된 문서는 백엔드에서
+  // documentType="GENERATED"로 저장돼서, 지난 대화를 다시 불러올 때 이 값으로
+  // 어느 쪽(사용자 첨부 칩 / AI 생성 파일 카드)에 넣을지 나눈다.
+  documentType?: string | null;
 }
 
 export interface ChatMessage {
