@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { analyze, execute, recordBehaviorAction, type AnalyzeResponse, improve, type ImproveResponse, type PlaceholderSuggestion } from "@/lib/api";
 import { uploadDocument, listDocuments, type DocumentItem, type DocType } from "@/api/documents";
 import type { ReceiverProfile } from "@/api/receiverProfiles";
+import { detectReceiverName, matchReceiverProfile } from "@/lib/receiverMatching";
 
 interface ElementUiMeta {
   label: string;
@@ -174,6 +175,11 @@ export default function PromptEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // 타이핑 중인 텍스트에 저장된 프로필 이름이 그대로 있으면 우선 그걸로(정확 매칭).
+  // 없으면 detectReceiverName + 성/직함 정규화로 별칭 매칭까지 시도한다 -
+  // "김ㅇㅇ 대리"로 저장돼있는데 지금 "김대리"라고만 써도 그 프로필(톤 등)을 찾아서 쓸 수 있게.
+  // (진짜 동명이인일 위험이 있는 "새로 저장" 판단은 chat/[id]/page.tsx의 동의 카드 쪽에서
+  // 사용자에게 직접 확인하고, 여기서는 그냥 "생성에 어떤 톤을 반영할지"만 가볍게 추정한다.)
   const receiverCandidate =
     receiverProfiles
       .filter((profile) => profile.receiverName && text.includes(profile.receiverName))
@@ -181,7 +187,13 @@ export default function PromptEditor({
         (a, b) =>
           new Date(b.updatedAt).getTime() -
           new Date(a.updatedAt).getTime(),
-      )[0] ?? null;
+      )[0] ??
+    (() => {
+      const detected = detectReceiverName(text);
+      if (!detected) return null;
+      const { exact, candidate } = matchReceiverProfile(detected, receiverProfiles);
+      return exact ?? candidate ?? null;
+    })();
 
   useEffect(() => {
     if (!text && selectedReceiverId !== null) {
@@ -1199,9 +1211,8 @@ export default function PromptEditor({
       <div className="composer-box">
         {receiverCandidate && (
           <div
-            className={`receiver-candidate-card ${
-              selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
-            }`}
+            className={`receiver-candidate-card ${selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
+              }`}
           >
             <div className="receiver-candidate-main">
               <div className="receiver-candidate-label">
@@ -1405,8 +1416,8 @@ export default function PromptEditor({
                 const offset = idx - activeSuggestionIndex;
                 const isActive = offset === 0;
                 const suggestion = analysisResult?.suggest?.suggestions.find(
-                    (s) => s.element === element,
-                  ) ?? null;
+                  (s) => s.element === element,
+                ) ?? null;
                 const meta = ELEMENT_UI[element] ?? {
                   label: `${element} 요소를 보완하면 좋아요`,
                   question: "어떤 내용을 추가할까요?",
@@ -1728,6 +1739,20 @@ export default function PromptEditor({
                 되돌리기
               </button>
             )}
+
+            {analysisResult?.diagnose && !gateBlocked && (
+              <div className="prompt-analysis-summary">
+                <span className="pill missing">
+                  보완 필요 {Object.values(missing).filter((value) => value === 1).length}개
+                </span>
+
+                {targetElements.length > 0 && (
+                  <span className="pill suggest">우선 추천 · {targetElements.join(", ")}</span>
+                )}
+
+                {typoCount > 0 && <span className="pill typo">오탈자 후보 {typoCount}개</span>}
+              </div>
+            )}
           </div>
 
           <div className="composer-right">
@@ -1755,21 +1780,6 @@ export default function PromptEditor({
       {!compact && (
         <div className="hint">
           <b>PrompTune</b>이 프롬프트의 모호함을 진단하고, 보완이 필요한 요소 중 우선순위가 높은 항목에 대해 추천 문구를 제안해요.
-        </div>
-      )}
-
-      {analysisResult?.diagnose && !gateBlocked && (
-        <div className="prompt-analysis-summary">
-          <span>
-            보완 필요:{" "}
-            {Object.values(missing).filter((value) => value === 1).length}개
-          </span>
-
-          {targetElements.length > 0 && (
-            <span> · 우선 추천: {targetElements.join(", ")}</span>
-          )}
-
-          {typoCount > 0 && <span> · 오탈자 후보: {typoCount}개</span>}
         </div>
       )}
 

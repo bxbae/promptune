@@ -1,17 +1,25 @@
 package com.promptune.controller;
 
-import com.promptune.domain.ChatSession;
-import com.promptune.domain.User;
-import com.promptune.repository.ChatSessionRepository;
-import com.promptune.repository.UserRepository;
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
+import com.promptune.domain.ChatSession;
+import com.promptune.domain.User;
+import com.promptune.repository.ChatSessionRepository;
+import com.promptune.repository.UserRepository;
 
 @RestController
 @RequestMapping("/api/chat-sessions")
@@ -77,7 +85,8 @@ public class ChatSessionController {
                 .map(p -> {
                     java.util.List<com.promptune.dto.ChatSessionDtos.DocumentSummary> attachments =
                             documentRepository.findByPromptSessionId(p.getId()).stream()
-                                    .map(doc -> new com.promptune.dto.ChatSessionDtos.DocumentSummary(doc.getId(), doc.getTitle()))
+                                    .map(doc -> new com.promptune.dto.ChatSessionDtos.DocumentSummary(
+                                            doc.getId(), doc.getTitle(), doc.getDocumentType()))
                                     .toList();
                     return new com.promptune.dto.ChatSessionDtos.MessageResponse(
                             p.getId(), p.getOriginalText(), p.getAiResponseText(), p.getTaskType(),
@@ -103,12 +112,15 @@ public class ChatSessionController {
 
     // 히스토리 > 개인화 설정 화면의 "작업 이력 전체 삭제" 버튼
     // 채팅 세션 전체 삭제 (메시지·response_edits는 DB CASCADE로 같이 삭제됨) + 채팅에 안 묶인 프롬프트 기록까지 정리
+    // 주의: chat_sessions 삭제 시 ON DELETE CASCADE로 그 prompt_sessions도 이미 같이 지워지므로,
+    // 아래 두 번째 호출은 "채팅에 안 묶인(orphan) 것만" 지워야 한다 - 그냥 deleteByUserId를 쓰면
+    // 이미 CASCADE로 지워진 행을 또 지우려다 StaleObjectStateException이 난다.
     @DeleteMapping
     @Transactional
     public ResponseEntity<Void> deleteAll(Authentication authentication) {
         User user = currentUser(authentication);
         chatSessionRepository.deleteByUserId(user.getId());
-        promptSessionRepository.deleteByUserId(user.getId());
+        promptSessionRepository.deleteByUserIdAndChatSessionIdIsNull(user.getId());
         return ResponseEntity.noContent().build();
     }
 

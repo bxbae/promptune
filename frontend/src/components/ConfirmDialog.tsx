@@ -47,5 +47,5 @@ export default function ConfirmDialog({
         </div>
       </div>
     </div>
-  )
+  );
 }

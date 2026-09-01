@@ -6,6 +6,7 @@ import {
   resetPersonalization,
 } from "@/api/personalization";
 import { listReceiverProfiles, deleteReceiverProfile } from "@/api/receiverProfiles";
+import { listDocuments, deleteDocument } from "@/api/documents";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type PendingAction = "receivers" | "history" | "reset";
@@ -18,19 +19,20 @@ const CONFIRM_TEXT: Record<PendingAction, { title: string; message: string; conf
   },
   history: {
     title: "작업 이력 전체 삭제",
-    message: "작업 이력(채팅·프롬프트 기록) 전체를 삭제할까요? 삭제한 데이터는 복구할 수 없습니다.",
+    message: "작업 이력(채팅·프롬프트 기록)과 업로드한 파일을 전부 삭제할까요? 삭제한 데이터는 복구할 수 없습니다.",
     confirmLabel: "삭제",
   },
   reset: {
-    title: "전체 개인화 데이터 초기화",
-    message: "설정 + 수신자 스타일 + 수정 이력을 전부 삭제할까요? 삭제한 데이터는 복구할 수 없습니다.",
+    title: "전체 데이터 초기화",
+    message: "개인화 데이터(설정·수신자 스타일·수정 이력) + 업로드한 파일을 전부 삭제할까요? 삭제한 데이터는 복구할 수 없습니다.",
     confirmLabel: "초기화",
   },
 };
 
-// 개인화 데이터(습관 데이터·수신자 프로필) 전체 초기화 / 내보내기 + 작업 이력(채팅 기록) 전체 삭제.
+// 개인화 데이터(습관 데이터·수신자 프로필) 전체 초기화 / 내보내기 + 작업 이력(채팅 기록+업로드 파일) 전체 삭제.
 // - "전체 초기화"·"내보내기"는 백엔드 PersonalizationController가 이미 제공 (선호 설정+수신자 프로필+관련 동의/학습 데이터)
-// - "작업 이력 전체 삭제"는 별도로 채팅 세션/프롬프트 기록만 삭제 (ChatSessionController)
+// - "작업 이력 전체 삭제"는 채팅 세션/프롬프트 기록(ChatSessionController) + 업로드 파일(DocumentController)을
+//   각각 따로 지워서 합친 것 - 백엔드에 통합 삭제 엔드포인트가 없어서 프론트에서 두 API를 같이 호출함.
 export default function PersonalizationDataActions() {
   const [busy, setBusy] = useState<"receivers" | "history" | "export" | "reset" | null>(null);
   const [message, setMessage] = useState("");
@@ -58,8 +60,9 @@ export default function PersonalizationDataActions() {
     setError("");
     setMessage("");
     try {
-      await deleteAllChatHistory();
-      setMessage("작업 이력을 모두 삭제했습니다.");
+      const docs = await listDocuments();
+      await Promise.all([deleteAllChatHistory(), ...docs.map((d) => deleteDocument(d.id))]);
+      setMessage("작업 이력과 업로드한 파일을 모두 삭제했습니다.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "작업 이력 삭제에 실패했습니다.");
     } finally {
@@ -132,7 +135,7 @@ export default function PersonalizationDataActions() {
         <div className="pref-data-row">
           <div>
             <div className="pref-data-row-title">작업 이력 전체 삭제</div>
-            <div className="pref-data-row-desc">채팅·프롬프트 기록을 모두 삭제</div>
+            <div className="pref-data-row-desc">채팅·프롬프트 기록과 업로드한 파일을 모두 삭제</div>
           </div>
           <button onClick={() => setPendingAction("history")} disabled={busy !== null} style={buttonStyle()}>
             {busy === "history" ? "삭제 중..." : "삭제"}
@@ -156,7 +159,7 @@ export default function PersonalizationDataActions() {
       {/* 전체 초기화는 파급 범위가 제일 커서 박스 밖으로 분리 */}
       <div className="pref-data-danger-row">
         <div>
-          <div className="pref-data-row-title" style={{ color: "var(--block)" }}>전체 개인화 데이터 초기화 <span className="pref-data-row-desc">설정 + 수신자 스타일 + 수정 이력 전부 삭제</span></div>
+          <div className="pref-data-row-title" style={{ color: "var(--block)" }}>전체 개인화 데이터 초기화 <span className="pref-data-row-desc">개인화 데이터(설정·수신자 스타일·수정 이력) + 업로드 파일 전부 삭제</span></div>
         </div>
         <button onClick={() => setPendingAction("reset")} disabled={busy !== null} style={buttonStyle(true)}>
           {busy === "reset" ? "초기화 중..." : "전체 초기화"}

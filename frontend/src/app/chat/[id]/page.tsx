@@ -9,7 +9,9 @@ import { suggestToneFromJobTitle } from "@/lib/toneMapping";
 import { grantConsent, getConsentStatus } from "@/api/consents";
 import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
-import { generateDocumentFile, type DocumentFormat, type DocumentItem } from "@/api/documents";
+import { generateDocumentFile, fetchDocumentContent, type DocumentFormat, type DocumentItem } from "@/api/documents";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { detectReceiverName, matchReceiverProfile } from "@/lib/receiverMatching";
 
 interface MessageSource {
   title: string;
@@ -43,19 +45,6 @@ interface Message {
   quotedMessage?: { role: "user" | "assistant"; content: string };
 }
 
-// TODO: 정식 파이프라인 붙으면 수정
-// 프롬프트를 통해 수신자 감지하는 단순한 휴리스틱
-// 실제 개체명 인식X >> **님, **씨 패턴만 잡아내는 정규식
-// 정식 8요소 분석 파이프라인이 붙기 전까지의 임시 로직
-function detectReceiverName(prompt: string): string | null {
-  const match = prompt.match(
-    /([가-힣]{1,4}(?:사원|대리|과장|차장|팀장|부장|이사|상무|전무)?)(?:님|씨)(?=께|에게|한테)/);
-  return match ? match[1] : null;
-}
-
-// TODO: 목업 - 나중에 백엔드/ai-service 실제 스타일 분석 붙으면 이 배열 자체를 없애고
-// 백엔드가 내려주는 진짜 분석 결과로 교체할 것. 지금은 수신자와 무관하게 항상 같은 문구.
-
 // PromptEditor가 인용해서 보낼 때 finalPrompt에 붙이는 wrapper 포맷.
 // 인용 메타데이터(누구 메시지를 인용했는지)를 따로 저장하는 DB 컬럼이 없어서,
 // 지난 대화를 새로고침해서 다시 불러오면 저장된 prompt 안에 이 wrapper가 텍스트
@@ -86,8 +75,17 @@ function splitQuotedPrompt(promptText: string): {
 // 응답 없이 prompt만 저장된 항목(=응답 생성에 실패했던 시도)이 같은 prompt로
 // 연속해서 여러 개 남아있으면(재전송을 여러 번 실패했을 때 예전엔 시도할 때마다
 // 새 행이 쌓였음) 화면엔 마지막 한 개만 "재시도" 가능한 실패 메시지로 보여준다.
-function buildLoadedMessages(history: ChatMessage[]): Message[] {
+//
+// attachments 안엔 사용자가 업로드한 첨부와 AI가 생성한 문서가 섞여서 온다
+// (둘 다 같은 prompt_session에 연결돼서). documentType==="GENERATED"인 것만 따로
+// 뽑아서 generatedDocs로 반환 - 호출부에서 setGeneratedDocuments에 그대로 넣으면
+// 새로고침 전과 똑같이 assistant 메시지 아래 파일 카드가 다시 뜬다.
+function buildLoadedMessages(history: ChatMessage[]): {
+  messages: Message[];
+  generatedDocs: Record<string, { fileName: string; format: DocumentFormat; documentId: number }>;
+} {
   const loaded: Message[] = [];
+  const generatedDocs: Record<string, { fileName: string; format: DocumentFormat; documentId: number }> = {};
   let i = 0;
 
   while (i < history.length) {
@@ -126,15 +124,29 @@ function buildLoadedMessages(history: ChatMessage[]): Message[] {
 
     if (m.prompt) {
       const { content, quotedMessage } = splitQuotedPrompt(m.prompt);
-      loaded.push({ id: `hist-${m.id}-user`, role: "user", content, attachments: m.attachments, quotedMessage });
+      const uploadedAttachments = m.attachments?.filter((a) => a.documentType !== "GENERATED");
+      loaded.push({ id: `hist-${m.id}-user`, role: "user", content, attachments: uploadedAttachments, quotedMessage });
     }
     if (m.aiResponse) {
-      loaded.push({ id: `hist-${m.id}-assistant`, role: "assistant", content: m.aiResponse, promptSessionId: m.id });
+      const assistantId = `hist-${m.id}-assistant`;
+      loaded.push({ id: assistantId, role: "assistant", content: m.aiResponse, promptSessionId: m.id });
+
+      const generated = m.attachments?.find((a) => a.documentType === "GENERATED");
+      if (generated) {
+        // title이 "제목.docx"처럼 확장자 포함 형태로 저장돼있어서(persistGeneratedDocument
+        // 참고) 그대로 파일명으로 쓰고, 확장자만 잘라서 format으로 쓴다.
+        const ext = generated.title.split(".").pop()?.toLowerCase() ?? "";
+        generatedDocs[assistantId] = {
+          fileName: generated.title,
+          format: ext as DocumentFormat,
+          documentId: generated.id,
+        };
+      }
     }
     i++;
   }
 
-  return loaded;
+  return { messages: loaded, generatedDocs };
 }
 
 
@@ -174,6 +186,13 @@ export default function ChatThreadPage() {
   const [pendingConsent, setPendingConsent] = useState<
     { name: string; forMessageId: string; saving: boolean; done: boolean } | null
   >(null);
+  // 동명이인 확인 카드 - exact match는 없는데 성+직함 정규화 키가 같은 후보가 있을 때 뜸.
+  // "네"면 후보의 기존 이름으로 pendingConsent를 채워서, upsertReceiverProfile이
+  // 그 기존 프로필(exact match)에 그대로 병합되게 한다 - 새 프로필 생성 안 됨.
+  const [duplicateCandidate, setDuplicateCandidate] = useState<
+    { detectedName: string; candidateProfile: ReceiverProfile; forMessageId: string } | null
+  >(null);
+  const [resolvingDuplicate, setResolvingDuplicate] = useState(false);
 
   useEffect(() => {
     listReceiverProfiles()
@@ -194,7 +213,11 @@ export default function ChatThreadPage() {
     Record<string, {
       fileName: string;
       format: DocumentFormat;
-      blob: Blob;
+      // 방금 생성한 파일은 blob이 바로 있어서 즉시 다운로드 가능.
+      // 지난 대화를 다시 불러온 경우엔 blob이 없고 documentId만 있어서,
+      // 다운로드 클릭 시 그 자리에서 fetchDocumentContent로 받아온다.
+      blob?: Blob;
+      documentId?: number;
     }>
   >({});
   // 이전 메시지를 인용해서 다음 프롬프트에 맥락으로 붙여보내기
@@ -254,6 +277,8 @@ export default function ChatThreadPage() {
         title,
         m.content,
         format,
+        undefined,
+        m.promptSessionId,
       );
 
       const safeTitle =
@@ -282,11 +307,23 @@ export default function ChatThreadPage() {
     }
   }
 
-  function downloadGeneratedDocument(m: Message) {
+  async function downloadGeneratedDocument(m: Message) {
     const file = generatedDocuments[m.id];
     if (!file) return;
 
-    const url = URL.createObjectURL(file.blob);
+    // 지난 대화를 다시 불러온 경우 blob이 없을 수 있음 - 그때만 그 자리에서 받아옴
+    let blob = file.blob;
+    if (!blob) {
+      if (file.documentId == null) return;
+      try {
+        blob = await fetchDocumentContent(file.documentId);
+      } catch {
+        alert("파일을 불러오지 못했습니다.");
+        return;
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
 
     a.href = url;
@@ -358,6 +395,39 @@ export default function ChatThreadPage() {
     }
   }
 
+  // "네, 같은 사람이에요" - 후보 프로필의 기존 저장명으로 동의 흐름을 이어간다.
+  // upsertReceiverProfile은 receiverName 완전일치로 찾기 때문에, 여기서 새로 감지된
+  // 이름("김대리")이 아니라 기존 저장명("김ㅇㅇ 대리")을 넘겨야 새 프로필이 안 생기고
+  // 기존 프로필에 병합(톤/평균길이 갱신)된다.
+  async function confirmSameReceiver() {
+    if (!duplicateCandidate) return;
+    setResolvingDuplicate(true);
+    const { candidateProfile, forMessageId } = duplicateCandidate;
+    try {
+      const allowed = await getConsentStatus(candidateProfile.id);
+      if (!allowed) {
+        setPendingConsent({ name: candidateProfile.receiverName, forMessageId, saving: false, done: false });
+      }
+    } catch {
+      setPendingConsent({ name: candidateProfile.receiverName, forMessageId, saving: false, done: false });
+    } finally {
+      setResolvingDuplicate(false);
+      setDuplicateCandidate(null);
+    }
+  }
+
+  // "아니요, 다른 사람이에요" - 원래 하던 대로 새로 감지된 이름으로 저장 동의 흐름 진행
+  function declineSameReceiver() {
+    if (!duplicateCandidate) return;
+    setPendingConsent({
+      name: duplicateCandidate.detectedName,
+      forMessageId: duplicateCandidate.forMessageId,
+      saving: false,
+      done: false,
+    });
+    setDuplicateCandidate(null);
+  }
+
   useEffect(() => {
     if (isFresh && !ranRef.current) {
       ranRef.current = true;
@@ -389,7 +459,9 @@ export default function ChatThreadPage() {
     getChatMessages(chatSessionId)
       .then((history) => {
         if (cancelled) return;
-        setMessages(buildLoadedMessages(history));
+        const { messages, generatedDocs } = buildLoadedMessages(history);
+        setMessages(messages);
+        setGeneratedDocuments((prev) => ({ ...prev, ...generatedDocs }));
 
         // 이미 만족도를 남긴 메시지는 새로고침해도 버튼이 다시 안 뜨도록 서버 값으로 초기화
         const initialSatisfaction: Record<string, "good" | "bad"> = {};
@@ -455,6 +527,8 @@ export default function ChatThreadPage() {
             documentAction.title,
             documentAction.content,
             documentAction.format,
+            undefined,
+            res?.promptSessionId,
           );
 
           setGeneratedDocuments((prev) => ({
@@ -527,11 +601,16 @@ export default function ChatThreadPage() {
 
       // 수신자 이름이 감지됐고, 이미 저장 동의를 한 상태가 아니면 동의 카드 노출
       // (프로필이 없으면 당연히 미동의 상태, 있으면 실제 동의 기록을 조회해서 판단)
+      // exact match가 없어도 성+직함이 같은 후보가 있으면("김ㅇㅇ 대리" 저장돼 있는데 지금은
+      // "김대리"로 감지된 경우 등) 곧바로 새 프로필로 안 만들고, 동명이인인지부터 확인한다.
       const detected = detectReceiverName(prompt);
       if (detected) {
-        const existing = receiverProfiles.find((p) => p.receiverName === detected);
+        const { exact, candidate } = matchReceiverProfile(detected, receiverProfiles);
+        if (candidate) {
+          setDuplicateCandidate({ detectedName: detected, candidateProfile: candidate, forMessageId: assistantId });
+        } else {
         try {
-          const allowed = existing ? await getConsentStatus(existing.id) : false;
+            const allowed = exact ? await getConsentStatus(exact.id) : false;
           if (!allowed) {
             setPendingConsent({ name: detected, forMessageId: assistantId, saving: false, done: false });
           }
@@ -539,6 +618,7 @@ export default function ChatThreadPage() {
           // 동의 상태 조회 실패 시, 놓치는 것보다 한 번 더 물어보는 쪽이 안전해서 카드 노출
           setPendingConsent({ name: detected, forMessageId: assistantId, saving: false, done: false });
         }
+      }
       }
 
       // 새로 생성된 채팅 목록의 title을 불러옴
@@ -840,7 +920,7 @@ export default function ChatThreadPage() {
 
 
                           <div className="consent-question">
-                            앞으로 <b>{pendingConsent.name}</b> 기본 스타일로 저장할까요?
+                            수신자 <b>{pendingConsent.name}</b>님 기본 스타일로 저장할까요?
                           </div>
                           <div className="consent-actions">
                             <button
@@ -848,7 +928,7 @@ export default function ChatThreadPage() {
                               onClick={applyConsent}
                               disabled={pendingConsent.saving}
                             >
-                              {pendingConsent.saving ? "저장 중…" : "앞으로 적용"}
+                              {pendingConsent.saving ? "저장 중…" : "저장"}
                             </button>
                             <button
                               className="consent-dismiss"
@@ -905,6 +985,21 @@ export default function ChatThreadPage() {
         onReceiverProfileChange={(profile) =>
           setSelectedReceiverProfileId(profile?.id ?? null)
         }
+      />
+
+      <ConfirmDialog
+        open={duplicateCandidate !== null}
+        title="동명이인인가요?"
+        message={
+          duplicateCandidate
+            ? `이미 저장된 "${duplicateCandidate.candidateProfile.receiverName}"와 같은 분인가요? 같은 분이면 학습된 스타일을 그대로 이어서 씁니다.`
+            : ""
+        }
+        confirmLabel="네, 같은 사람이에요"
+        cancelLabel="아니요, 다른 사람이에요"
+        loading={resolvingDuplicate}
+        onConfirm={confirmSameReceiver}
+        onCancel={declineSameReceiver}
       />
     </div>
   )

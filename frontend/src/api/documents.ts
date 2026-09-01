@@ -164,6 +164,7 @@ export async function generateDocumentFile(
   content: string,
   format: DocumentFormat,
   templateDocumentId?: number,
+  promptSessionId?: number,
 ): Promise<Blob> {
   const res = await fetch(`${API}/api/documents/generate`, {
     method: "POST",
@@ -176,6 +177,7 @@ export async function generateDocumentFile(
       content,
       format,
       templateDocumentId: templateDocumentId ?? null,
+      promptSessionId: promptSessionId ?? null,
     }),
   });
 

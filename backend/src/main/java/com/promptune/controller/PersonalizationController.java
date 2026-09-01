@@ -4,6 +4,7 @@ import com.promptune.domain.User;
 import com.promptune.dto.PersonalizationDtos.PersonalizationExport;
 import com.promptune.repository.*;
 import com.promptune.service.ConsentService;
+import com.promptune.service.S3StorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -21,6 +22,8 @@ public class PersonalizationController {
     private final ConsentRecordRepository consentRecordRepository;
     private final BehaviorLogRepository behaviorLogRepository;
     private final PersonalizationScoreRepository personalizationScoreRepository;
+    private final DocumentRepository documentRepository;
+    private final S3StorageService s3StorageService;
     private final ConsentService consentService;
 
     public PersonalizationController(UserRepository userRepository,
@@ -29,6 +32,8 @@ public class PersonalizationController {
                                       ConsentRecordRepository consentRecordRepository,
                                       BehaviorLogRepository behaviorLogRepository,
                                       PersonalizationScoreRepository personalizationScoreRepository,
+                                      DocumentRepository documentRepository,
+                                      S3StorageService s3StorageService,
                                       ConsentService consentService) {
         this.userRepository = userRepository;
         this.userPreferenceRepository = userPreferenceRepository;
@@ -36,6 +41,8 @@ public class PersonalizationController {
         this.consentRecordRepository = consentRecordRepository;
         this.behaviorLogRepository = behaviorLogRepository;
         this.personalizationScoreRepository = personalizationScoreRepository;
+        this.documentRepository = documentRepository;
+        this.s3StorageService = s3StorageService;
         this.consentService = consentService;
     }
 
@@ -53,6 +60,13 @@ public class PersonalizationController {
         consentRecordRepository.deleteByUserIdAndReceiverProfileIdIsNull(userId);
         behaviorLogRepository.deleteByUserId(userId);
         personalizationScoreRepository.deleteByUserId(userId);
+
+        // 업로드한 파일도 같이 정리. DocumentController.delete()와 동일한 순서(S3 먼저, DB는 나중)로
+        // 처리 - S3 객체 삭제가 먼저 끝나야 DB에서 s3Key를 잃어버리기 전에 정리할 수 있다.
+        for (var document : documentRepository.findByOwnerUserId(userId)) {
+            s3StorageService.delete(document.getS3Key());
+        }
+        documentRepository.deleteByOwnerUserId(userId);  // document_chunks는 ON DELETE CASCADE로 자동 같이 삭제됨
 
         return ResponseEntity.noContent().build();
     }

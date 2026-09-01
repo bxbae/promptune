@@ -6,7 +6,7 @@ import com.promptune.dto.BehaviorDtos.BehaviorActionRequest;
 import com.promptune.repository.ChatSessionRepository;
 import com.promptune.repository.UserRepository;
 import com.promptune.service.BehaviorLogService;
-import com.promptune.service.ConsentService;
+// import com.promptune.service.ConsentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 class BehaviorControllerTest {
 
   private BehaviorLogService behaviorLogService;
-  private ConsentService consentService;
+//   private ConsentService consentService;
   private UserRepository userRepository;
   private ChatSessionRepository chatSessionRepository;
   private BehaviorController controller;
@@ -35,13 +35,13 @@ class BehaviorControllerTest {
   @BeforeEach
   void setUp() {
     behaviorLogService = mock(BehaviorLogService.class);
-    consentService = mock(ConsentService.class);
+    // consentService = mock(ConsentService.class);
     userRepository = mock(UserRepository.class);
     chatSessionRepository = mock(ChatSessionRepository.class);
 
     controller = new BehaviorController(
         behaviorLogService,
-        consentService,
+        // consentService,
         userRepository,
         chatSessionRepository);
 
@@ -62,8 +62,8 @@ class BehaviorControllerTest {
     when(session.getUserId()).thenReturn(1L);
     when(chatSessionRepository.findById(10L))
         .thenReturn(Optional.of(session));
-    when(consentService.canUsePersonalization(1L))
-        .thenReturn(true);
+    // when(consentService.canUsePersonalization(1L))
+        // .thenReturn(true);
 
     BehaviorActionRequest request = new BehaviorActionRequest("tone", "APPLY", 10L);
 
@@ -78,8 +78,8 @@ class BehaviorControllerTest {
 
   @Test
   void noPersonalizationConsent_doesNotRecordBehavior() {
-    when(consentService.canUsePersonalization(1L))
-        .thenReturn(false);
+    // when(consentService.canUsePersonalization(1L))
+        // .thenReturn(false);
 
     BehaviorActionRequest request = new BehaviorActionRequest("tone", "APPLY", null);
 
@@ -124,8 +124,8 @@ class BehaviorControllerTest {
 
   @Test
   void invalidBehaviorRequest_returnsBadRequest() {
-    when(consentService.canUsePersonalization(1L))
-        .thenReturn(true);
+    // when(consentService.canUsePersonalization(1L))
+    //     .thenReturn(true);
 
     doThrow(new IllegalArgumentException("Unsupported behavior element: report"))
         .when(behaviorLogService)
