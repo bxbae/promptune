@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { execute } from "@/lib/api";
 import { getChatMessages, ChatMessage, MessageAttachment } from "@/api/chatSessions";
-import { listReceiverProfiles, upsertReceiverProfile, ReceiverProfile } from "@/api/receiverProfiles";
+import { listReceiverProfiles, upsertReceiverProfile, updateReceiverProfile, ReceiverProfile } from "@/api/receiverProfiles";
 import { microsoftMembers } from "@/lib/microsoft";
 import { suggestToneFromJobTitle } from "@/lib/toneMapping";
 import { grantConsent, getConsentStatus } from "@/api/consents";
@@ -11,7 +11,7 @@ import { submitPromptSessionEdit } from "@/api/promptSessions";
 import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
 import { generateDocumentFile, fetchDocumentContent, type DocumentFormat, type DocumentItem } from "@/api/documents";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { detectReceiverName, matchReceiverProfile } from "@/lib/receiverMatching";
+import { detectReceiverName, matchReceiverProfile, buildCanonicalReceiverName } from "@/lib/receiverMatching";
 
 interface MessageSource {
   title: string;
@@ -395,21 +395,35 @@ export default function ChatThreadPage() {
     }
   }
 
-  // "네, 같은 사람이에요" - 후보 프로필의 기존 저장명으로 동의 흐름을 이어간다.
-  // upsertReceiverProfile은 receiverName 완전일치로 찾기 때문에, 여기서 새로 감지된
-  // 이름("김대리")이 아니라 기존 저장명("김ㅇㅇ 대리")을 넘겨야 새 프로필이 안 생기고
-  // 기존 프로필에 병합(톤/평균길이 갱신)된다.
+  // "네, 같은 사람이에요"
+  // 저장된 프로필 이름을 "성+이름+직함"이 다 갖춰진 형태로 정정한 뒤 그 정정된 이름으로 동의 흐름을 이어간다.
+  // upsertReceiverProfile은 receiverName 완전일치로 찾기 때문에,
+  // 여기서 이름을 미리 바꿔두지 않으면 다음에 다시 감지될 때마다 매번 동명이인 확인을 다시 물어야 한다.
   async function confirmSameReceiver() {
     if (!duplicateCandidate) return;
     setResolvingDuplicate(true);
-    const { candidateProfile, forMessageId } = duplicateCandidate;
+    const { candidateProfile, detectedName, forMessageId } = duplicateCandidate;
+
+    const canonicalName = buildCanonicalReceiverName(candidateProfile.receiverName, detectedName);
+
+    let profileName = candidateProfile.receiverName;
+    if (canonicalName !== candidateProfile.receiverName) {
+      try {
+        const renamed = await updateReceiverProfile(candidateProfile.id, { receiverName: canonicalName });
+        profileName = renamed.receiverName;
+        setReceiverProfiles((prev) => prev.map((p) => (p.id === renamed.id ? renamed : p)));
+      } catch {
+        // 이름 정정 실패해도 병합 자체(스타일 이어쓰기)는 계속 진행 - 기존 이름 그대로 씀
+      }
+    }
+
     try {
       const allowed = await getConsentStatus(candidateProfile.id);
       if (!allowed) {
-        setPendingConsent({ name: candidateProfile.receiverName, forMessageId, saving: false, done: false });
+        setPendingConsent({ name: profileName, forMessageId, saving: false, done: false });
       }
     } catch {
-      setPendingConsent({ name: candidateProfile.receiverName, forMessageId, saving: false, done: false });
+      setPendingConsent({ name: profileName, forMessageId, saving: false, done: false });
     } finally {
       setResolvingDuplicate(false);
       setDuplicateCandidate(null);

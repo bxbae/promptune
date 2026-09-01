@@ -42,10 +42,10 @@ export async function upsertReceiverProfile(
   return res.json();
 }
 
-// PATCH /api/receiver-profiles/{id} - 관계·선호 톤 수정
+// PATCH /api/receiver-profiles/{id} - 관계·선호 톤·이름 수정
 export async function updateReceiverProfile(
   id: number,
-  patch: { relationship?: string | null; preferredTone?: string | null }
+  patch: { relationship?: string | null; preferredTone?: string | null; receiverName?: string }
 ): Promise<ReceiverProfile> {
   const res = await fetch(`${API}/api/receiver-profiles/${id}`, {
     method: "PATCH",
