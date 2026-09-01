@@ -362,6 +362,14 @@ def resolve_strong_retrieval_route(query: str) -> str | None:
 
 
 def classify_ml_retrieval_route(query: str) -> str:
+    """
+    (P1-2) /retrieval-route 진단 endpoint 전용이다. 실제 제품 runtime
+    (retrieval_orchestrator.execute_retrieval)은 이 함수를 호출하지
+    않는다 - resolve_strong_retrieval_route() 이후 fallback으로
+    resolve_action()(ActionClassifier)을 쓰는 반면, 이 함수는 별도의
+    SVM 라우터(_ROUTER)로 fallback하기 때문에 같은 질의라도 두 경로의
+    결과가 달라질 수 있다.
+    """
     strong_route = resolve_strong_retrieval_route(query)
 
     if strong_route is not None:

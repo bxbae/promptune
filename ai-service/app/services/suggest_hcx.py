@@ -517,14 +517,12 @@ def _filter_context_grounded_candidates(
     candidates: list[str],
 ) -> list[str]:
     """
-    CONTEXT 후보가 제공된 업무 맥락과 지나치게 동떨어지지 않았는지
-    BGE-M3 의미 유사도로 사전 필터링한다.
+    CONTEXT 후보를 BGE-M3 의미 유사도로 정렬한다.
 
-    BGE-M3는 사실 검증/NLI 모델이 아니므로 환각 여부를 단독 판정하지 않는다.
-    최고 점수 후보와의 상대 거리 + 최소 점수만 사용해
-    명백히 맥락에서 벗어난 후보를 제거한다.
-
-    후보의 기존 순서는 유지한다.
+    BGE-M3는 사실 검증/NLI 모델이 아니므로 환각 여부를 단독 판정하지
+    않는다. (P0-3) 이전에는 최소 점수 미만 후보를 제거하는 hard
+    filter였지만, 정상 추천까지 과도하게 사라지는 문제가 있어
+    후보를 제거하지 않고 맥락과 가까운 순서로 ranking만 한다.
     """
     if not context.strip():
         return candidates
@@ -542,46 +540,31 @@ def _filter_context_grounded_candidates(
             "Grounding score count does not match candidate count."
         )
 
-    best_score = max(scores)
-
-    cutoff = max(
-        SUGGEST_GROUNDING_MIN_SCORE,
-        best_score - SUGGEST_GROUNDING_RELATIVE_MARGIN,
+    ranked = sorted(
+        zip(candidates, scores, strict=True),
+        key=lambda pair: pair[1],
+        reverse=True,
     )
 
-    grounded_candidates: list[str] = []
-
-    for candidate, score in zip(
-        candidates,
-        scores,
-        strict=True,
-    ):
+    for candidate, score in ranked:
         logger.info(
-            "Suggestion grounding "
-            "score=%.4f cutoff=%.4f candidate=%r",
+            "Suggestion grounding ranking "
+            "score=%.4f candidate=%r",
             score,
-            cutoff,
             candidate,
         )
 
-        if score >= cutoff:
-            grounded_candidates.append(candidate)
-
-        else:
-            logger.info(
-                "Generated suggestion rejected by context grounding "
-                "score=%.4f cutoff=%.4f candidate=%r",
-                score,
-                cutoff,
-                candidate,
-            )
-
-    return grounded_candidates
+    return [candidate for candidate, _ in ranked]
 
 def _candidate_is_audience_safe(candidate: str) -> bool:
     """
-    AUDIENCE 추천 후보가 이메일 본문이 아니라
-    수신 대상을 보완하는 프롬프트 지시문인지 검사한다.
+    AUDIENCE 추천 후보가 이메일 본문이 아닌지만 검사한다.
+
+    (P0-3) 이전에는 "메일 작성/수신자 설정" 지시문 형태와
+    수신 대상 표현까지 정규식으로 강제해서, 형태만 조금 달라도
+    정상 추천이 걸러지는 경우가 많았다. 이제는 명백한 이메일 본문형
+    출력(예: "...전달드립니다", "...확인해 주시기 바랍니다")만
+    차단하고, 나머지 판단은 HCX prompt 규칙에 맡긴다.
     """
     normalized = candidate.strip()
 
@@ -598,34 +581,9 @@ def _candidate_is_audience_safe(candidate: str) -> bool:
         r"확인해\s*주시기",
     )
 
-    if any(
+    return not any(
         re.search(pattern, normalized)
         for pattern in body_like_patterns
-    ):
-        return False
-
-    prompt_instruction_patterns = (
-        r"(?:메일|이메일).*(?:작성|써|보내)",
-        r"수신자.*(?:설정|지정)",
-        r"수신\s*대상.*(?:설정|지정)",
-    )
-
-    if not any(
-        re.search(pattern, normalized)
-        for pattern in prompt_instruction_patterns
-    ):
-        return False
-
-    audience_patterns = (
-        r"\S+\s*(?:에게|께|한테)",
-        r"\S+\s*(?:을|를)\s*대상으로",
-        r"수신자",
-        r"수신\s*대상",
-    )
-
-    return any(
-        re.search(pattern, normalized)
-        for pattern in audience_patterns
     )
 
 
@@ -660,7 +618,14 @@ def _validate_generated_candidates(
     baseline: dict[str, int],
 ) -> list[str]:
     """
-    HCX가 생성한 순서 그대로 KcELECTRA로 재진단한다.
+    (P0-3) KcELECTRA는 최초 진단(baseline_missing)에만 사용하고,
+    후보별 재진단(predict_missing_with_rules 재호출)은 더 이상
+    추천 노출의 hard gate로 쓰지 않는다. 후보별로 다시 진단하면
+    정상 추천도 자주 걸러져서 추천이 거의 노출되지 않는 문제가 있었다.
+
+    여기서는 최소 안전 검사(AUDIENCE guard: 명백한 이메일 본문형
+    출력 차단)만 적용한다. `text`/`baseline` 인자는 호출부 호환을
+    위해 시그니처를 유지하지만 더 이상 재진단에 사용하지 않는다.
     """
     valid: list[str] = []
 
@@ -676,40 +641,7 @@ def _validate_generated_candidates(
             )
             continue
 
-        merged = _merge_prompt_with_candidate(
-            text,
-            candidate,
-            element=element,
-        )
-
-        try:
-            after = predict_missing_with_rules(merged)
-
-        except Exception:
-            logger.exception(
-                "KcELECTRA suggestion validation failed "
-                "element=%s candidate=%r",
-                element,
-                candidate,
-            )
-            continue
-
-        if _candidate_is_diagnosis_safe(
-            element=element,
-            baseline=baseline,
-            after=after,
-        ):
-            valid.append(candidate)
-
-        else:
-            logger.info(
-                "Generated suggestion rejected by diagnosis guard "
-                "element=%s candidate=%r baseline=%s after=%s",
-                element,
-                candidate,
-                baseline,
-                after,
-            )
+        valid.append(candidate)
 
     return valid
 
@@ -737,16 +669,22 @@ def suggest(
         if baseline_missing.get(element) != 1:
             continue
 
-        # CONTEXT는 현재 요청에 대한 명시적 업무 맥락이 없으면
-        # HCX가 사실을 추측해서 만들지 않도록 fail-closed 처리한다.
-        # 이 경우 suggestions=[]로 반환하고 Frontend의 되묻기/직접 입력으로 보완한다.
+        # CONTEXT에 명시적 업무 맥락이 없다고 해서 추천 자체를
+        # 없애지는 않는다. 대신 _build_generation_prompt()의 규칙
+        # (업무 맥락이 없으면 구체적 사실을 단정하지 말고 사용자가
+        # 채울 수 있는 정보의 종류만 제안)에 따라 HCX가 생성하도록
+        # 한다. 아래 숫자 안전 검사(req.text 기준)로 명백한 수치
+        # 환각만 최소한으로 막고, 그 외 사람/회사/원인 같은 사실
+        # 환각 방지는 HCX prompt 규칙에 맡긴다.
+        # (_validate_generated_candidates()는 hallucination 검사가
+        # 아니라 AUDIENCE guard + KcELECTRA diagnosis guard다.)
         if element == "CONTEXT" and not context:
             logger.info(
-                "Skip ungrounded CONTEXT suggestion because "
-                "no explicit context was provided text=%r",
+                "Generating ungrounded CONTEXT suggestion without "
+                "explicit context; model must only propose the kind "
+                "of info needed, not invent facts text=%r",
                 req.text,
             )
-            continue
 
         try:
             candidates = _generate_candidates(
@@ -783,7 +721,33 @@ def suggest(
                 )
                 candidates = [context]
 
+        elif element == "CONTEXT" and not context:
+            # explicit context가 없을 때는 "허용된 숫자"의 기준이
+            # 없으므로, 대신 사용자 원문(req.text)에 이미 있는 숫자만
+            # 후보에 남기는 것을 최소 안전장치로 재사용한다.
+            # (예: 원문에 없는 "3일" 같은 구체적 수치를 새로 만들면 차단)
+            candidates = [
+                candidate
+                for candidate in candidates
+                if _context_candidate_has_only_allowed_numbers(
+                    context=req.text,
+                    candidate=candidate,
+                )
+            ]
+
+            if not candidates:
+                logger.warning(
+                    "No number-safe ungrounded CONTEXT suggestion; "
+                    "dropping element text=%r",
+                    req.text,
+                )
+
         grounded_candidates = candidates
+
+        # 이 시점에서 candidates(=grounded_candidates)가 이미 비어 있을 수
+        # 있으므로(예: 위 숫자 안전 검사에서 전부 탈락), 아래 분기 전에
+        # 항상 정의되도록 기본값을 먼저 세팅한다.
+        valid_candidates: list[str] = []
 
         # 업무 맥락 자체를 보완하는 CONTEXT 추천에만 BGE grounding을 적용한다.
         # FORMAT/TONE/LENGTH 같은 선택형 요소에는 context 유사도를 강제하지 않는다.
@@ -804,8 +768,6 @@ def suggest(
                     element,
                 )
                 continue
-
-                valid_candidates: list[str] = []
 
         if grounded_candidates:
             valid_candidates = _validate_generated_candidates(
