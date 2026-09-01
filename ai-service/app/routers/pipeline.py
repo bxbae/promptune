@@ -97,6 +97,20 @@ def safety_check(req: SafetyRequest):
     tags=["12.Retrieval Route"],
 )
 def retrieval_route(req: RetrievalRouteRequest):
+    """
+    (P1-2) 진단/개발용 endpoint다 - 실제 제품 runtime의 route 결정은
+    이 endpoint를 거치지 않는다. Backend(PipelineController)는
+    /retrieval-execute만 호출하며, 그 안의 retrieval_orchestrator.
+    execute_retrieval()이 유일한 source of truth다.
+
+    classify_ml_retrieval_route()는 resolve_strong_retrieval_route()
+    이후 fallback으로 별도의 SVM 분류기를 쓰는데, execute_retrieval()의
+    실제 fallback(resolve_action() = ActionClassifier)과는 다른 모델이라
+    같은 질의에도 서로 다른 route를 낼 수 있다. 그래서 이 endpoint의
+    응답을 제품 동작의 기준으로 삼지 않는다 - route 확인/디버깅 도구로만
+    쓴다. 삭제는 이번 범위가 아니다(기존 테스트/개발 도구가 이 경로를
+    사용할 수 있음).
+    """
     return RetrievalRouteResponse(
         route=classify_ml_retrieval_route(req.query)
     )
@@ -109,6 +123,13 @@ def retrieval_route(req: RetrievalRouteRequest):
     tags=["12.Retrieval Execute"],
 )
 def retrieval_execute(req: RetrievalExecuteRequest):
+    """
+    (P1-2) 실제 제품 runtime이 사용하는 유일한 retrieval 진입점이다.
+    Backend는 항상 이 endpoint만 호출하고, 최종 route 판단은 전부
+    retrieval_orchestrator.execute_retrieval() 안에서 이뤄진다 - 그
+    안에서 conversation_context/action_resolver/ml_router는 최종
+    결정이 아니라 판단 근거(signal)만 제공한다.
+    """
     try:
         return execute_retrieval(req)
     except ValueError as exc:

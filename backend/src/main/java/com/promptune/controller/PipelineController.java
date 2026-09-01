@@ -1076,8 +1076,17 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 + text.substring(text.length() - 750);
     }
 
-    // generate() 결과를 검증하고, 실패 시 1회만 재생성 후 재검증.
-    // 재생성 시에도 동일한 conversation history를 유지한다.
+    // generate() 결과를 검증한다.
+    // (P0-4) 이전에는 검증 실패 시 재생성 프롬프트를 만들어 HCX를
+    // 다시 호출했지만, 이번 수정에서 "Validator FAIL → 자동 재생성"
+    // 연결을 끊는다. Validator는 답변을 폐기/재생성시키는 hard gate가
+    // 아니라, 상태를 확인하고 기록만 하는 lightweight check로 완화한다.
+    //
+    // 정상적으로 생성된 답변은 검증 통과 여부와 관계없이 그대로
+    // 사용자에게 반환한다. "생성 자체 실패"(generatedText == null,
+    // 즉 ai.generate()가 result를 못 준 경우)에 대한 기존 오류 처리는
+    // 그대로 유지한다 — 그건 이 메서드가 아니라 호출부(예: 425행
+    // 부근 aiText == null 체크)에서 이미 처리한다.
     private Map validateWithRetry(
             String originalPrompt,
             Map result,
@@ -1108,66 +1117,25 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 Boolean.TRUE.equals(
                         validation.get("passed"));
 
-        if (passed) {
-            return result;
+        if (!passed) {
+            Object issuesObject =
+                    validation.get("issues");
+
+            String issues =
+                    issuesObject == null
+                            ? "요청 형식 또는 근거 사실을 지키지 못했습니다."
+                            : issuesObject.toString();
+
+            // 자동 재생성하지 않는다. 정상 생성된 답변을 그대로 쓰고
+            // warning만 로그로 남긴다 (MVP: 완벽한 자동 교정보다
+            // 정상 생성 결과를 사용자에게 보여주는 것을 우선).
+            System.out.println(
+                    "[Validator] validation failed but keeping generated "
+                            + "result as-is (auto-retry disabled) / issues="
+                            + issues);
         }
 
-        Object issuesObject =
-                validation.get("issues");
-
-        String issues =
-                issuesObject == null
-                        ? "요청 형식 또는 근거 사실을 지키지 못했습니다."
-                        : issuesObject.toString();
-
-        String retryPrompt =
-                originalPrompt
-                        + "\n\n[재생성 검증 지시]"
-                        + "\n이전 답변에 다음 문제가 있었습니다: "
-                        + issues
-                        + "\n제공된 내부 문서/웹 검색 근거에 있는 사실만 사용하세요."
-                        + "\n특히 이름, 본명, 소속, 날짜, 수치 등을 추측하지 마세요."
-                        + "\n이 지시문 자체는 최종 답변에서 언급하지 마세요.";
-
-        Map retryResult =
-                ai.generate(
-                        retryPrompt,
-                        taskType,
-                        documents,
-                        webResults,
-                        userContext,
-                        preferenceMap,
-                        conversationHistory);
-
-        Object retryText =
-                retryResult != null
-                        ? retryResult.get("result")
-                        : null;
-
-        if (retryText == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "답변 생성에 실패했습니다.");
-        }
-
-        Map retryValidation =
-                ai.validate(
-                        originalPrompt,
-                        retryText.toString(),
-                        documents,
-                        webResults);
-
-        boolean retryPassed =
-                Boolean.TRUE.equals(
-                        retryValidation.get("passed"));
-
-        if (!retryPassed) {
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "검증을 통과하는 답변을 생성하지 못했습니다.");
-        }
-
-        return retryResult;
+        return result;
     }
 
     /** 0번: 사용자 맥락 (로그인 후 사전 조회) — /api/execute와 동일한 이유로 경로변수 대신 인증 기반으로 전환 */

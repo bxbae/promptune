@@ -253,6 +253,32 @@ def _is_document_catalog_query(
 def execute_retrieval(
     req: RetrievalExecuteRequest,
 ) -> RetrievalExecuteResponse:
+    """
+    (P1-2) "실제로 검색을 할지, 한다면 INTERNAL인지 WEB인지"를 최종
+    결정하는 유일한 runtime source of truth다. Backend는 항상 이
+    함수(만) 거치는 /retrieval-execute를 호출하고, 다른 진단용 경로
+    (/retrieval-route, classify_ml_retrieval_route)는 제품 동작에
+    영향을 주지 않는다.
+
+    conversation_context.resolve_conversation_retrieval(),
+    action_resolver.resolve_action(), ml_router.
+    resolve_strong_retrieval_route()는 전부 이 함수 안에서 소비되는
+    "판단 근거(signal)"일 뿐이며, 그 자체로 최종 route를 확정하지
+    않는다 - 아래 순서로 이 함수가 최종 route를 하나만 고른다:
+
+      1. document_ids(첨부/명시적으로 확정된 문서)가 있으면 -> internal_rag
+      2. conversation_context의 route_override
+         (memory 저장/회상, 문맥상 내부문서 재참조, 신호 없는 follow-up 등)
+      3. resolve_strong_retrieval_route()의 결정적 signal
+         (명시적 내부문서 범위, 실시간 사실, 외부 entity/profile 등)
+      4. action_resolver.resolve_action()의 retrieval_route 제안
+      5. 그래도 애매하면 -> no_retrieval
+
+    "검색을 하지 않는다"(route)와 "이전 대화를 전달하지 않는다"
+    (conversation_memory.select_relevant_history, P0-1)는 서로 다른
+    결정이다 - no_retrieval이어도 history는 그대로 generate_hcx에
+    전달된다.
+    """
     document_ids = list(
         dict.fromkeys(
             int(x)

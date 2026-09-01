@@ -459,20 +459,24 @@ def select_relevant_history(
 ) -> list[ConversationMessage]:
     mode = classify_conversation_context(prompt, history)
 
-    if mode == "standalone":
-        return []
-
-    # memory recall은 assistant 과거 오답을 evidence로 쓰지 않는다.
-    # 관련 user 사실은 build_recall_evidence()가 따로 선택한다.
-    if mode == "memory_recall":
-        return []
-
-    # "그거 좀 더 자세히", "방금 답변 수정해줘" 같은 경우만
-    # 직전 2개 대화쌍 정도를 유지한다.
     non_empty = [
         message
         for message in history
         if message.content.strip()
     ]
 
+    # context mode 판정이 조금 틀리더라도 direct history가
+    # 완전히 사라지지 않도록, 같은 대화가 있으면 최소한의
+    # 최근 발화는 항상 유지한다.
+    if mode == "standalone":
+        return non_empty[-2:]
+
+    # memory recall도 최근 history를 완전히 비우지 않는다.
+    # 관련 user 사실은 build_recall_evidence()가 별도로 선택해
+    # evidence로 추가되므로, 여기서는 최근 대화 흐름만 유지한다.
+    if mode == "memory_recall":
+        return non_empty[-4:]
+
+    # "그거 좀 더 자세히", "방금 답변 수정해줘" 같은 경우는
+    # 직전 2개 대화쌍(최근 4개 메시지) 정도를 유지한다.
     return non_empty[-4:]

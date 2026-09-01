@@ -8,6 +8,7 @@ import com.promptune.repository.UserRepository;
 import com.promptune.service.AiServiceClient;
 import com.promptune.service.BehaviorLogService;
 import com.promptune.service.ConsentService;
+import com.promptune.service.DocumentFollowupClassifier;
 import com.promptune.service.DocumentIntentResolver;
 import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
@@ -16,14 +17,12 @@ import com.promptune.service.PreferenceResolutionService;
 import com.promptune.service.RecommendService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -51,6 +50,8 @@ class PipelineControllerTest {
         DocumentRepository documentRepository = mock(DocumentRepository.class);
         DocumentIntentResolver documentIntentResolver =
                 mock(DocumentIntentResolver.class);
+        DocumentFollowupClassifier documentFollowupClassifier =
+                mock(DocumentFollowupClassifier.class);
 
         controller = new PipelineController(
                 gate,
@@ -66,20 +67,17 @@ class PipelineControllerTest {
                 preferenceResolutionService,
                 receiverProfileRepository,
                 documentRepository,
-                documentIntentResolver);
+                documentIntentResolver,
+                documentFollowupClassifier);
     }
 
     @Test
-    void validationFailure_retryPromptIncludesValidationIssues() throws Exception {
+    void validationFailure_keepsOriginalGeneratedResponseWithoutRetry() throws Exception {
         String originalPrompt = "ORIGINAL_PROMPT_WITH_FACTS_3_8_28";
 
         Map<String, Object> firstResult = Map.of(
                 "result",
                 "FIRST_GENERATION_MISSING_FACTS");
-
-        Map<String, Object> retryResult = Map.of(
-                "result",
-                "RETRY_GENERATION_WITH_FACTS_3_8_28");
 
         String validationIssue = "missing fact numbers: 28, 3, 8";
 
@@ -88,23 +86,10 @@ class PipelineControllerTest {
                 "facts_preserved", false,
                 "issues", List.of(validationIssue));
 
-        Map<String, Object> passedValidation = Map.of(
-                "passed", true,
-                "facts_preserved", true,
-                "issues", List.of());
-
-        when(ai.validate(eq(originalPrompt), anyString()))
-                .thenReturn(failedValidation, passedValidation);
-
-        when(ai.generate(
-                anyString(),
-                eq("email"),
-                anyList(),
-                anyList(),
-                anyMap(),
-                anyMap(),
-                anyList()))
-                .thenReturn(retryResult);
+        // 컨트롤러는 4-args validate(original, generated, documents,
+        // webResults)를 호출하므로 그 시그니처에 맞춰 stub한다.
+        when(ai.validate(eq(originalPrompt), anyString(), anyList(), anyList()))
+                .thenReturn(failedValidation);
 
         Method method = PipelineController.class.getDeclaredMethod(
                 "validateWithRetry",
@@ -119,7 +104,9 @@ class PipelineControllerTest {
 
         method.setAccessible(true);
 
-        method.invoke(
+        // passed=false여도 method.invoke()가 예외 없이 끝까지 도달하는 것
+        // 자체가 "예외/503이 발생하지 않는다"의 증거다 (목표 3).
+        Object returned = method.invoke(
                 controller,
                 originalPrompt,
                 firstResult,
@@ -130,27 +117,35 @@ class PipelineControllerTest {
                 Map.of(),
                 List.of());
 
-        ArgumentCaptor<String> retryPromptCaptor =
-                ArgumentCaptor.forClass(String.class);
+        // 목표 2: validate()는 정확히 1회만 호출된다 (재검증 없음).
+        verify(ai, times(1)).validate(
+                eq(originalPrompt),
+                anyString(),
+                anyList(),
+                anyList());
 
-        verify(ai).generate(
-                retryPromptCaptor.capture(),
-                eq("email"),
+        // 목표 4: validateWithRetry() 내부에서 두 번째 generate()는
+        // 절대 호출되지 않는다. execute()가 validateWithRetry() 호출
+        // 전에 최초 generate()를 정확히 1회 호출한다는 점(코드 검토로
+        // 확인됨, 399행)과 합치면, 요청당 generate 호출은 항상 1회로
+        // 고정된다 (목표 1).
+        verify(ai, never()).generate(
+                anyString(),
+                anyString(),
                 anyList(),
                 anyList(),
                 anyMap(),
                 anyMap(),
                 anyList());
 
-        String retryPrompt = retryPromptCaptor.getValue();
-
-        assertNotEquals(
-                originalPrompt,
-                retryPrompt,
-                "Retry must not reuse the unchanged original prompt.");
-
-        assertTrue(
-                retryPrompt.contains(validationIssue),
-                "Retry prompt must include the first validation issues.");
+        // 목표 5 & 6: 반환값은 항상 최초 generate 결과(firstResult) 그대로다.
+        // 실제 컨트롤러의 session.setAiResponseText(result.get("result")...)
+        // 저장 로직은 이 반환값을 그대로 사용하므로(수정 없음), 여기서
+        // 반환값이 firstResult와 같음을 확인하는 것이 aiResponseText도
+        // 최초 generate 결과로 저장됨을 보증한다.
+        assertEquals(firstResult, returned);
+        assertEquals(
+                "FIRST_GENERATION_MISSING_FACTS",
+                ((Map<?, ?>) returned).get("result"));
     }
 }
