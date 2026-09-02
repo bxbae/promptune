@@ -128,7 +128,7 @@ def is_external_entity_lookup_query(query: str) -> bool:
 # public helper로 노출한다("이름"만 이 guard 전용으로 추가 - 외부 entity
 # 재현 사례(1-A)에는 없었지만 자기참조 재현 사례엔 필요함).
 _SELF_ATTRIBUTE_NOUNS = (
-    "이력서", "프로필", "경력", "약력", "학력", "소속",
+    "이력서", "프로필 이름", "프로필", "경력", "약력", "학력", "소속",
     "나이", "생일", "키", "주소", "소속사",
     "이름",
 )
