@@ -522,6 +522,22 @@ def _build_document_system_prompt(req: GenerateRequest) -> str:
         habit_notes.append("평소 업로드한 문서를 참고하는 경향이 있음")
 
     if req.habit_output_preferences:
+        # 2026-09-02: format 필드 누락 버그 수정 - 4단계 재설계 이후
+        # format(예: "table")이 실제로 채워지는데 여기서 한 번도 체크를
+        # 안 해서, 표 선호 습관이 있어도 힌트가 전혀 안 만들어지고 있었음
+        # (배포 검증 중 실측으로 발견: format=table 5건 쌓였는데 실제
+        # 답변이 표로 안 나옴).
+        fmt = req.habit_output_preferences.get("format")
+        format_labels = {
+            "table": "표 형태",
+            "markdown": "마크다운 형식",
+            "checklist": "체크리스트 형식",
+            "json": "JSON 형식",
+            "code_only": "코드 위주",
+        }
+        if fmt in format_labels:
+            habit_notes.append(f"평소 {format_labels[fmt]}로 정리해서 받는 걸 선호하는 경향이 있음")
+
         detail = req.habit_output_preferences.get("detail_level")
         if detail == "detailed":
             habit_notes.append("평소 답변을 더 상세하게 다듬는 경향이 있음")
