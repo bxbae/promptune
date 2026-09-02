@@ -67,7 +67,11 @@ public class SecurityConfig {
         // "Invalid CORS request"를 그대로 응답 본문에 써버린다. 컨트롤러가 실제로
         // 허용하는 메서드(GET, POST)와 CORS 설정을 일치시킨다.
         CorsConfiguration microsoftCallback = new CorsConfiguration();
-        microsoftCallback.setAllowedOrigins(List.of("null"));
+        // 2026-09-02: 실제 운영에서 확인해보니 Microsoft가 Origin을 "null"이 아니라
+        // 실제 도메인(https://login.microsoftonline.com)으로 보내는 경우도 있었음
+        // (DefaultCorsProcessor 로그: "Reject: 'https://login.microsoftonline.com'
+        // origin is not allowed"로 확인). 두 경우 다 허용하도록 추가.
+        microsoftCallback.setAllowedOrigins(List.of("null", "https://login.microsoftonline.com"));
         microsoftCallback.setAllowedMethods(List.of("GET", "POST"));
         microsoftCallback.setAllowedHeaders(List.of("*"));
         microsoftCallback.setAllowCredentials(false);
