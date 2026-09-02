@@ -1,6 +1,9 @@
+import logging
 import os
 import re
 from tavily import TavilyClient
+
+logger = logging.getLogger(__name__)
 
 # 2026-08-26: "침착맨 몇살이야?" 같은 질의에서 관련성 약한 결과(예: 은퇴 준비
 # 나이를 다루는 완전히 무관한 영문 기사)가 섞여 들어와 HCX가 근거 없는
@@ -186,7 +189,82 @@ def _all_low_relevance(results: list) -> bool:
     return bool(results) and all(_has_low_relevance_score(r) for r in results)
 
 
-def _run_search(client, query, max_results, topic, include_domains, time_range=None):
+# 2026-09-02(1-B): 이 파일(tavily_search.py)에는 로그가 전혀 없어서, 실제
+# 검색이 finance/profile/news 정책 중 어디를 탔는지, 내부 재시도(0건/저관련도
+# 폴백)가 실제로 일어났는지, 재시도 전후 결과 개수가 어떻게 바뀌었는지가
+# retrieval_orchestrator.py의 최종 결과 로그만으로는 전혀 안 보였다.
+# "강남구 날씨" 같은 hyperlocal 질의가 CASE 3(0건/저관련도)인지 CASE 4(있는데
+# 버려짐)인지 CASE 5(있는데 generation이 무시)인지 구분하려면 이 중간 단계가
+# 필요하다. 동작은 그대로 두고 관측성만 추가한다 - API key/token은 로그에
+# 남기지 않고, content는 최대 150자 preview만 남긴다.
+def _log_search_attempt(
+    *,
+    attempt: str,
+    reason: str | None,
+    query: str,
+    topic: str,
+    include_domains,
+    time_range,
+    max_results: int,
+    raw_result_count: int,
+    filtered_result_count: int,
+) -> None:
+    tag = "web_search_attempt" if attempt == "attempt" else "web_search_retry"
+    domains_count = len(include_domains) if include_domains else 0
+    reason_part = f" reason={reason!r}" if reason else ""
+
+    logger.info(
+        "[TavilySearch] %s query=%r topic=%r domains_count=%d%s "
+        "time_range=%r max_results=%d raw_result_count=%d "
+        "filtered_result_count=%d",
+        tag, query, topic, domains_count, reason_part,
+        time_range, max_results, raw_result_count, filtered_result_count,
+    )
+
+
+def _log_search_results(results: list[dict]) -> None:
+    # 결과별 상세(rank/score/title/url/preview)는 요청당 최대 몇 건이지만
+    # 재시도가 여러 번 겹치면 줄 수가 쉽게 늘어나므로, 요약(info)과 분리해서
+    # debug 레벨로만 남긴다 - 기본 운영 로그 레벨(info)에서는 안 보이고,
+    # 원인 조사가 필요할 때만 debug로 올려서 확인한다.
+    #
+    # 여기 넘어오는 건 항상 stale-wiki 필터를 통과한 filtered 결과다(아래
+    # _log_stale_filtered_results가 걸러진 쪽을 별도로 남긴다) - 헷갈리지
+    # 않도록 로그 태그 자체에 filtered를 명시한다.
+    for rank, item in enumerate(results, start=1):
+        preview = str(item.get("content") or "")[:150]
+
+        logger.debug(
+            "[TavilySearch] filtered_result rank=%d score=%r title=%r url=%r preview=%r",
+            rank, item.get("score"), str(item.get("title") or "")[:150],
+            item.get("url"), preview,
+        )
+
+
+def _log_stale_filtered_results(results: list[dict]) -> None:
+    # 2026-09-02(1-B): raw_result_count와 filtered_result_count가 다르면
+    # "Tavily가 애초에 0건" vs "결과는 있는데 stale-wiki 필터가 제거"를
+    # 요약 로그로는 구분할 수 있지만, 정확히 *무엇이* 제거됐는지까지
+    # 보고 싶을 때를 위해 걸러진 항목만(전체 raw를 다시 찍지 않고) 최소로
+    # 남긴다 - 로그량 과다를 피하려고 제거된 게 있을 때만 호출된다.
+    for rank, item in enumerate(results, start=1):
+        logger.debug(
+            "[TavilySearch] stale_filtered_result rank=%d title=%r url=%r",
+            rank, str(item.get("title") or "")[:150], item.get("url"),
+        )
+
+
+def _run_search(
+    client,
+    query,
+    max_results,
+    topic,
+    include_domains,
+    time_range=None,
+    *,
+    attempt="attempt",
+    reason=None,
+):
     search_kwargs = dict(
         query=query,
         search_depth="basic",
@@ -205,7 +283,26 @@ def _run_search(client, query, max_results, topic, include_domains, time_range=N
     response = client.search(**search_kwargs)
     results = response.get("results", [])
 
-    return [r for r in results if not _is_stale_wiki_revision(r)]
+    filtered = [r for r in results if not _is_stale_wiki_revision(r)]
+    stale_filtered = [r for r in results if _is_stale_wiki_revision(r)]
+
+    _log_search_attempt(
+        attempt=attempt,
+        reason=reason,
+        query=query,
+        topic=topic,
+        include_domains=include_domains,
+        time_range=time_range,
+        max_results=max_results,
+        raw_result_count=len(results),
+        filtered_result_count=len(filtered),
+    )
+    _log_search_results(filtered)
+
+    if stale_filtered:
+        _log_stale_filtered_results(stale_filtered)
+
+    return filtered
 
 
 def search_web(
@@ -277,6 +374,8 @@ def search_web(
                 topic="general",
                 include_domains=None,
                 time_range=time_range,
+                attempt="retry",
+                reason="no_results_with_domain_restriction",
             )
 
         return results
@@ -309,6 +408,8 @@ def search_web(
             topic="news",
             include_domains=None,
             time_range=time_range,
+            attempt="retry",
+            reason="no_or_low_relevance",
         )
 
     # 2026-08-26: "침착맨에 대해 요약해줘"(프로필/유튜버/정치인 같은 마커가
@@ -332,6 +433,8 @@ def search_web(
             include_domains=list(
                 dict.fromkeys(["ko.wikipedia.org", "namu.wiki"] + trusted_domains)
             ),
+            attempt="retry",
+            reason="no_or_low_relevance_after_domain_retry",
         )
 
     return results
