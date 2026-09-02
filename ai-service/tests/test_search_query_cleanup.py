@@ -149,6 +149,24 @@ class BuildSearchQueryTest(unittest.TestCase):
             with self.subTest(query=query):
                 self.assertEqual(build_search_query(query), expected)
 
+    def test_strips_about_subject_suffix_with_trailing_seo_ending(self):
+        # 2026-09-02(1-B): "정보에 대해서"에서 "에 대해"까지만 지워지고
+        # "서"가 고립돼 남아 "정보 서 설명해줘"처럼 검색어가 깨지던 버그.
+        # "-해서"/"-하여서" 어미까지 통째로 지워져야 한다.
+        for query, expected in (
+            ("날씨 정보에 대해서 설명해줘", "날씨 정보 설명해줘"),
+            (
+                "오늘 대한민국의 날씨 정보에 대해서 설명해줘",
+                "오늘 대한민국의 날씨 정보 설명해줘",
+            ),
+            ("리센느에 대하여서 소개해줘", "리센느 소개해줘"),
+        ):
+            with self.subTest(query=query):
+                result = build_search_query(query)
+                self.assertEqual(result, expected)
+                # 고립된 "서"가 단독 단어로 남지 않아야 한다.
+                self.assertNotIn(" 서 ", f" {result} ")
+
 
 if __name__ == "__main__":
     unittest.main()
