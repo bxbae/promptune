@@ -42,5 +42,65 @@ class ConversationContextPolicyTest(unittest.TestCase):
         self.assertFalse(result.used_history)
 
 
+    def test_external_followup_inherits_previous_search_focus(self):
+        history = [
+            ConversationMessage(
+                role="user",
+                content="오늘 서울 강남구 날씨 알려줘",
+            ),
+            ConversationMessage(
+                role="assistant",
+                content="서울 강남구 날씨를 안내했습니다.",
+            ),
+        ]
+
+        result = resolve_conversation_retrieval(
+            query="그럼 오늘 날씨는?",
+            history=history,
+        )
+
+        self.assertEqual(
+            result.query,
+            "오늘 서울 강남구 날씨는?",
+        )
+        self.assertIsNone(result.route_override)
+        self.assertTrue(result.used_history)
+
+    def test_external_followup_with_new_focus_keeps_new_focus(self):
+        history = [
+            ConversationMessage(
+                role="user",
+                content="오늘 서울 강남구 날씨 알려줘",
+            ),
+            ConversationMessage(
+                role="assistant",
+                content="서울 강남구 날씨를 안내했습니다.",
+            ),
+        ]
+
+        result = resolve_conversation_retrieval(
+            query="그럼 오늘 부산 날씨는?",
+            history=history,
+        )
+
+        self.assertEqual(
+            result.query,
+            "오늘 부산 날씨는?",
+        )
+        self.assertIsNone(result.route_override)
+
+    def test_external_query_without_history_is_unchanged(self):
+        query = "오늘 날씨는?"
+
+        result = resolve_conversation_retrieval(
+            query=query,
+            history=[],
+        )
+
+        self.assertEqual(result.query, query)
+        self.assertIsNone(result.route_override)
+        self.assertFalse(result.used_history)
+
+
 if __name__ == "__main__":
     unittest.main()
