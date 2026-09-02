@@ -161,3 +161,64 @@ def is_self_referential_attribute_query(query: str) -> bool:
         return False
 
     return bool(_SELF_ATTRIBUTE_QUERY_RE.match(text))
+
+
+# 2026-09-02(FINANCE 후속): "아이폰 가격이 얼마야?"/"아이폰 가격은?"을
+# strong routing에서만 감지하는 전용 helper - extract_external_entity_subject()
+# /is_external_entity_lookup_query()의 _ATTRIBUTE_LOOKUP_RE에는 "가격"을
+# 넣지 않는다. 그 함수는 search_query_cleanup.build_search_query()가
+# 그대로 재사용해서, "가격"을 넣으면 "아이폰 가격 알려줘"의 Tavily
+# 검색어가 주체 명사("아이폰")만 남고 "가격"(topic)이 통째로 사라지는
+# 부수효과가 생긴다 - 검색 품질을 해치므로 별도 함수로 완전히 분리한다.
+_PRICE_LOOKUP_RE = re.compile(
+    r"^\s*(?P<subject>.+?)(?:은|는|이|가|의)?\s+"
+    r"가격"
+    r"(?:을|를|은|는|이|가|도)?\s*"
+    r"(?:알려줘|알려주세요|알려|말해줘|보여줘|찾아줘|"
+    r"얼마야|얼마예요|얼마에요|얼마인가요|얼마)?"
+    r"\s*[?!.]*\s*$",
+    re.IGNORECASE,
+)
+
+# "우리"/"저희"로 시작하는 자기 조직/서비스 지칭은 외부 entity로 확정할
+# 수 없다("우리 서비스 가격 알려줘"는 내부 서비스일 수 있음) - 1인칭
+# 개인 자기참조(_FIRST_PERSON_RE)와 같은 역할이지만 "우리"/"저희"는 그
+# 정규식 대상이 아니라서 이 helper 전용으로 별도 둔다.
+_ORG_SELF_REFERENCE_RE = re.compile(
+    r"(?<![가-힣])(?:우리|저희)(?:는|가|를|의|\s)"
+)
+
+
+def is_external_price_lookup_query(query: str) -> bool:
+    """
+    "아이폰 가격이 얼마야?"/"아이폰 가격은?"/"아이폰 가격 알려줘"처럼
+    외부 제품/서비스의 가격을 묻는 질의인지 판정한다. "우리 회사"/
+    "우리 서비스"/"저희 서비스"처럼 자기 조직을 가리키는 subject는
+    외부 entity가 아니므로 제외한다(내부 요청은 기존 ActionResolver
+    판단에 맡긴다).
+    """
+    text = re.sub(r"\s+", " ", str(query or "").strip())
+
+    if not text:
+        return False
+
+    if (
+        _FIRST_PERSON_RE.search(text)
+        or _ORG_SELF_REFERENCE_RE.search(text)
+    ):
+        return False
+
+    match = _PRICE_LOOKUP_RE.match(text)
+
+    if not match:
+        return False
+
+    subject = match.group("subject").strip(" ,.!?")
+
+    if subject in _DEICTIC_SUBJECTS:
+        return False
+
+    if len(subject) < 2 or len(subject) > 80:
+        return False
+
+    return True
