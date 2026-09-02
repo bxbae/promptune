@@ -8,9 +8,13 @@ export interface ReceiverProfile {
   userId: number;
   receiverName: string;
   relationship: string | null;
+  department: string | null;
   preferredTone: string | null;
   avgLength: number;
   applyRate: number | null;
+  // MS 조직도에서 자동 동기화된 프로필인지. true면 department는 MS가 소스라
+  // 히스토리 화면에서 직접 수정 못 하게 막는다 (백엔드도 별도로 다시 막음).
+  msSynced: boolean;
   updatedAt: string;
 }
 
@@ -42,10 +46,10 @@ export async function upsertReceiverProfile(
   return res.json();
 }
 
-// PATCH /api/receiver-profiles/{id} - 관계·선호 톤·이름 수정
+// PATCH /api/receiver-profiles/{id} - 관계·부서·선호 톤·이름 수정
 export async function updateReceiverProfile(
   id: number,
-  patch: { relationship?: string | null; preferredTone?: string | null; receiverName?: string }
+  patch: { relationship?: string | null; department?: string | null; preferredTone?: string | null; receiverName?: string }
 ): Promise<ReceiverProfile> {
   const res = await fetch(`${API}/api/receiver-profiles/${id}`, {
     method: "PATCH",

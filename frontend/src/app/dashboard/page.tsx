@@ -39,9 +39,9 @@ function weekdayLabel(dateStr: string): string {
 }
 
 // 업무유형 라벨별 색상 팔레트 (실데이터 키 개수가 가변이라 순서대로 배정)
-const TASK_TYPE_COLORS = ["#55806A", "#7FA391", "#B7AFB2", "#dd5e3e", "#F2A99A", "#D8D3D0", "#EFEBE9", "#A9C4B8"];
+const TASK_TYPE_COLORS = ["#55806A", "#7FA391", "#A9C4B8", "#B7AFB2", "#dd5e3e", "#F2A99A", "#D8D3D0", "#EFEBE9"];
 
-const KNOWN_TASK_TYPES = ["email", "report", "notice", "application", "support", "report_internal", "notice_internal", "general"];
+const KNOWN_TASK_TYPES = ["email", "general", "report", "notice", "application", "support", "report_internal", "notice_internal"];
 
 // AI 진단이 사용하는 고정 8요소. 데이터가 없어도 0%로 8개 다 표시하기 위한 고정 목록.
 const KNOWN_ELEMENTS = ["Task", "Context", "Format", "Audience", "Constraint", "Length", "Tone", "Example"];
@@ -107,7 +107,7 @@ export default function DashboardPage() {
 
   const topReceivers = [...receivers]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 3);
+    .slice(0, 2);
 
   // element-coverage 배열에서 특정 요소만 찾기 (없으면 0%로 표시)
   function findCoverage(element: string) {
@@ -251,7 +251,7 @@ export default function DashboardPage() {
                 <div className="dash-receiver-row" key={r.id}>
                   <div>
                     <div className="dash-receiver-name">{r.receiverName}</div>
-                    <div className="dash-receiver-relationship">{r.relationship || "관계 미설정"}</div>
+                    <div className="dash-receiver-tone">{r.preferredTone || "톤 미설정"}</div>
                   </div>
                   <div className="dash-receiver-rate">
                     적용률 {r.applyRate != null ? `${Math.round(r.applyRate * 100)}%` : "-"}
@@ -264,7 +264,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 추천 적용률 */}
-        <div className="dash-panel">
+        <div className="dash-panel recommend-apply-rate-panel">
           <div className="dash-section-title">추천 적용률</div>
           <div className="dash-rate-note">
             전체 적용률(실제):{" "}

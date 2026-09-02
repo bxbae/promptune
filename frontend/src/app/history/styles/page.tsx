@@ -15,6 +15,7 @@ export default function StylesPage() {
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editRelationship, setEditRelationship] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
   const [editTone, setEditTone] = useState("");
 
   const [deleteTarget, setDeleteTarget] = useState<ReceiverProfile | null>(null);
@@ -33,13 +34,17 @@ export default function StylesPage() {
   function startEdit(p: ReceiverProfile) {
     setEditingId(p.id);
     setEditRelationship(p.relationship ?? "");
+    setEditDepartment(p.department ?? "");
     setEditTone(p.preferredTone ?? "");
   }
 
-  async function saveEdit(id: number) {
+  async function saveEdit(id: number, msSynced: boolean) {
     try {
       const updated = await updateReceiverProfile(id, {
         relationship: editRelationship || null,
+        // MS 동기화된 수신자는 부서 입력창 자체를 안 보여주니 patch에도 안 실음
+        // (백엔드도 한 번 더 막고 있지만, 애초에 안 보내는 게 깔끔함).
+        ...(msSynced ? {} : { department: editDepartment || null }),
         preferredTone: editTone || null,
       });
       setProfiles((prev) => prev.map((p) => (p.id === id ? updated : p)));
@@ -94,6 +99,7 @@ export default function StylesPage() {
       <div className="receiver-table">
         <div className="receiver-row receiver-row-head">
           <div>수신자</div>
+          <div>부서</div>
           <div>관계</div>
           <div>선호 톤</div>
           <div>평균 길이</div>
@@ -107,13 +113,25 @@ export default function StylesPage() {
               <>
                 <div className="receiver-name">{p.receiverName}</div>
                 <div>
-                  <input
+                  {p.msSynced ? (
+                    p.department || "-"
+                  ) : (
+                    <input
                     className="receiver-edit-input"
-                    value={editRelationship}
-                    onChange={(e) => setEditRelationship(e.target.value)}
-                    placeholder="예: 같은 팀 동료"
-                  />
+                    value={editDepartment}
+                    onChange={(e) => setEditDepartment(e.target.value)}
+                    placeholder="예: 경영지원팀"
+                    />
+                  )}
                 </div>
+                    <div>
+                      <input
+                        className="receiver-edit-input"
+                        value={editRelationship}
+                        onChange={(e) => setEditRelationship(e.target.value)}
+                        placeholder="예: 같은 팀 동료"
+                      />
+                    </div>
                 <div>
                   <input
                     className="receiver-edit-input"
@@ -125,13 +143,14 @@ export default function StylesPage() {
                 <div>{p.avgLength}자</div>
                 <div>{p.applyRate != null ? `${Math.round(p.applyRate * 100)}%` : "-"}</div>
                 <div className="receiver-actions">
-                  <button className="receiver-save" onClick={() => saveEdit(p.id)}>저장</button>
+                  <button className="receiver-save" onClick={() => saveEdit(p.id, p.msSynced)}>저장</button>
                   <button className="receiver-cancel" onClick={() => setEditingId(null)}>취소</button>
                 </div>
               </>
             ) : (
               <>
                 <div className="receiver-name">{p.receiverName}</div>
+                <div>{p.department || "-"}</div>
                 <div>{p.relationship || "-"}</div>
                 <div>{p.preferredTone || "-"}</div>
                 <div>{p.avgLength}자</div>
