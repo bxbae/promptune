@@ -29,6 +29,9 @@ public class PromptSession {
     @Column(name = "receiver_profile_id")
     private Long receiverProfileId;
 
+    @Column(name = "retrieval_route")
+    private String retrievalRoute;
+
     private String satisfaction;   // 'good' / 'bad' / null
 
     @Column(name = "created_at")
@@ -65,4 +68,6 @@ public class PromptSession {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public String getAiResponseText() { return aiResponseText; }
     public void setAiResponseText(String aiResponseText) { this.aiResponseText = aiResponseText; }
+    public String getRetrievalRoute() { return retrievalRoute; }
+    public void setRetrievalRoute(String retrievalRoute) { this.retrievalRoute = retrievalRoute; }
 }
