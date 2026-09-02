@@ -17,6 +17,44 @@ MODEL_NAME = os.getenv("BGE_M3_MODEL", "BAAI/bge-m3")
 EXPECTED_DIM = 1024
 
 
+# 2026-09-02(RAG observability): Internal RAG는 web 검색과 달리 로그가
+# 전혀 없어서, "잘못된 chunk가 검색됐는지" vs "올바른 chunk가 검색됐는데
+# HCX가 무시했는지" vs "chunk 자체가 잘못 잘렸는지"를 구분할 방법이
+# 없었다. 이 helper는 로그 출력 전용 - 원본 Document 객체는 절대
+# 건드리지 않고, 로그에 필요한 필드만 뽑아 새 dict 리스트(immutable
+# summary)를 만든다. preview_limit=0이면 preview 자체를 안 만든다
+# (retrieval_orchestrator.py의 final_documents 로그처럼, raw/selected
+# 로그에 이미 preview가 있어서 중복인 경우).
+def document_log_summary(
+    documents: list[Document],
+    *,
+    title_limit: int = 80,
+    preview_limit: int = 0,
+) -> list[dict]:
+    summaries: list[dict] = []
+
+    for document in documents:
+        title = str(document.title or "")
+
+        if len(title) > title_limit:
+            title = title[:title_limit] + "..."
+
+        item = {
+            "document_id": document.document_id,
+            "chunk_id": document.chunk_id,
+            "chunk_index": document.chunk_index,
+            "score": round(float(document.score or 0.0), 3),
+            "title": title,
+        }
+
+        if preview_limit > 0:
+            item["preview"] = str(document.content or "")[:preview_limit]
+
+        summaries.append(item)
+
+    return summaries
+
+
 def bge_runtime_config() -> dict[str, object]:
     requested_device = os.getenv("BGE_M3_DEVICE", "auto").strip().lower()
 
@@ -548,6 +586,10 @@ def retrieve(req: RetrieveRequest) -> RetrieveResponse:
         vector = vector_literal(embedding)
     except Exception:
         if document_ids:
+            print(
+                "[RAG] fallback='scoped_lexical' "
+                "reason='semantic_error'"
+            )
             return retrieve_scoped_lexical(
                 owner_user_id=req.owner_user_id,
                 document_ids=document_ids,
@@ -613,6 +655,15 @@ LIMIT %s
         ) in rows
     ]
 
+    # 순서 중요: apply_retrieval_rule()이 documents 변수를 덮어써서
+    # 필터/정렬 전 RAW 후보가 이 시점 이후로는 사라진다 - 그래서 로그는
+    # 여기서 즉시(순수 문자열 변환만) 남긴다. documents 리스트 자체는
+    # 로그 때문에 복사/재정렬/수정하지 않는다.
+    print(
+        f"[RAG] semantic_raw count={len(documents)} "
+        f"results={document_log_summary(documents, preview_limit=120)}"
+    )
+
     documents = apply_retrieval_rule(
         documents,
         top_k=top_k,
@@ -624,7 +675,16 @@ LIMIT %s
         max_chunks_per_document=(top_k if document_ids else 2),
     )
 
+    print(
+        f"[RAG] semantic_selected count={len(documents)} "
+        f"results={document_log_summary(documents, preview_limit=120)}"
+    )
+
     if document_ids and not documents:
+        print(
+            "[RAG] fallback='scoped_lexical' "
+            "reason='empty_after_retrieval_rule'"
+        )
         return retrieve_scoped_lexical(
             owner_user_id=req.owner_user_id,
             document_ids=document_ids,

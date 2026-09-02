@@ -27,6 +27,7 @@ from app.services.retrieval.rag_retriever import (
     retrieve_document_overview,
     retrieve_document_catalog,
     find_metadata_document_ids,
+    document_log_summary,
 )
 
 
@@ -344,6 +345,13 @@ def execute_retrieval(
                 "internal_rag 검색에는 owner_user_id가 필요합니다."
             )
 
+        print(
+            f"[RAG] start route={route!r} "
+            f"query={effective_query!r} "
+            f"owner_user_id={req.owner_user_id!r} "
+            f"document_ids={document_ids!r}"
+        )
+
         if document_ids:
             # 이미 Backend가 실제 문서 ID를 확정해서 보냈다면
             # catalog/metadata discovery보다 이 ID가 가장 강한 source of truth다.
@@ -383,6 +391,10 @@ def execute_retrieval(
                 limit=5,
             )
 
+            print(
+                f"[RAG] metadata_document_ids={metadata_document_ids!r}"
+            )
+
             if metadata_document_ids:
                 # 문서 자체가 특정된 경우에는 semantic Top-K 한 조각보다
                 # 해당 문서의 실제 내용을 순서대로 읽는 편이 안전하다.
@@ -406,6 +418,17 @@ def execute_retrieval(
 
         documents = result.documents
         used_internal_rag = bool(documents)
+
+        # retrieve()/retrieve_document_overview()/retrieve_document_catalog()
+        # 내부에는 각각 별도 상세 로그를 추가하지 않는다(semantic 경로는
+        # rag_retriever.retrieve() 안의 raw/selected 로그로 이미 충분하고,
+        # 나머지 두 경로는 랭킹이 없는 순차 조회라 중복 로그가 될 뿐이다).
+        # 여기서는 "결국 generation으로 전달되는 최종 documents"만 한 번
+        # 남긴다 - preview는 semantic_raw/selected에 이미 있으므로 생략.
+        print(
+            f"[RAG] final_documents count={len(documents)} "
+            f"results={document_log_summary(documents)}"
+        )
 
     # 2. 웹 / 외부·실시간 검색
     # explicit use_web_search는 internal_rag와 동시에 실행될 수 있다.
