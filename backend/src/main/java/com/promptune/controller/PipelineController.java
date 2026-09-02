@@ -252,7 +252,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                     req.finalPrompt(),
                     req.finalPrompt(),
                     persistedTaskType,
-                    req.chatSessionId());
+                    req.chatSessionId(),
+                    req.receiverProfileId());
 
     promptSessionRepository.save(session);
 
@@ -642,7 +643,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                         req.finalPrompt(),
                         req.finalPrompt(),
                         "document_generation",
-                        req.chatSessionId());
+                        req.chatSessionId(),
+                        req.receiverProfileId());
 
         session.setAiResponseText(assistantText);
         promptSessionRepository.save(session);

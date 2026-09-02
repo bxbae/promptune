@@ -26,6 +26,9 @@ public class PromptSession {
     @Column(name = "chat_session_id")
     private Long chatSessionId;
 
+    @Column(name = "receiver_profile_id")
+    private Long receiverProfileId;
+
     private String satisfaction;   // 'good' / 'bad' / null
 
     @Column(name = "created_at")
@@ -37,17 +40,23 @@ public class PromptSession {
     protected PromptSession() {}
 
     public PromptSession(Long userId, String originalText, String finalText, String taskType, Long chatSessionId) {
+        this(userId, originalText, finalText, taskType, chatSessionId, null);
+    }
+
+    public PromptSession(Long userId, String originalText, String finalText, String taskType, Long chatSessionId, Long receiverProfileId) {
         this.userId = userId;
         this.originalText = originalText;
         this.finalText = finalText;
         this.taskType = taskType;
         this.chatSessionId = chatSessionId;
+        this.receiverProfileId = receiverProfileId;
         this.createdAt = LocalDateTime.now();
     }
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public Long getChatSessionId() { return chatSessionId; }
+    public Long getReceiverProfileId() { return receiverProfileId; }
     public String getTaskType() { return taskType; }
     public String getSatisfaction() { return satisfaction; }
     public void setSatisfaction(String satisfaction) { this.satisfaction = satisfaction; }
