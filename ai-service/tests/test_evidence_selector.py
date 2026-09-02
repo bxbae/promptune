@@ -3,6 +3,9 @@ import unittest
 from app.services.retrieval.evidence_selector import (
     select_web_evidence,
     _query_tokens,
+    _score_breakdown,
+    _normalize,
+    _authority_bonus,
 )
 
 
@@ -357,6 +360,262 @@ class QueryTokenParticleNormalizationTest(unittest.TestCase):
         )
 
         self.assertEqual(selected[0]["title"], "강남구 오늘 날씨 예보")
+
+
+class EntityScoringConsistencyTest(unittest.TestCase):
+    """
+    2026-09-02(1-B): entity 보너스/페널티가 여전히 entity "전체 문자열"
+    exact match였다(gate는 단어 단위인데 scoring은 문자열 단위 - 기준
+    불일치). entity="서울 강남구"인데 정상 기사가 "강남구"만 쓰면, gate는
+    통과시키지만 scoring에서는 "서울강남구" 전체가 없다는 이유로 오답과
+    똑같이 페널티를 받아 사실상 상수처럼 작동했다. 단어 단위 부분 매치
+    비율로 바꿔서 고친다 - 기존 +0.20/-0.08 범위 자체는 바꾸지 않는다.
+
+    이 새 로직은 CURRENT_FACT/FINANCE에만 적용되고, PROFILE/RESEARCH 등
+    나머지 intent는 아래 PreExistingIntentScoringUnchangedTest가
+    "이전 공식과 final_score가 완전히 같음"을 직접 검증한다.
+    """
+
+    def test_partial_entity_match_gets_partial_bonus_not_full_penalty(self):
+        item_full_match = {
+            "title": "서울 강남구 오늘 날씨",
+            "url": "https://example.com/a",
+            "content": "서울 강남구 지역 오늘 날씨는 흐림.",
+            "score": 0.3,
+        }
+        item_partial_match = {
+            "title": "강남구 오늘 기온 안내",
+            "url": "https://example.com/b",
+            "content": "강남구 오늘 기온은 28도.",
+            "score": 0.3,
+        }
+        item_no_match = {
+            "title": "미국 weather",
+            "url": "https://example.com/c",
+            "content": "Weather across the United States.",
+            "score": 0.3,
+        }
+
+        full = _score_breakdown(
+            item_full_match,
+            query="오늘 서울 강남구 날씨는 어때?",
+            intent="CURRENT_FACT",
+            entity="서울 강남구",
+        )
+        partial = _score_breakdown(
+            item_partial_match,
+            query="오늘 서울 강남구 날씨는 어때?",
+            intent="CURRENT_FACT",
+            entity="서울 강남구",
+        )
+        none_ = _score_breakdown(
+            item_no_match,
+            query="오늘 서울 강남구 날씨는 어때?",
+            intent="CURRENT_FACT",
+            entity="서울 강남구",
+        )
+
+        # 전체 일치(0.20) > 부분 일치(0 ~ 0.20 사이) > 불일치(-0.08).
+        self.assertEqual(full["entity_bonus"], 0.20)
+        self.assertGreater(partial["entity_bonus"], 0)
+        self.assertLess(partial["entity_bonus"], 0.20)
+        self.assertEqual(none_["entity_bonus"], -0.08)
+
+    def test_single_word_entity_bonus_is_unchanged_binary_behavior(self):
+        # PROFILE 등 단어 1개짜리 entity는 부분 매치가 있을 수 없으므로
+        # (0개 아니면 1개), 기존 이진 +0.20/-0.08 동작과 완전히 동일해야
+        # 한다 - PROFILE 회귀가 없다는 근거.
+        match = _score_breakdown(
+            {"title": "BTS 경제적 영향", "url": "https://x.com/a", "content": "BTS의 경제 기여", "score": 0.5},
+            query="BTS가 국가에 기여한 점",
+            intent="RESEARCH",
+            entity="BTS",
+        )
+        mismatch = _score_breakdown(
+            {"title": "다른 아이돌", "url": "https://x.com/b", "content": "다른 그룹 활동", "score": 0.5},
+            query="BTS가 국가에 기여한 점",
+            intent="RESEARCH",
+            entity="BTS",
+        )
+        self.assertEqual(match["entity_bonus"], 0.20)
+        self.assertEqual(mismatch["entity_bonus"], -0.08)
+
+
+class PreExistingIntentScoringUnchangedTest(unittest.TestCase):
+    """
+    2026-09-02(1-B, scope 최소화): 이번 작업 범위는 CURRENT_FACT/FINANCE
+    relevance 개선이다 - PROFILE/RESEARCH/GENERAL 등 다른 intent의
+    scoring은 한 글자도 안 바뀌어야 한다. entity_match_ratio/topic_tokens
+    분리는 CURRENT_FACT/FINANCE에서만 켜지므로, 그 외 intent는 여전히
+    (a) entity 전체 문자열 exact match, (b) query 전체 토큰(_query_tokens)
+    lexical overlap을 쓴다 - 이 두 가지를 1-B 이전 공식 그대로 직접
+    재구현해서 _score_breakdown()의 final_score와 완전히 같은지 비교한다.
+    """
+
+    @staticmethod
+    def _pre_1b_score(item, *, query, intent, entity):
+        tavily_score = float(item.get("score") or 0.0)
+        combined = f"{item.get('title', '')} {item.get('content', '')}"
+        final_score = tavily_score
+
+        if entity:
+            normalized_entity = _normalize(entity)
+            normalized_result = _normalize(combined)
+            if normalized_entity and normalized_entity in normalized_result:
+                final_score += 0.20
+            else:
+                final_score -= 0.08
+
+        tokens = _query_tokens(query)
+        if tokens:
+            lowered = combined.lower()
+            matched = sum(1 for token in tokens if token in lowered)
+            final_score += min(matched * 0.03, 0.15)
+
+        final_score += _authority_bonus(str(item.get("url") or ""), intent)
+        return final_score
+
+    def test_profile_final_score_matches_pre_1b_formula_exactly(self):
+        cases = [
+            (
+                {"title": "BTS 경제적 영향", "url": "https://news.example/b", "content": "BTS의 국가 경제 기여", "score": 0.82},
+                "BTS가 국가에 기여한 점",
+                "PROFILE",
+                "BTS",
+            ),
+            (
+                {"title": "다른 아이돌 해외 활동", "url": "https://news.example/a", "content": "다른 그룹의 활동", "score": 0.90},
+                "BTS가 국가에 기여한 점",
+                "PROFILE",
+                "BTS",
+            ),
+        ]
+        for item, query, intent, entity in cases:
+            with self.subTest(title=item["title"]):
+                old = self._pre_1b_score(item, query=query, intent=intent, entity=entity)
+                new = _score_breakdown(item, query=query, intent=intent, entity=entity)["final_score"]
+                self.assertAlmostEqual(old, new)
+
+    def test_research_final_score_matches_pre_1b_formula_exactly(self):
+        cases = [
+            (
+                {"title": "BTS 경제 효과 블로그", "url": "https://blog.example/a", "content": "BTS 경제 효과", "score": 0.85},
+                "BTS 국가 기여",
+                "RESEARCH",
+                "BTS",
+            ),
+            (
+                {"title": "BTS 문화경제 연구", "url": "https://example.go.kr/report", "content": "BTS 문화 경제 기여 연구", "score": 0.75},
+                "BTS 국가 기여",
+                "RESEARCH",
+                "BTS",
+            ),
+        ]
+        for item, query, intent, entity in cases:
+            with self.subTest(title=item["title"]):
+                old = self._pre_1b_score(item, query=query, intent=intent, entity=entity)
+                new = _score_breakdown(item, query=query, intent=intent, entity=entity)["final_score"]
+                self.assertAlmostEqual(old, new)
+
+    def test_general_intent_with_no_entity_matches_pre_1b_formula(self):
+        item = {"title": "강남구 오늘 날씨 예보", "url": "https://example.com/b", "content": "강남구 오늘 날씨는 흐림.", "score": 0.5}
+        query = "오늘 강남구 날씨는 어때?"
+        old = self._pre_1b_score(item, query=query, intent="GENERAL", entity=None)
+        new = _score_breakdown(item, query=query, intent="GENERAL", entity=None)["final_score"]
+        self.assertAlmostEqual(old, new)
+
+
+class FinanceScoringStructureTest(unittest.TestCase):
+    """
+    2026-09-02(1-B): FINANCE에는 subject hard gate를 확장하지 않는다
+    ("원달러" vs "USD/KRW", "아이폰" vs "iPhone"처럼 정상 결과가 다른
+    표기를 쓸 수 있어 hard gate가 false negative를 낼 위험이 있음).
+    scoring 구조(entity/topic 분리)만 적용되고, 결과가 절대 제거되지
+    않는지 확인한다.
+    """
+
+    def test_finance_query_has_no_hard_gate_removal(self):
+        results = [
+            {"title": "삼성전자 주가 기사", "url": "https://x.com/a", "content": "삼성전자 오늘 주가는 7만원대.", "score": 0.5},
+            {"title": "삼성전자 채용 기사", "url": "https://x.com/b", "content": "삼성전자 신입 공채 시작.", "score": 0.7},
+            {"title": "미국 증시 기사", "url": "https://x.com/c", "content": "다우존스 지수 상승 마감.", "score": 0.6},
+        ]
+
+        selected = select_web_evidence(
+            results,
+            query="삼성전자 주가는?",
+            intent="FINANCE",
+            entity="삼성전자",
+            limit=3,
+        )
+
+        # hard gate가 없으므로 entity와 무관한 "미국 증시 기사"도
+        # 완전히 제거되지는 않는다(순위만 scoring에 맡김).
+        titles = [r["title"] for r in selected]
+        self.assertEqual(len(titles), 3)
+
+    def test_synonym_denominated_result_is_not_hard_rejected_usd_krw(self):
+        # entity="원달러"인데 실제 정상 결과가 "USD/KRW" 표기만 쓰는 경우 -
+        # hard gate가 없으므로 제거되면 안 된다.
+        results = [
+            {"title": "USD/KRW 환율 동향", "url": "https://x.com/a", "content": "USD/KRW 1,320원대 등락.", "score": 0.4},
+        ]
+        selected = select_web_evidence(
+            results,
+            query="원달러 환율은?",
+            intent="FINANCE",
+            entity="원달러",
+            limit=3,
+        )
+        self.assertEqual(len(selected), 1)
+
+    def test_synonym_denominated_result_is_not_hard_rejected_iphone(self):
+        # entity="아이폰"인데 실제 결과가 "iPhone" 영문 표기만 쓰는 경우 -
+        # hard gate가 없으므로 제거되면 안 된다.
+        results = [
+            {"title": "iPhone 17 출고가 공개", "url": "https://x.com/a", "content": "iPhone 17 가격은 129만원부터.", "score": 0.4},
+        ]
+        selected = select_web_evidence(
+            results,
+            query="아이폰 가격이 얼마야?",
+            intent="FINANCE",
+            entity="아이폰",
+            limit=3,
+        )
+        self.assertEqual(len(selected), 1)
+
+
+class ScoreBreakdownObservabilityTest(unittest.TestCase):
+    """
+    2026-09-02(1-B): 운영 로그를 새로 늘리지 않고, 테스트에서 각 결과의
+    점수 구성 요소(tavily_score/entity_bonus/topic_overlap/
+    authority_bonus/final_score)를 근거 있게 확인할 수 있는 구조.
+    """
+
+    def test_breakdown_components_sum_to_final_score(self):
+        item = {
+            "title": "강남구 오늘 날씨 예보",
+            "url": "https://example.com/kr1",
+            "content": "강남구 오늘 낮 최고기온 29도.",
+            "score": 0.25,
+        }
+        breakdown = _score_breakdown(
+            item,
+            query="오늘 강남구 날씨는 어때?",
+            intent="CURRENT_FACT",
+            entity="강남구",
+        )
+
+        for key in ("tavily_score", "entity_bonus", "topic_overlap", "authority_bonus", "final_score"):
+            self.assertIn(key, breakdown)
+
+        self.assertAlmostEqual(
+            breakdown["tavily_score"]
+            + breakdown["entity_bonus"]
+            + breakdown["topic_overlap"]
+            + breakdown["authority_bonus"],
+            breakdown["final_score"],
+        )
 
 
 if __name__ == "__main__":
