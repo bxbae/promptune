@@ -514,47 +514,6 @@ def _build_document_system_prompt(req: GenerateRequest) -> str:
             preference_context,
         ])
 
-    # 2026-09-02: 습관학습 6단계 - 검색패턴/표·분량 선호 경향을 참고자료로
-    # 추가. 5단계(output_preference.py)와 같은 원칙: 확정 지시가 아니라
-    # 경향이니, 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라고 명시.
-    habit_notes = []
-    if req.retrieval_hint == "internal_rag":
-        habit_notes.append("평소 업로드한 문서를 참고하는 경향이 있음")
-
-    if req.habit_output_preferences:
-        # 2026-09-02: format 필드 누락 버그 수정 - 4단계 재설계 이후
-        # format(예: "table")이 실제로 채워지는데 여기서 한 번도 체크를
-        # 안 해서, 표 선호 습관이 있어도 힌트가 전혀 안 만들어지고 있었음
-        # (배포 검증 중 실측으로 발견: format=table 5건 쌓였는데 실제
-        # 답변이 표로 안 나옴).
-        fmt = req.habit_output_preferences.get("format")
-        format_labels = {
-            "table": "표 형태",
-            "markdown": "마크다운 형식",
-            "checklist": "체크리스트 형식",
-            "json": "JSON 형식",
-            "code_only": "코드 위주",
-        }
-        if fmt in format_labels:
-            habit_notes.append(f"평소 {format_labels[fmt]}로 정리해서 받는 걸 선호하는 경향이 있음")
-
-        detail = req.habit_output_preferences.get("detail_level")
-        if detail == "detailed":
-            habit_notes.append("평소 답변을 더 상세하게 다듬는 경향이 있음")
-        elif detail == "concise":
-            habit_notes.append("평소 답변을 간결하게 줄이는 경향이 있음")
-
-        if req.habit_output_preferences.get("structure") == "structured":
-            habit_notes.append("평소 표/목록 형태로 재구성하는 경향이 있음")
-
-    if habit_notes:
-        parts.extend([
-            "",
-            "[사용자 습관 경향 - 참고용]",
-            "이 사용자는 " + ", ".join(habit_notes) + "습니다. "
-            "이건 확정된 사실이 아니라 경향이니, 이번 요청과 실제로 관련 있을 "
-            "때만 참고하고 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라.",
-        ])
 
     return "\n".join(parts)
 
@@ -748,6 +707,46 @@ def _build_system_prompt(
             "",
             "[응답 스타일 선호도]",
             preference_context,
+        ])
+
+    # 2026-09-02: 습관학습 6단계 - 검색패턴/표·분량 선호 경향을 참고자료로
+    # 추가. 5단계(output_preference.py)와 같은 원칙: 확정 지시가 아니라
+    # 경향이니, 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라고 명시.
+    # (재발방지 기록: 6단계 최초 작업 시 이 코드가 실수로 _build_document_
+    # system_prompt()에 잘못 삽입되어 실제로 한 번도 실행되지 않고 있었음 -
+    # 배포 검증 중 실측으로 발견 후 정확한 위치인 여기로 옮김.)
+    habit_notes = []
+    if req.retrieval_hint == "internal_rag":
+        habit_notes.append("평소 업로드한 문서를 참고하는 경향이 있음")
+
+    if req.habit_output_preferences:
+        fmt = req.habit_output_preferences.get("format")
+        format_labels = {
+            "table": "표 형태",
+            "markdown": "마크다운 형식",
+            "checklist": "체크리스트 형식",
+            "json": "JSON 형식",
+            "code_only": "코드 위주",
+        }
+        if fmt in format_labels:
+            habit_notes.append(f"평소 {format_labels[fmt]}로 정리해서 받는 걸 선호하는 경향이 있")
+
+        detail = req.habit_output_preferences.get("detail_level")
+        if detail == "detailed":
+            habit_notes.append("평소 답변을 더 상세하게 다듬는 경향이 있음")
+        elif detail == "concise":
+            habit_notes.append("평소 답변을 간결하게 줄이는 경향이 있음")
+
+        if req.habit_output_preferences.get("structure") == "structured":
+            habit_notes.append("평소 표/목록 형태로 재구성하는 경향이 있음")
+
+    if habit_notes:
+        parts.extend([
+            "",
+            "[사용자 습관 경향 - 참고용]",
+            "이 사용자는 " + ", ".join(habit_notes) + "습니다. "
+            "이건 확정된 사실이 아니라 경향이니, 이번 요청과 실제로 관련 있을 "
+            "때만 참고하고 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라.",
         ])
 
     return "\n".join(parts)
