@@ -10,7 +10,7 @@ from app.services.conversation_memory import (
     classify_conversation_context,
     is_memory_set_request,
 )
-
+from app.services.retrieval.search_plan import build_search_plan
 
 @dataclass(frozen=True)
 class ConversationRetrievalContext:
@@ -163,6 +163,68 @@ _FOLLOWUP_ENTITY_MARKERS = (
     "그걸",
 )
 
+_SEARCH_FOCUS_NOISE = {
+    "그럼",
+    "그러면",
+    "그렇다면",
+    "오늘",
+    "어제",
+    "내일",
+    "지금",
+    "현재",
+    "최근",
+    "최신",
+    "요즘",
+    "방금",
+}
+
+
+def _extract_search_plan_focus(query: str) -> str | None:
+    plan = build_search_plan(query)
+
+    if not plan.entity:
+        return None
+
+    tokens = [
+        token
+        for token in str(plan.entity).split()
+        if token not in _SEARCH_FOCUS_NOISE
+    ]
+
+    focus = " ".join(tokens).strip()
+
+    return focus or None
+
+
+def _strip_followup_prefix(query: str) -> str:
+    return re.sub(
+        r"^\s*(?:그럼|그러면|그렇다면)\s*",
+        "",
+        str(query or "").strip(),
+        count=1,
+    )
+
+
+def _inherit_search_focus(
+    query: str,
+    focus: str,
+) -> str:
+    current = _strip_followup_prefix(query)
+
+    time_match = re.match(
+        r"^\s*(오늘|어제|내일|지금|현재|최근|최신|요즘|방금)\s+(.+)$",
+        current,
+    )
+
+    if time_match:
+        return (
+            f"{time_match.group(1)} "
+            f"{focus} "
+            f"{time_match.group(2)}"
+        )
+
+    return f"{focus} {current}"
+
 
 def _extract_previous_focus(
     query: str,
@@ -183,6 +245,11 @@ def _extract_previous_focus(
 
     if entity:
         return entity
+
+    search_focus = _extract_search_plan_focus(text)
+
+    if search_focus:
+        return search_focus
 
     match = _ABOUT_PREVIOUS_SUBJECT_RE.match(
         text
@@ -211,12 +278,38 @@ def _resolve_followup_query_without_hcx(
        subject를 추출해 치환한다.
     2. subject를 안전하게 추출하지 못하면 이전 사용자 질문과 현재
        요청을 함께 전달한다.
-    3. 지시대명사가 없으면 현재 query를 그대로 유지한다.
+    3. CURRENT_FACT/FINANCE follow-up에서 현재 검색 대상이 없으면
+       직전 검색 대상을 상속한다.
+    4. 현재 질문에 새 검색 대상이 명시되면 새 대상을 우선한다.
     """
     current = str(query or "").strip()
 
     if not current:
         return current
+
+    current_plan = build_search_plan(current)
+
+    if current_plan.intent in {"CURRENT_FACT", "FINANCE"}:
+        current_focus = _extract_search_plan_focus(current)
+
+        # 사용자가 새 검색 대상을 명시했다면 이전 대상을 상속하지 않는다.
+        if current_focus:
+            return _strip_followup_prefix(current)
+
+        previous_query = _find_previous_substantive_user_query(
+            history
+        )
+
+        if previous_query:
+            previous_focus = _extract_previous_focus(
+                previous_query
+            )
+
+            if previous_focus:
+                return _inherit_search_focus(
+                    current,
+                    previous_focus,
+                )
 
     has_reference = any(
         marker in current
@@ -387,6 +480,9 @@ def resolve_conversation_retrieval(
         "그거",
         "그걸",
         "그것",
+        "그럼",
+        "그러면",
+        "그렇다면",
         "그 내용",
         "그 프로젝트",
         "그 사람",
@@ -520,6 +616,21 @@ def resolve_conversation_retrieval(
             route_override=None,
             used_history=is_followup,
         )
+
+    if is_followup:
+        followup_plan = build_search_plan(original)
+
+        if followup_plan.intent in {"CURRENT_FACT", "FINANCE"}:
+            rewritten = _resolve_followup_query_without_hcx(
+                original,
+                history,
+            )
+
+            return ConversationRetrievalContext(
+                query=rewritten,
+                route_override=None,
+                used_history=True,
+            )
 
     if is_followup:
         return ConversationRetrievalContext(
