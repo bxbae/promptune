@@ -52,6 +52,7 @@ public class PipelineController {
     private final com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier;
     private final com.promptune.service.RetrievalPatternService retrievalPatternService;
     private final com.promptune.service.StylePreferenceService stylePreferenceService;
+    private final com.promptune.service.OutputPreferenceDetector outputPreferenceDetector;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -67,7 +68,8 @@ public class PipelineController {
         com.promptune.service.DocumentIntentResolver documentIntentResolver,
         com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier,
         com.promptune.service.RetrievalPatternService retrievalPatternService,
-        com.promptune.service.StylePreferenceService stylePreferenceService) {
+        com.promptune.service.StylePreferenceService stylePreferenceService,
+        com.promptune.service.OutputPreferenceDetector outputPreferenceDetector) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -85,6 +87,7 @@ public class PipelineController {
         this.documentFollowupClassifier = documentFollowupClassifier;
         this.retrievalPatternService = retrievalPatternService;
         this.stylePreferenceService = stylePreferenceService;
+        this.outputPreferenceDetector = outputPreferenceDetector;
     }
 
     /**
@@ -254,6 +257,12 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     }
 
     DiagnoseResult d = ai.diagnose(req.finalPrompt());
+
+    // 2026-09-02: 습관학습 4단계(재설계) - 실제 전송(execute)될 때만 딱 한 번
+    // 카운트되도록 여기(analyze 아님)에 연결. "표로 정리해줘"처럼 매번 명시하는
+    // 사용자는, 나중에 명시 안 해도 습관으로 자동 반영되게 하기 위함.
+    Map<String, String> detectedPrefs = outputPreferenceDetector.detect(req.finalPrompt());
+    stylePreferenceService.recordExplicitMention(userId, detectedPrefs);
 
     String persistedTaskType = documentAction.isPresent()
             ? "document_generation"

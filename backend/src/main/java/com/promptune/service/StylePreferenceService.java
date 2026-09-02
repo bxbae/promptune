@@ -4,15 +4,14 @@ import com.promptune.domain.StylePreferenceScore;
 import com.promptune.repository.StylePreferenceScoreRepository;
 import org.springframework.stereotype.Service;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Comparator;
 
 @Service
 public class StylePreferenceService {
 
-    private static final Pattern STRUCTURE_MARKER =
-            Pattern.compile("(?m)^\\s*(\\||[-*]\\s|\\d+\\.\\s)");
+    private static final List<String> FIELDS = List.of("format", "structure", "detail_level");
 
     private final StylePreferenceScoreRepository repository;
 
@@ -20,53 +19,41 @@ public class StylePreferenceService {
         this.repository = repository;
     }
 
-    public void recordEdit(Long userId, String generatedResult, String userFinalResult) {
-        if (generatedResult == null || userFinalResult == null
-                || generatedResult.isBlank() || userFinalResult.isBlank()) {
-            return;
+    // 2026-09-02: 4단계 재설계 - 명시적으로 감지된 값들을 카운트로 누적.
+    // detected의 값이 null인 필드는 그냥 건너뜀 (이번엔 언급 안 한 것뿐).
+    public void recordExplicitMention(Long userId, Map<String, String> detected) {
+        for (String field : FIELDS) {
+            String value = detected.get(field);
+            if (value == null) continue;
+
+            StylePreferenceScore score = repository.findByUserIdAndFieldAndValue(userId, field, value)
+                    .orElseGet(() -> new StylePreferenceScore(userId, field, value));
+            score.incrementUse();
+            repository.save(score);
         }
-
-        double lengthRatio = (double) userFinalResult.length() / Math.max(1, generatedResult.length());
-        int structureDelta = countStructureMarkers(userFinalResult) - countStructureMarkers(generatedResult);
-
-        StylePreferenceScore score = repository.findByUserId(userId)
-                .orElseGet(() -> new StylePreferenceScore(userId));
-        score.accumulate(lengthRatio, structureDelta);
-        repository.save(score);
     }
 
-    private int countStructureMarkers(String text) {
-        Matcher m = STRUCTURE_MARKER.matcher(text);
-        int count = 0;
-        while (m.find()) count++;
-        return count;
-    }
-
-    // 2026-09-02: 승득님 output_preferences 스키마에 맞춰 매핑 (재검토 후 수정).
-    // 승득님 파트(ai-service, 이번 프롬프트에 명시된 형식 감지)가 우선이고,
-    // 이 메서드가 반환하는 값은 "명시된 게 없을 때만" 쓰이는 폴백 데이터.
-    // 그래서 프론트/모델에게 단정적으로 보이지 않도록, 필드가 비면 그냥 null.
+    // RetrievalPatternService.dominantRoute()와 동일한 안전장치:
+    // 5건 미만이거나 60% 미만 쏠림이면 그 필드는 null.
     public Map<String, String> toOutputPreferences(Long userId) {
         Map<String, String> prefs = new HashMap<>();
-        prefs.put("format", null);
-        prefs.put("length", null);
-        prefs.put("structure", null);
-        prefs.put("detail_level", null);
-
-        java.util.Optional<StylePreferenceScore> maybeScore = repository.findByUserId(userId);
-        if (maybeScore.isEmpty() || maybeScore.get().getSampleCount() < 5) {
-            return prefs; // 데이터 부족 - 전부 null
+        for (String field : FIELDS) {
+            prefs.put(field, dominantValue(userId, field));
         }
-        StylePreferenceScore score = maybeScore.get();
-
-        if (score.getAvgLengthRatio() > 1.3) prefs.put("detail_level", "detailed");
-        else if (score.getAvgLengthRatio() < 0.7) prefs.put("detail_level", "concise");
-
-        if (score.getAvgStructureDelta() > 2) prefs.put("structure", "structured");
-        // "format": "table"처럼 구체적인 형식까지는 지금 감지 로직(정규식)으로
-        // 확신할 수 없어서(표인지 목록인지 구분 못함) null로 남김 - 오늘 하루
-        // 계속 지켰던 "확신 없으면 단정하지 않는다" 원칙과 동일.
-
         return prefs;
+    }
+
+    private String dominantValue(Long userId, String field) {
+        List<StylePreferenceScore> scores = repository.findByUserIdAndField(userId, field);
+        int total = scores.stream().mapToInt(StylePreferenceScore::getUseCount).sum();
+        if (total < 5) return null;
+
+        StylePreferenceScore dominant = scores.stream()
+                .max(Comparator.comparingInt(StylePreferenceScore::getUseCount))
+                .orElse(null);
+        if (dominant == null) return null;
+
+        double ratio = (double) dominant.getUseCount() / total;
+        return ratio >= 0.6 ? dominant.getValue() : null;
     }
 }

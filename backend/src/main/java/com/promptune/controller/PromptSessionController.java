@@ -19,16 +19,13 @@ public class PromptSessionController {
     private final PromptSessionRepository promptSessionRepository;
     private final ResponseEditRepository responseEditRepository;
     private final UserRepository userRepository;
-    private final com.promptune.service.StylePreferenceService stylePreferenceService;
 
     public PromptSessionController(PromptSessionRepository promptSessionRepository,
             ResponseEditRepository responseEditRepository,
-            UserRepository userRepository,
-            com.promptune.service.StylePreferenceService stylePreferenceService) {
+            UserRepository userRepository) {
         this.promptSessionRepository = promptSessionRepository;
         this.responseEditRepository = responseEditRepository;
         this.userRepository = userRepository;
-        this.stylePreferenceService = stylePreferenceService;
     }
 
     @PostMapping("/{id}/edits")
@@ -49,8 +46,6 @@ public class PromptSessionController {
         if (edited) {
             responseEditRepository.save(new ResponseEdit(
                     id, user.getId(), req.generatedResult(), req.userFinalResult()));
-            // 2026-09-02: 습관학습 4단계 - 수정 패턴에서 표/분량 선호 감지
-            stylePreferenceService.recordEdit(user.getId(), req.generatedResult(), req.userFinalResult());
         }
 
         if (req.satisfaction() != null) {
