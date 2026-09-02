@@ -91,7 +91,10 @@ public class ImproveController {
 
     java.util.List<PlaceholderSuggestion> placeholders = new java.util.ArrayList<>();
     if (!foundElements.isEmpty()) {
-        SuggestResult suggestResult = ai.suggest(improveResult.improvedPrompt(), foundElements);
+        // 2026-09-02: 습관학습 5단계로 suggest() 시그니처가 확장됨. 이 "다듬기"
+        // 화면은 습관 반영 대상에서 일단 제외 - 필요하면 나중에 currentUser(authentication)로
+        // userId 구해서 stylePreferenceService.toOutputPreferences(userId)로 대체.
+        SuggestResult suggestResult = ai.suggest(improveResult.improvedPrompt(), foundElements, java.util.Map.of());
         for (SuggestionItem item : suggestResult.suggestions()) {
             String placeholderText = ELEMENT_PLACEHOLDERS.get(item.element());
             if (placeholderText != null) {

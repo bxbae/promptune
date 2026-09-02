@@ -276,6 +276,7 @@ def _build_generation_prompt(
     text: str,
     context: str | None,
     element: str,
+    output_prefs: dict | None = None,
 ) -> str:
     description = ELEMENT_DESCRIPTIONS[element]
 
@@ -283,6 +284,21 @@ def _build_generation_prompt(
         context.strip()
         if context and context.strip()
         else "별도 업무 맥락 없음"
+    )
+
+    # 2026-09-02: 습관학습 5단계 - 명시적으로 감지됐거나 과거 습관으로 채워진
+    # 출력 선호. 확정 지시가 아니라 참고 힌트로만 전달.
+    output_hints = []
+    if output_prefs:
+        if output_prefs.get("format"):
+            output_hints.append(f"결과물 형식: {output_prefs['format']}")
+        if output_prefs.get("detail_level"):
+            output_hints.append(f"분량 선호: {output_prefs['detail_level']}")
+        if output_prefs.get("structure"):
+            output_hints.append(f"구조 선호: {output_prefs['structure']}")
+
+    output_hint_text = (
+        "\n".join(output_hints) if output_hints else "특별한 형식 선호 없음"
     )
 
     element_specific_rules = ""
@@ -334,6 +350,7 @@ def _build_generation_prompt(
     return (
         f"사용자 원문:\n{text}\n\n"
         f"업무 맥락:\n{context_text}\n\n"
+        f"참고 - 출력 선호(확정 지시 아님, 참고만):\n{output_hint_text}\n\n"
         f"보완할 요소: {element}\n"
         f"요소 의미: {description}\n\n"
 
@@ -386,6 +403,7 @@ def _generate_candidates(
     text: str,
     context: str | None,
     element: str,
+    output_prefs: dict | None = None,
 ) -> list[str]:
     """
     HCX가 사용자 원문 + 업무 맥락 + 부족 요소를 보고
@@ -415,6 +433,7 @@ def _generate_candidates(
             text=text,
             context=context,
             element=element,
+            output_prefs=output_prefs,
         )
         system_content = (
             "너는 업무용 프롬프트에서 부족한 조건을 보완할 "
@@ -659,6 +678,19 @@ def suggest(
         req.text
     )
 
+    # 2026-09-02: 습관학습 5단계 - 이번 프롬프트에 명시된 출력 형식을 감지하고,
+    # 명시 안 된 필드는 사용자 과거 습관(backend가 넘겨준 값)으로 채운다.
+    from app.services.output_preference import (
+        detect_output_preferences,
+        merge_with_habit_fallback,
+    )
+
+    explicit_prefs = detect_output_preferences(req.text)
+    output_prefs = merge_with_habit_fallback(
+        explicit_prefs,
+        req.habit_output_preferences,
+    )
+
     context = (
         req.context.strip()
         if req.context and req.context.strip()
@@ -691,6 +723,7 @@ def suggest(
                 text=req.text,
                 context=context,
                 element=element,
+                output_prefs=output_prefs,
             )
 
         except Exception:

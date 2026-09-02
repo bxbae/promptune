@@ -77,6 +77,10 @@ class SuggestRequest(BaseModel):
     text: str
     target_elements: list[str]   # 6번에서 선정된 1~3개 요소
     context: str | None = None   # 업무 맥락, 없으면 원문만 사용
+    # 2026-09-02: 습관학습 5단계 - backend가 넘겨주는 과거 습관 데이터.
+    # 이번 프롬프트에 명시적으로 언급된 형식이 있으면 그게 항상 우선이고,
+    # 이 값은 명시된 게 없을 때만 폴백으로 쓰인다.
+    habit_output_preferences: dict | None = None
 
 
 class SuggestionAnchor(BaseModel):

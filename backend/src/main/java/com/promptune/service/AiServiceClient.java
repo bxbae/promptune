@@ -64,7 +64,8 @@ public class AiServiceClient {
 
     public SuggestResult suggest(
             String text,
-            List<String> targetElements) {
+            List<String> targetElements,
+            Map<String, String> habitOutputPreferences) {
         long start = System.currentTimeMillis();
 
         try {
@@ -73,7 +74,9 @@ public class AiServiceClient {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of(
                             "text", text,
-                            "target_elements", targetElements))
+                            "target_elements", targetElements,
+                            "habit_output_preferences",
+                            habitOutputPreferences != null ? habitOutputPreferences : Map.of()))
                     .retrieve()
                     .body(SuggestResult.class);
 
