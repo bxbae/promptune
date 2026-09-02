@@ -51,6 +51,7 @@ public class PipelineController {
     private final com.promptune.service.DocumentIntentResolver documentIntentResolver;
     private final com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier;
     private final com.promptune.service.RetrievalPatternService retrievalPatternService;
+    private final com.promptune.service.StylePreferenceService stylePreferenceService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -65,7 +66,8 @@ public class PipelineController {
         com.promptune.repository.DocumentRepository documentRepository,
         com.promptune.service.DocumentIntentResolver documentIntentResolver,
         com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier,
-        com.promptune.service.RetrievalPatternService retrievalPatternService) {
+        com.promptune.service.RetrievalPatternService retrievalPatternService,
+        com.promptune.service.StylePreferenceService stylePreferenceService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -82,6 +84,7 @@ public class PipelineController {
         this.documentIntentResolver = documentIntentResolver;
         this.documentFollowupClassifier = documentFollowupClassifier;
         this.retrievalPatternService = retrievalPatternService;
+        this.stylePreferenceService = stylePreferenceService;
     }
 
     /**
@@ -115,9 +118,16 @@ public class PipelineController {
         if (r.targetElements().isEmpty()) {
             s = new SuggestResult(java.util.List.of());
         } else {
+            // 2026-09-02: 습관학습 5단계 - 과거 습관을 승득님 output_preferences
+            // 스키마로 변환해서 폴백 데이터로 함께 전달. 명시적 감지(ai-service)가
+            // 우선이고, 이 값은 명시된 게 없을 때만 쓰임.
+            java.util.Map<String, String> habitOutputPreferences =
+                    stylePreferenceService.toOutputPreferences(currentUser.getId());
+
             s = ai.suggest(
                     req.text(),
-                    r.targetElements());
+                    r.targetElements(),
+                    habitOutputPreferences);
         }
 
         return new AnalyzeResponse(
