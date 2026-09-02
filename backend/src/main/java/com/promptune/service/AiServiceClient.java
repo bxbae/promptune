@@ -371,6 +371,8 @@ public class AiServiceClient {
                 false);
     }
 
+    // 2026-09-02: 습관학습 6단계 - 기존 호출부(ImproveController 등)는 안
+    // 건드리게, 새 파라미터 2개 없이 위임하는 오버로드로 남김.
     public Map generate(
             String prompt,
             String taskType,
@@ -379,6 +381,22 @@ public class AiServiceClient {
             Map<String, String> userContext,
             Map<String, String> preference,
             List<Map<String, String>> history) {
+        return generate(
+                prompt, taskType, documents, webResults,
+                userContext, preference, history,
+                null, null);
+    }
+
+    public Map generate(
+            String prompt,
+            String taskType,
+            List<Map<String, Object>> documents,
+            List<Map<String, Object>> webResults,
+            Map<String, String> userContext,
+            Map<String, String> preference,
+            List<Map<String, String>> history,
+            String retrievalHint,
+            Map<String, String> habitOutputPreferences) {
         long start = System.currentTimeMillis();
 
         try {
@@ -392,7 +410,10 @@ public class AiServiceClient {
                             "web_results", webResults,
                             "user_context", userContext,
                             "preference", preference,
-                            "history", history))
+                            "history", history,
+                            "retrieval_hint", retrievalHint != null ? retrievalHint : "",
+                            "habit_output_preferences",
+                            habitOutputPreferences != null ? habitOutputPreferences : Map.of()))
                     .retrieve()
                     .body(Map.class);
 

@@ -514,6 +514,32 @@ def _build_document_system_prompt(req: GenerateRequest) -> str:
             preference_context,
         ])
 
+    # 2026-09-02: 습관학습 6단계 - 검색패턴/표·분량 선호 경향을 참고자료로
+    # 추가. 5단계(output_preference.py)와 같은 원칙: 확정 지시가 아니라
+    # 경향이니, 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라고 명시.
+    habit_notes = []
+    if req.retrieval_hint == "internal_rag":
+        habit_notes.append("평소 업로드한 문서를 참고하는 경향이 있음")
+
+    if req.habit_output_preferences:
+        detail = req.habit_output_preferences.get("detail_level")
+        if detail == "detailed":
+            habit_notes.append("평소 답변을 더 상세하게 다듬는 경향이 있음")
+        elif detail == "concise":
+            habit_notes.append("평소 답변을 간결하게 줄이는 경향이 있음")
+
+        if req.habit_output_preferences.get("structure") == "structured":
+            habit_notes.append("평소 표/목록 형태로 재구성하는 경향이 있음")
+
+    if habit_notes:
+        parts.extend([
+            "",
+            "[사용자 습관 경향 - 참고용]",
+            "이 사용자는 " + ", ".join(habit_notes) + "습니다. "
+            "이건 확정된 사실이 아니라 경향이니, 이번 요청과 실제로 관련 있을 "
+            "때만 참고하고 사용자가 명시적으로 다른 걸 요청하면 그걸 우선하라.",
+        ])
+
     return "\n".join(parts)
 
 

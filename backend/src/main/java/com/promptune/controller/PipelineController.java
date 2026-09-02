@@ -413,6 +413,12 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 .ifPresent(tone -> preferenceMap.put("receiverTone", tone));
     }
 
+    // 2026-09-02: 습관학습 6단계 - 5단계와 같은 습관 데이터를 최종 답변
+    // 생성에도 참고시킴 (output_preference.py 모듈은 ai-service에서 재사용).
+    String retrievalHint = retrievalPatternService.dominantRoute(userId);
+    Map<String, String> habitOutputPreferences =
+            stylePreferenceService.toOutputPreferences(userId);
+
     Map result = ai.generate(
             req.finalPrompt(),
             d.taskType(),
@@ -420,7 +426,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             webResults,
             userContext,
             preferenceMap,
-            conversationHistory);
+            conversationHistory,
+            retrievalHint,
+            habitOutputPreferences);
 
     result = validateWithRetry(
               req.finalPrompt(),
