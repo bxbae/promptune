@@ -4,6 +4,9 @@ import re
 
 from app.services.action.action_classifier import classify_action
 from app.services.action.action_types import ActionPlan, ActionType
+from app.services.retrieval.query_intent import (
+    is_self_referential_attribute_query,
+)
 
 
 _ROUTE_BY_ACTION = {
@@ -111,6 +114,24 @@ def resolve_action(
         query,
         user_context,
     )
+
+    # 2026-09-02: "내 나이 알려줘"/"제 생일 알려줘"/"내 소속 알려줘"를
+    # ActionClassifier가 독자적으로 WEB_FACT로 오분류해서(confidence
+    # 0.29~0.31) Tavily 웹검색으로 잘못 나가는 회귀가 재현됨. 명확한
+    # 1인칭 자기참조 + 개인 속성/프로필 질의는 ML 판단 전에 기존
+    # USER_CONTEXT action/route로 결정적으로 보낸다. 새 action이나
+    # route는 만들지 않고 기존 _ROUTE_BY_ACTION/_SOURCES_BY_ACTION
+    # 매핑을 그대로 재사용한다.
+    if is_self_referential_attribute_query(routing_query):
+        return ActionPlan(
+            action=ActionType.USER_CONTEXT,
+            confidence=1.0,
+            retrieval_required=True,
+            sources=_SOURCES_BY_ACTION[ActionType.USER_CONTEXT],
+            retrieval_route=_ROUTE_BY_ACTION[ActionType.USER_CONTEXT],
+            reason="self_reference_attribute_guard",
+            routing_query=routing_query,
+        )
 
     predicted, confidence = classify_action(routing_query)
 

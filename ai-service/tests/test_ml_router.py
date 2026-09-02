@@ -233,5 +233,63 @@ class ResolveStrongRetrievalRouteTest(unittest.TestCase):
         )
 
 
+class ExternalEntityAttributeLookupTest(unittest.TestCase):
+    """
+    1-A: "OO는 누구야"류는 검색되는데, "OO 나이/생일/키/주소/소속사 알려줘"
+    처럼 구체적 속성을 묻는 질문은 기존 WHO/WHAT/KIND/PROFILE 패턴 중 어디에도
+    안 걸려서 검색 자체가 누락되고 HCX가 근거 없이 답을 지어내던 문제.
+    query_intent._ATTRIBUTE_LOOKUP_RE로 최소 범위(나이/생일/키/주소/소속사)만
+    보강한다. "이력서/프로필/경력/약력/학력/소속"은 이미 _PROFILE_LOOKUP_RE가
+    다루므로 여기서 다시 검증하지 않는다.
+    """
+
+    def test_external_entity_attribute_questions_route_to_realtime_search(self):
+        for query in (
+            "손흥민 나이 알려줘",
+            "아이유 생일이 언제야",
+            "삼성전자 주소 알려줘",
+            "이재용 키가 몇이야",
+            "BTS 소속사 어디야",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    resolve_strong_retrieval_route(query),
+                    "external_or_realtime",
+                )
+
+    def test_self_referential_attribute_questions_are_not_forced_external(self):
+        # 속성 단어만 보고 무조건 web으로 보내면 안 된다 - 자기참조 표현은
+        # 기존처럼 user_context/ML 판단에 맡긴다.
+        for query in (
+            "내 나이 알려줘",
+            "제 생일 알려줘",
+            "내 프로필 이름 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertIsNone(resolve_strong_retrieval_route(query))
+
+    def test_company_self_reference_attribute_question_is_not_forced_external(self):
+        # "우리 회사"/"우리회사"도 "내"/"제"와 동일하게 자기참조로 취급한다.
+        for query in (
+            "우리 회사 주소 알려줘",
+            "우리회사 주소 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertIsNone(resolve_strong_retrieval_route(query))
+
+    def test_internal_document_attribute_question_still_prefers_internal_rag(self):
+        # 내부 문서를 명시적으로 지칭하면 이번 변경과 무관하게 internal_rag가
+        # 여전히 우선한다 (resolve_strong_retrieval_route의 기존 우선순위 유지).
+        for query in (
+            "사내 문서에서 회사 주소 찾아줘",
+            "첨부 문서 내용 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    resolve_strong_retrieval_route(query),
+                    "internal_rag",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

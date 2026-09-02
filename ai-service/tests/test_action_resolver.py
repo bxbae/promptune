@@ -149,3 +149,49 @@ class ExecutionContextActionResolverTest(unittest.TestCase):
             plan.action.value,
             "USER_CONTEXT",
         )
+
+    def test_self_referential_attribute_questions_route_to_user_context(self):
+        # 2026-09-02 회귀: ActionClassifier가 "내 나이"/"제 생일"/"내 소속"을
+        # 독자적으로 WEB_FACT(confidence 0.29~0.31)로 오분류해 Tavily 웹검색
+        # 으로 잘못 나가던 문제. self_reference_attribute_guard가 ML보다
+        # 먼저 기존 USER_CONTEXT action/route로 결정적으로 보내야 한다.
+        for query in (
+            "내 나이 알려줘",
+            "제 생일 알려줘",
+            "내 이름 알려줘",
+            "내 프로필 알려줘",
+            "내 프로필 이름 알려줘",
+            "내 소속 알려줘",
+        ):
+            with self.subTest(query=query):
+                plan = resolve_action(query)
+                self.assertEqual(plan.action.value, "USER_CONTEXT")
+                self.assertEqual(plan.retrieval_route, "user_context")
+                self.assertEqual(
+                    plan.reason,
+                    "self_reference_attribute_guard",
+                )
+
+    def test_third_party_attribute_questions_are_not_treated_as_self_reference(self):
+        # 속성 명사만 보고 guard가 과잉 적용되면 안 된다 - 외부 entity
+        # 질문은 그대로 WEB_FACT/ActionClassifier 판단으로 남아야 한다.
+        for query in (
+            "손흥민 나이 알려줘",
+            "아이유 생일이 언제야",
+        ):
+            with self.subTest(query=query):
+                plan = resolve_action(query)
+                self.assertNotEqual(plan.action.value, "USER_CONTEXT")
+                self.assertNotEqual(
+                    plan.reason,
+                    "self_reference_attribute_guard",
+                )
+
+    def test_company_self_reference_attribute_question_is_not_forced_user_context(self):
+        # "우리 회사 주소 알려줘"는 이번 guard의 대상이 아니다(회사
+        # 자기참조는 별도 문제) - USER_CONTEXT로 강제하지 않는다.
+        plan = resolve_action("우리 회사 주소 알려줘")
+        self.assertNotEqual(
+            plan.reason,
+            "self_reference_attribute_guard",
+        )
