@@ -21,6 +21,12 @@ CASES = [
         None,
         "NONE",
     ),
+    ("오늘 강남구 날씨는 어때?", "CURRENT_FACT", "강남구", "DAY"),
+    ("오늘 서울 강남구 날씨는 어때?", "CURRENT_FACT", "서울 강남구", "DAY"),
+    ("삼성전자 주가는?", "FINANCE", "삼성전자", "NONE"),
+    ("원달러 환율은?", "FINANCE", "원달러", "NONE"),
+    ("아이폰 가격이 얼마야?", "FINANCE", "아이폰", "NONE"),
+    ("손흥민 최근 경기 결과는?", "CURRENT_FACT", "손흥민 최근", "WEEK"),
 ]
 
 
