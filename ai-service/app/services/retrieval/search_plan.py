@@ -74,6 +74,19 @@ _TODAY_MARKERS = (
     "방금",
 )
 
+
+# 2026-09-02: entity 추출(_extract_search_subject / extract_external_entity_subject)은
+# 질의 전체가 "^...$" 앵커에 맞는 짧은 단일 문장일 때만 성공한다. PrompTune UI가
+# CONTEXT 추천문구를 덧붙이면 질의가 여러 문장으로 늘어나 entity 추출이 항상
+# 실패하고, intent=GENERAL로 잘못 분류되어 tavily_search.py의 프로필 도메인
+# (위키백과/나무위키/올림픽/그래미) 라우팅이 아예 시도되지 않는다. entity 추출
+# 성공 여부와 무관하게 질의 텍스트에 인물 마커가 있으면 PROFILE로 분류한다.
+_PROFILE_MARKERS = (
+    "프로필", "약력", "소속", "선수", "감독", "가수", "배우", "인물",
+    "유튜버", "단장", "코치", "아이돌", "뮤지션",
+    "정치인", "인플루언서", "크리에이터", "코미디언", "국회의원",
+)
+
 _RESEARCH_MARKERS = (
     "기여",
     "영향",
@@ -215,6 +228,14 @@ def build_search_plan(query: str) -> SearchPlan:
         )
 
     if entity is not None:
+        return SearchPlan(
+            query=text,
+            intent="PROFILE",
+            entity=entity,
+            freshness=freshness,
+        )
+
+    if any(marker in lowered for marker in _PROFILE_MARKERS):
         return SearchPlan(
             query=text,
             intent="PROFILE",
