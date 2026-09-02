@@ -6,7 +6,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diffMs / 60000);
+  const min = Math.floor(diffMs / 60000) - 540;
   if (min < 1) return "방금 전";
   if (min < 60) return `${min}분 전`;
   const hour = Math.floor(min / 60);
