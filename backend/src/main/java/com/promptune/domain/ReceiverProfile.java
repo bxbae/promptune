@@ -19,6 +19,7 @@ public class ReceiverProfile {
     private String receiverName;
 
     private String relationship;
+    private String department;
 
     @Column(name = "preferred_tone")
     private String preferredTone;
@@ -52,6 +53,10 @@ public class ReceiverProfile {
     // updatedAt은 굳이 안 건드림 - 이름 정정일 뿐 학습 데이터가 바뀐 게 아니라서.
     public void setReceiverName(String receiverName) { this.receiverName = receiverName; }
     public String getRelationship() { return relationship; }
+    public String getDepartment() { return department; }
+    // department는 MS 조직도 동기화 값 — receiverName 정정과 같은 성격의
+    // "사실 정보" 갱신이라 updatedAt(학습 시점)은 건드리지 않음.
+    public void setDepartment(String department) { this.department = department; }
     public String getPreferredTone() { return preferredTone; }
     public int getAvgLength() { return avgLength; }
     public BigDecimal getApplyRate() { return applyRate; }
