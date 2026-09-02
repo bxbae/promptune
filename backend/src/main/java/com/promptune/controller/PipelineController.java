@@ -437,6 +437,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     }
 
     session.setAiResponseText(aiText.toString());
+    // 2026-09-02: 습관학습 1단계 - 검색 방식 기록
+    Object route = retrieval != null ? retrieval.get("route") : null;
+    session.setRetrievalRoute(route != null ? route.toString() : "no_retrieval");
     promptSessionRepository.save(session);
 
     // 첨부 관계는 documents.prompt_session_id 단일 컬럼이 아니라
@@ -647,6 +650,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                         req.receiverProfileId());
 
         session.setAiResponseText(assistantText);
+        // 2026-09-02: 습관학습 1단계 - 이 분기는 검색 없이 순수 문서 생성만 함
+        session.setRetrievalRoute("no_retrieval");
         promptSessionRepository.save(session);
 
         linkCurrentAttachments(
@@ -694,6 +699,11 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 "현재 첨부 문서를 바탕으로 " + action.title() + " 문서를 생성합니다.";
 
         session.setAiResponseText(assistantText);
+        // 2026-09-02: 습관학습 1단계 - 이 분기는 첨부 문서를 근거로 생성하는 흐름
+        session.setRetrievalRoute(
+                retrievedDocuments != null && !retrievedDocuments.isEmpty()
+                        ? "internal_rag"
+                        : "no_retrieval");
         promptSessionRepository.save(session);
 
         touchChatSession(
