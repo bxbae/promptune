@@ -180,6 +180,35 @@ class BuildSearchQueryTest(unittest.TestCase):
             "아이폰 가격 알려줘",
         )
 
+    def test_price_topic_is_preserved_not_reduced_to_subject_only(self):
+        # 2026-09-02(FINANCE 라우팅 후속): "가격"을 query_intent.py의
+        # _ATTRIBUTE_LOOKUP_RE(extract_external_entity_subject가 쓰는
+        # 패턴)에 넣었다가, build_search_query()가 그 함수를 그대로
+        # 재사용하는 바람에 Tavily 검색어가 "아이폰"만 남고 "가격"
+        # (topic)이 통째로 사라지는 부수효과가 있었다 - 검색 품질을
+        # 해칠 수 있어 되돌렸다("가격" strong routing은 별도
+        # is_external_price_lookup_query()로 완전히 분리). "아이폰"
+        # 단독으로 줄어들면 안 되고, "가격"이 항상 남아야 한다.
+        for query in (
+            "아이폰 가격 알려줘",
+            "아이폰 가격이 얼마야?",
+            "아이폰 가격은?",
+        ):
+            with self.subTest(query=query):
+                result = build_search_query(query)
+                self.assertIn("가격", result)
+                self.assertNotEqual(result, "아이폰")
+
+    def test_isolated_ending_regex_does_not_strip_task_verb(self):
+        # 위 test_task_verb_ending_is_not_stripped와 별개로, 아예 다른
+        # 함수 경로(entity_subject 추출)를 안 타는 예시로도
+        # _CONVERSATIONAL_ENDING_RE 자체가 "알려줘"를 안 지우는지
+        # 확인한다.
+        self.assertEqual(
+            build_search_query("이 프로젝트 진행 상황 알려줘"),
+            "이 프로젝트 진행 상황 알려줘",
+        )
+
     def test_strips_about_subject_suffix_with_trailing_seo_ending(self):
         # 2026-09-02(1-B): "정보에 대해서"에서 "에 대해"까지만 지워지고
         # "서"가 고립돼 남아 "정보 서 설명해줘"처럼 검색어가 깨지던 버그.

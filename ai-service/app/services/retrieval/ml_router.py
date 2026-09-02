@@ -8,7 +8,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
 
-from app.services.retrieval.query_intent import is_external_entity_lookup_query
+from app.services.retrieval.query_intent import (
+    is_external_entity_lookup_query,
+    is_external_price_lookup_query,
+)
+from app.services.retrieval.search_plan import is_market_value_query
 
 
 APP = Path(__file__).resolve().parents[2]
@@ -331,6 +335,32 @@ def resolve_strong_retrieval_route(query: str) -> str | None:
         return "internal_rag"
 
     if is_external_entity_lookup_query(query):
+        return "external_or_realtime"
+
+    # 2026-09-02(FINANCE 후속): "아이폰 가격이 얼마야?"/"아이폰 가격은?"
+    # 전용 판정 - query_intent.is_external_entity_lookup_query()의
+    # _ATTRIBUTE_LOOKUP_RE에는 "가격"을 넣지 않는다(그 함수는
+    # search_query_cleanup.build_search_query()가 그대로 재사용해서,
+    # "가격"을 넣으면 Tavily 검색어가 "아이폰"만 남고 "가격"(topic)이
+    # 사라지는 부수효과가 생김 - 검색 품질 저하). 그래서 strong routing
+    # 전용의 별도 helper로 완전히 분리한다. "우리 서비스 가격 알려줘"
+    # 같은 자기 조직 지칭은 helper 내부에서 이미 제외된다.
+    if is_external_price_lookup_query(query):
+        return "external_or_realtime"
+
+    # 2026-09-02(FINANCE 후속): "삼성전자 주가는 어때?"/"원달러 환율은?"이
+    # 시간 표현(오늘/지금 등)이 없어서 _is_likely_realtime_fact()의
+    # has_time 조건을 못 만족하고, ActionClassifier confidence도 threshold
+    # 미만이라 route가 no_retrieval로 끝나던 문제(실제 EC2 운영 재현).
+    # "환율"/"주가"/"시세"/"코스피"/"코스닥"처럼 시간 표현 없이도 그
+    # 자체로 "지금 이 순간의 시장 가치"를 뜻하는 좁은 범위만 결정적으로
+    # web route로 보낸다("비트코인 작동 원리" 같은 개념 질문까지 걸리지
+    # 않도록 "비트코인"/"금리"는 여기서는 뺐다 - build_search_plan()의
+    # FINANCE intent 분류에는 그대로 남아 있음, 서로 다른 책임이라 범위가
+    # 다르다). search_plan.py의 강한 시장값 marker를 재사용한다(중복
+    # 목록을 새로 만들지 않음) - "가격"은 일반 명사라 여기 포함되지
+    # 않는다(바로 위 is_external_price_lookup_query가 별도로 처리함).
+    if is_market_value_query(query):
         return "external_or_realtime"
 
     if _is_likely_realtime_fact(query):

@@ -3,6 +3,7 @@ import unittest
 from app.services.retrieval.ml_router import (
     classify_ml_retrieval_route,
     resolve_strong_retrieval_route,
+    is_market_value_query,
 )
 
 
@@ -289,6 +290,91 @@ class ExternalEntityAttributeLookupTest(unittest.TestCase):
                     resolve_strong_retrieval_route(query),
                     "internal_rag",
                 )
+
+
+class FinanceStrongRouteTest(unittest.TestCase):
+    """
+    2026-09-02: 실제 EC2 운영에서 "삼성전자 주가는 어때?"/"아이폰 가격이
+    얼마야?"가 route='no_retrieval'로 끝나 Tavily가 아예 실행되지 않는
+    문제가 재현됨 - _is_likely_realtime_fact()가 시간 표현(오늘/지금 등)
+    을 요구해서, 시간 표현 없이 쓰이는 FINANCE 질의를 놓쳤다.
+    """
+
+    def test_market_value_queries_route_to_realtime_search_without_time_marker(self):
+        # "환율"/"주가"/"시세"류는 시간 표현이 없어도 결정적으로
+        # external_or_realtime이어야 한다.
+        for query in (
+            "삼성전자 주가는 어때?",
+            "삼성전자 주가는?",
+            "원달러 환율은?",
+            "원달러 환율 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    resolve_strong_retrieval_route(query),
+                    "external_or_realtime",
+                )
+
+    def test_price_queries_route_via_dedicated_price_lookup_helper(self):
+        # "가격"은 market-value marker가 아니라, query_intent.
+        # is_external_price_lookup_query()(전용 helper, entity_subject
+        # 추출과 완전히 분리됨)가 "주어 + 가격 + 종결어미" 문장 형태
+        # 전체를 확인할 때만 external_or_realtime이 된다.
+        for query in (
+            "아이폰 가격이 얼마야?",
+            "아이폰 가격은?",
+            "아이폰 가격 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    resolve_strong_retrieval_route(query),
+                    "external_or_realtime",
+                )
+
+    def test_internal_priority_is_preserved_over_finance_marker(self):
+        # "가격"이라는 단어가 있어도 내부 문서 신호가 있으면 web으로
+        # 뒤집히면 안 된다 - 기존 internal 우선순위(_is_explicit_internal_rag
+        # / _is_company_internal_artifact_query)가 먼저 걸린다.
+        self.assertEqual(
+            resolve_strong_retrieval_route("우리 회사 가격 정책 문서 보여줘"),
+            "internal_rag",
+        )
+
+    def test_generic_price_mention_without_internal_or_entity_shape_is_not_a_strong_route(self):
+        # 내부 신호도 없고, "주어 + 가격 + 종결어미" 문장 형태도 아니면
+        # (다른 단어가 사이에 끼어 있음) 결정적 signal이 아니어야 한다 -
+        # 기존 ActionClassifier 판단에 맡긴다.
+        self.assertIsNone(
+            resolve_strong_retrieval_route("프로젝트 가격 정책 정리해줘")
+        )
+
+    def test_org_self_reference_price_query_is_not_forced_strong_external(self):
+        # "우리"/"저희"로 시작하는 자기 조직/서비스 지칭은 외부 entity로
+        # 확정할 수 없다 - 내부 서비스일 수도 있으므로 결정적으로
+        # external_or_realtime을 강제하지 않고 기존 ActionResolver
+        # 판단에 넘긴다.
+        for query in (
+            "우리 서비스 가격 알려줘",
+            "저희 서비스 가격 알려줘",
+        ):
+            with self.subTest(query=query):
+                self.assertNotEqual(
+                    resolve_strong_retrieval_route(query),
+                    "external_or_realtime",
+                )
+
+    def test_concept_questions_with_bitcoin_or_rate_are_not_strong_market_value(self):
+        # "비트코인"/"금리"는 개념/분석 질문에도 흔히 쓰여서
+        # is_market_value_query()의 strong routing 범위에서 뺐다 -
+        # "값 조회" 의미가 뚜렷한 환율/주가/시세/코스피/코스닥만 남는다.
+        # build_search_plan()의 FINANCE intent 분류에는 여전히 남아
+        # 있어도 된다(서로 다른 책임 - 여기서는 확인하지 않음).
+        for query in (
+            "비트코인 작동 원리 설명해줘",
+            "금리 인상이 경제에 미치는 영향 설명해줘",
+        ):
+            with self.subTest(query=query):
+                self.assertFalse(is_market_value_query(query))
 
 
 if __name__ == "__main__":
