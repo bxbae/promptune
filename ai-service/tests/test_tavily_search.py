@@ -832,5 +832,199 @@ class SearchWebTimeRangeTest(unittest.TestCase):
         self.assertNotIn("time_range", kwargs)
 
 
+class SearchWebObservabilityLogTest(unittest.TestCase):
+    """
+    2026-09-02(1-B): tavily_search.py에 로그가 전혀 없어서 finance/profile/
+    news 중 어느 정책을 탔는지, 내부 재시도가 실제로 일어났는지 확인할 방법이
+    없었다. 동작은 그대로 두고 관측성만 확인한다 - 여기서는 로그 유무/형태만
+    검증하고, 검색 결과 자체(반환값)의 정상 동작은 위 기존 테스트들이 이미
+    보장한다.
+
+    print() 대신 logging 모듈(logger.info/logger.debug)을 쓰므로,
+    stdout을 가로채는 대신 unittest.assertLogs()로 실제 로그 레코드를
+    캡처해서 검증한다.
+    """
+
+    _LOGGER_NAME = "app.services.retrieval.tavily_search"
+
+    def setUp(self):
+        self._original_key = os.environ.get("TAVILY_API_KEY")
+        os.environ["TAVILY_API_KEY"] = "test-key"
+        self._original_domains = os.environ.get("TAVILY_TRUSTED_DOMAINS")
+        os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+
+    def tearDown(self):
+        if self._original_key is None:
+            os.environ.pop("TAVILY_API_KEY", None)
+        else:
+            os.environ["TAVILY_API_KEY"] = self._original_key
+        if self._original_domains is None:
+            os.environ.pop("TAVILY_TRUSTED_DOMAINS", None)
+        else:
+            os.environ["TAVILY_TRUSTED_DOMAINS"] = self._original_domains
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_case_a_restricted_zero_then_retry_two_results_logs_both_stages(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            {"results": []},
+            {
+                "results": [
+                    {"title": "t2", "url": "u2", "content": "c2", "score": 0.5},
+                    {"title": "t3", "url": "u3", "content": "c3", "score": 0.4},
+                ]
+            },
+        ]
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="DEBUG") as cm:
+            search_web("어제 lg 트윈스 경기 결과 알려줘", max_results=3)
+
+        log = "\n".join(cm.output)
+        self.assertIn("web_search_attempt", log)
+        self.assertIn("web_search_retry", log)
+        self.assertIn("raw_result_count=0", log)
+        self.assertIn("filtered_result_count=0", log)
+        self.assertIn("raw_result_count=2", log)
+        self.assertIn("filtered_result_count=2", log)
+        self.assertIn("reason='no_or_low_relevance'", log)
+        # 재시도에서는 domain 제한이 풀렸다는 것도 로그로 구분돼야 한다.
+        self.assertIn("domains_count=3", log)
+        self.assertIn("domains_count=0", log)
+        # 요약 로그는 INFO, 결과 상세는 DEBUG로 분리됐는지 레벨도 확인한다.
+        self.assertTrue(
+            any(r.levelname == "INFO" and "web_search_attempt" in r.getMessage() for r in cm.records)
+        )
+        self.assertTrue(
+            any(r.levelname == "DEBUG" and "result rank=" in r.getMessage() for r in cm.records)
+        )
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_case_b_normal_result_logs_single_attempt_no_retry(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c", "score": 0.7}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="DEBUG") as cm:
+            search_web("아무 뉴스 질의", max_results=3)
+
+        log = "\n".join(cm.output)
+        self.assertIn("web_search_attempt", log)
+        self.assertNotIn("web_search_retry", log)
+        self.assertIn("raw_result_count=1", log)
+        self.assertIn("filtered_result_count=1", log)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_case_c_all_attempts_empty_logs_every_stage(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.search.return_value = {"results": []}
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="DEBUG") as cm:
+            results = search_web("정말 아무 정보도 없는 질의", max_results=3)
+
+        self.assertEqual(results, [])
+        log = "\n".join(cm.output)
+        # 뉴스+신뢰도메인 / 뉴스+무제한 / 일반+위키 3단계 모두 0건으로 로그가 남아야 한다.
+        self.assertEqual(log.count("raw_result_count=0"), 3)
+        self.assertEqual(log.count("filtered_result_count=0"), 3)
+        self.assertEqual(log.count("web_search_attempt"), 1)
+        self.assertEqual(log.count("web_search_retry"), 2)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_case_d_result_metadata_is_logged_without_full_content_or_api_key(
+        self, mock_client_cls
+    ):
+        mock_client = MagicMock()
+        long_content = "x" * 500
+        mock_client.search.return_value = {
+            "results": [
+                {
+                    "title": "제목",
+                    "url": "https://example.com/a",
+                    "content": long_content,
+                    "score": 0.42,
+                }
+            ]
+        }
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="DEBUG") as cm:
+            search_web("아무 뉴스 질의", max_results=3)
+
+        log = "\n".join(cm.output)
+        self.assertIn("rank=1", log)
+        self.assertIn("score=0.42", log)
+        self.assertIn("제목", log)
+        self.assertIn("https://example.com/a", log)
+        # content 전체(500자)를 그대로 남기면 안 되고 150자 이내 preview만.
+        self.assertNotIn("x" * 200, log)
+        self.assertNotIn("test-key", log)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_raw_and_filtered_counts_diverge_when_all_results_are_stale_wiki(
+        self, mock_client_cls
+    ):
+        # 2026-09-02: raw_result_count와 filtered_result_count가 같은
+        # 값(예: 둘 다 result_count=0)으로만 남으면, "Tavily가 애초에 0건
+        # 반환"과 "Tavily는 결과를 줬는데 stale-wiki 필터가 전부 제거"를
+        # 로그만으로 구분할 수 없었다. Tavily raw 결과가 전부 예전 리비전
+        # 스냅샷(r444 판)인 경우로 이 gap을 고정한다.
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            {
+                "results": [
+                    {"title": "이강인 (r444 판) - 나무위키", "url": "u1", "content": "c1"},
+                    {"title": "이강인 (r297 판) - 나무위키", "url": "u2", "content": "c2"},
+                ]
+            },
+            # stale 필터링 이후 filtered=0이라 기존 "0건이면 무제한 재시도"
+            # 폴백이 그대로 이어받아야 한다(동작 변경 없음 확인용).
+            {"results": [{"title": "이강인 최신", "url": "u3", "content": "c3"}]},
+        ]
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="DEBUG") as cm:
+            results = search_web("이강인 소속과 프로필을 알려줘", max_results=3)
+
+        # 반환 동작 자체는 기존과 동일 - stale은 제거되고, filtered=0이라
+        # 무제한 재시도로 넘어가 최종적으로 최신 결과만 돌아온다.
+        self.assertEqual(
+            results, [{"title": "이강인 최신", "url": "u3", "content": "c3"}]
+        )
+
+        log = "\n".join(cm.output)
+        self.assertIn("raw_result_count=2", log)
+        self.assertIn("filtered_result_count=0", log)
+        # 무엇이 걸러졌는지도 최소로(제목/URL만) 남아야 한다.
+        self.assertIn("stale_filtered_result", log)
+        self.assertIn("이강인 (r444 판) - 나무위키", log)
+        self.assertIn("이강인 (r297 판) - 나무위키", log)
+
+    @patch("app.services.retrieval.tavily_search.TavilyClient")
+    def test_result_detail_logs_are_debug_level_only(self, mock_client_cls):
+        # 요약(attempt/retry)은 INFO, 결과 상세는 DEBUG로만 남아야
+        # 기본 운영 로그 레벨(INFO)에서 로그량이 과도해지지 않는다.
+        mock_client = MagicMock()
+        mock_client.search.return_value = {
+            "results": [{"title": "t", "url": "u", "content": "c", "score": 0.7}]
+        }
+        mock_client_cls.return_value = mock_client
+
+        with self.assertLogs(self._LOGGER_NAME, level="INFO") as cm:
+            search_web("아무 뉴스 질의", max_results=3)
+
+        log = "\n".join(cm.output)
+        self.assertIn("web_search_attempt", log)
+        # INFO 레벨만 캡처했을 때는 결과 상세(rank=...)가 보이면 안 된다.
+        self.assertNotIn("result rank=", log)
+
+
 if __name__ == "__main__":
     unittest.main()
