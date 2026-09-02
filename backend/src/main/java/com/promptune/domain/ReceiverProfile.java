@@ -55,5 +55,6 @@ public class ReceiverProfile {
     public String getPreferredTone() { return preferredTone; }
     public int getAvgLength() { return avgLength; }
     public BigDecimal getApplyRate() { return applyRate; }
+    public void setApplyRate(BigDecimal applyRate) { this.applyRate = applyRate; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

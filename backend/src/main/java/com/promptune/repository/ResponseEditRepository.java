@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface ResponseEditRepository extends JpaRepository<ResponseEdit, Long> {
     List<ResponseEdit> findByUserId(Long userId);
+    List<ResponseEdit> findByPromptSessionIdIn(List<Long> promptSessionIds);
 }
