@@ -1,5 +1,6 @@
 import unittest
 
+from app.schemas.models import DiagnoseResponse
 from app.services.diagnose_rules import (
     detect_task_type,
     should_force_missing_audience,
@@ -66,6 +67,48 @@ class TaskTypeRuleTest(unittest.TestCase):
                 detect_task_type(text),
             )
         )
+
+    def test_weather_question_is_general_not_email(self):
+        # 회귀 고정: TASK_TYPE_HINTS에 하나도 안 걸리는 일반 질문은
+        # 예전엔 "email"로 잘못 기본값 처리됐다.
+        text = "오늘 날씨 알려줘"
+        self.assertEqual(detect_task_type(text), "general")
+
+    def test_code_request_is_general_not_email(self):
+        text = "파이썬으로 정렬 코드 짜줘"
+        self.assertEqual(detect_task_type(text), "general")
+
+    def test_concept_explanation_is_general_not_email(self):
+        text = "이 개념 설명해줘"
+        self.assertEqual(detect_task_type(text), "general")
+
+    def test_explicit_email_hint_still_returns_email(self):
+        text = "팀장님께 일정 지연 메일 써줘"
+        self.assertEqual(detect_task_type(text), "email")
+
+    def test_general_task_type_never_forces_missing_audience(self):
+        # general은 should_force_missing_audience()의
+        # "task_type != email -> False" 분기에서 바로 걸러져야 하고,
+        # 실제로 강제 처리되면 안 된다.
+        text = "오늘 날씨 알려줘"
+
+        self.assertFalse(
+            should_force_missing_audience(
+                text,
+                detect_task_type(text),
+            )
+        )
+
+    def test_diagnose_response_accepts_general_task_type(self):
+        # TaskType Literal에 "general"이 없으면 여기서 Pydantic
+        # ValidationError가 나서 /diagnose 자체가 500이 된다.
+        response = DiagnoseResponse(
+            missing={"TASK": 0},
+            task_type="general",
+            typos=[],
+            needs_internal_docs=False,
+        )
+        self.assertEqual(response.task_type, "general")
 
 
 if __name__ == "__main__":

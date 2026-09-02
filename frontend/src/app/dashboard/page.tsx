@@ -41,7 +41,7 @@ function weekdayLabel(dateStr: string): string {
 // 업무유형 라벨별 색상 팔레트 (실데이터 키 개수가 가변이라 순서대로 배정)
 const TASK_TYPE_COLORS = ["#55806A", "#7FA391", "#B7AFB2", "#dd5e3e", "#F2A99A", "#D8D3D0", "#EFEBE9", "#A9C4B8"];
 
-const KNOWN_TASK_TYPES = ["email", "report", "notice", "application", "support", "report_internal", "notice_internal"];
+const KNOWN_TASK_TYPES = ["email", "report", "notice", "application", "support", "report_internal", "notice_internal", "general"];
 
 // AI 진단이 사용하는 고정 8요소. 데이터가 없어도 0%로 8개 다 표시하기 위한 고정 목록.
 const KNOWN_ELEMENTS = ["Task", "Context", "Format", "Audience", "Constraint", "Length", "Tone", "Example"];

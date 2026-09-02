@@ -170,7 +170,15 @@ def detect_task_type(text: str) -> str:
         if any(hint in text for hint in hints):
             return task_type
 
-    return "email"
+    # 이전에는 아무 hint도 매칭되지 않으면 "email"을 기본값으로 반환했다.
+    # "날씨 알려줘", "코드 짜줘"처럼 이메일과 무관한 일반 질문까지 전부
+    # email로 잘못 분류되던 문제(대시보드 통계 왜곡, PromptSession.taskType
+    # DB 오염)를 고친다. should_force_missing_audience()/needs_internal_docs()/
+    # ROLE_HINTS(prompt_rule.py) 모두 "email"이 아닌 값에는 이미 동일하게
+    # 반응하므로(코드 추적 결과 확인) 이 변경만으로 AI 답변 동작에는 영향이
+    # 없다 - generate_hcx.py의 실제 답변 생성 경로도 task_type을 프롬프트에
+    # 쓰지 않는다(로그에만 사용).
+    return "general"
 
 
 def _ranges_overlap(
