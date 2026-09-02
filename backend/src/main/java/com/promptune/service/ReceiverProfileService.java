@@ -35,6 +35,25 @@ public class ReceiverProfileService {
         return repository.save(profile);
     }
 
+    // MS 조직도 구성원 목록을 불러올 때, 그 사람들을 자동으로 수신자별 스타일에
+    // "풀네임+직함"(예: "정형돈 대리") + 부서로 저장한다.
+    // relationship/preferredTone은 MS가 모르는 정보라 여기서 안 건드리고 그대로 둔다
+    // (기존에 학습된 값이 있으면 보존, 처음이면 null인 채로 시작해서 채팅에서 자연히 학습됨).
+    public ReceiverProfile upsertFromMicrosoft(Long userId, String displayName, String jobTitle, String department) {
+        if (displayName == null || displayName.isBlank()) {
+            return null;
+        }
+        String receiverName = (jobTitle == null || jobTitle.isBlank())
+                ? displayName.trim()
+                : displayName.trim() + " " + jobTitle.trim();
+
+        ReceiverProfile profile = repository.findByUserIdAndReceiverName(userId, receiverName)
+                .orElseGet(() -> new ReceiverProfile(userId, receiverName));
+        profile.setMsSynced(true);
+        profile.setDepartment(department);
+        return repository.save(profile);
+    }
+
     public List<ReceiverProfile> list(Long userId) {
         List<ReceiverProfile> profiles = repository.findByUserId(userId);
         profiles.forEach(profile -> profile.setApplyRate(calculateApplyRate(userId, profile.getId())));
@@ -82,8 +101,16 @@ public class ReceiverProfileService {
 
         // null이 아닌 필드만 부분 수정 (PATCH 시맨틱 — DocumentController.update()와 동일 패턴)
         if (relationship != null) profile.setRelationship(relationship);
-        // department는 MS 조직도 동기화 값 (2026-09-02)
-        if (department != null) profile.setDepartment(department);
+        // department는 MS 조직도 동기화 값(2026-09-02)이라, MS로 동기화된 프로필은
+        // 프론트에서 입력창 자체를 안 보여주지만 백엔드에서도 한 번 더 막아둔다
+        // (MS가 원천 소스라 사용자가 직접 고치면 다음 동기화 때 다시 덮어써져서 혼란만 생김).
+        if (department != null) {
+            if (profile.isMsSynced()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "MS 조직도와 동기화된 수신자는 부서를 직접 수정할 수 없습니다.");
+            }
+            profile.setDepartment(department);
+        }
         if (preferredTone != null) profile.setPreferredTone(preferredTone);
         // 동명이인 통합 시 더 완전한 이름(성+이름+직함)으로 정정하는 용도.
         if (receiverName != null && !receiverName.isBlank()) profile.setReceiverName(receiverName);

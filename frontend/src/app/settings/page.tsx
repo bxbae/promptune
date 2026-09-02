@@ -152,11 +152,11 @@ export default function SettingsPage() {
                 <div className="settings-ms-actions">
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>내 프로필</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMembers)}>구성원 프로필</button>
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftEvents)}>캘린더</button>
-                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftFiles)}>OneDrive</button>
+                  {/* <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftEvents)}>캘린더</button>
+                  <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftFiles)}>OneDrive</button> */}
+                  <button className="settings-btn-danger" onClick={handleMsDisconnect}>연결 해제</button>
                 </div>
 
-                <button className="settings-btn-danger" onClick={handleMsDisconnect}>연결 해제</button>
 
                 {Array.isArray(msResult) ? (
                   <MicrosoftMembersView members={msResult as MicrosoftMember[]} />

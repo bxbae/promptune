@@ -621,7 +621,20 @@ export default function ChatThreadPage() {
       if (detected) {
         const { exact, candidate } = matchReceiverProfile(detected, receiverProfiles);
         if (candidate) {
+          // 이 후보 프로필이 이미 동의 완료 상태라면, 예전에 "동일인이에요" 확인을 이미
+          // 거쳤다는 뜻이다("정형돈 대리"로 병합된 뒤엔 "정대리"만 쳐도 exact match는 항상
+          // 실패하고 매번 candidate로만 잡히므로, 여기서 다시 안 물어보면 매번 재확인 팝업이
+          // 뜨고, 그때마다 사용자가 다시 "적용"을 누르면 preferredTone이 이번 대화 값으로
+          // 통째로 덮어써져서(upsert가 톤은 평균이 아니라 그냥 교체함) 학습된 톤이 리셋되는
+          // 것처럼 보였다). 이미 동의된 프로필이면 조용히 같은 사람으로 취급하고 넘어간다.
+          try {
+            const alreadyConfirmed = await getConsentStatus(candidate.id);
+            if (!alreadyConfirmed) {
           setDuplicateCandidate({ detectedName: detected, candidateProfile: candidate, forMessageId: assistantId });
+            }
+          } catch {
+            setDuplicateCandidate({ detectedName: detected, candidateProfile: candidate, forMessageId: assistantId });
+          }
         } else {
         try {
             const allowed = exact ? await getConsentStatus(exact.id) : false;

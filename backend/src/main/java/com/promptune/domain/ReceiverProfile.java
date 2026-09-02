@@ -1,8 +1,14 @@
 package com.promptune.domain;
 
 import java.math.BigDecimal;
-import jakarta.persistence.*;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "receiver_profile")
@@ -29,6 +35,11 @@ public class ReceiverProfile {
 
     @Column(name = "apply_rate")
     private BigDecimal applyRate;
+
+    // MS 조직도에서 자동 동기화된 프로필인지. true면 department(및 이름)는 MS가 소스라
+    // 히스토리 화면에서 사용자가 수정하지 못하게 막는다.
+    @Column(name = "ms_synced", nullable = false)
+    private boolean msSynced = false;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
@@ -61,5 +72,7 @@ public class ReceiverProfile {
     public int getAvgLength() { return avgLength; }
     public BigDecimal getApplyRate() { return applyRate; }
     public void setApplyRate(BigDecimal applyRate) { this.applyRate = applyRate; }
+    public boolean isMsSynced() { return msSynced; }
+    public void setMsSynced(boolean msSynced) { this.msSynced = msSynced; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

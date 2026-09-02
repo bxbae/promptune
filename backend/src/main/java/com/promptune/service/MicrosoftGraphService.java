@@ -34,16 +34,19 @@ public class MicrosoftGraphService {
     private final MicrosoftConnectionRepository connectionRepository;
     private final MicrosoftOauthStateRepository oauthStateRepository;
     private final TokenCryptoService tokenCryptoService;
+    private final ReceiverProfileService receiverProfileService;
     private final RestClient graphClient = RestClient.create();
 
     public MicrosoftGraphService(
             MicrosoftConnectionRepository connectionRepository,
             MicrosoftOauthStateRepository oauthStateRepository,
-            TokenCryptoService tokenCryptoService
+            TokenCryptoService tokenCryptoService,
+            ReceiverProfileService receiverProfileService
     ) {
         this.connectionRepository = connectionRepository;
         this.oauthStateRepository = oauthStateRepository;
         this.tokenCryptoService = tokenCryptoService;
+        this.receiverProfileService = receiverProfileService;
     }
 
     @Value("${microsoft.client-id:}")
@@ -173,7 +176,29 @@ public class MicrosoftGraphService {
 
     // 조직 구성원 목록 — 사람이 들어오고 나가는 게 바로 반영돼야 해서 캐싱 없이 매번 실시간 조회
     public JsonNode getOrganizationUsers(Long userId) {
-        return graphGet(userId, "/v1.0/users?$select=id,displayName,mail,jobTitle,department");
+        JsonNode result = graphGet(userId, "/v1.0/users?$select=id,displayName,mail,jobTitle,department");
+        syncReceiverProfilesFromOrganization(userId, result);
+        return result;
+    }
+
+    // 구성원 목록을 불러올 때마다, 그 사람들을 수신자별 스타일에 "풀네임+직함"으로
+    // 자동 저장/갱신한다. 한 명 처리에 실패해도 나머지 구성원 동기화와 목록 조회
+    // 자체는 계속돼야 하므로, 이 메서드 전체 실패가 getOrganizationUsers()를
+    // 막지 않도록 try/catch로 감싼다.
+    private void syncReceiverProfilesFromOrganization(Long userId, JsonNode result) {
+        JsonNode members = result != null ? result.get("value") : null;
+        if (members == null || !members.isArray()) return;
+
+        for (JsonNode member : members) {
+            try {
+                String displayName = member.path("displayName").asText(null);
+                String jobTitle = member.path("jobTitle").asText(null);
+                String department = member.path("department").asText(null);
+                receiverProfileService.upsertFromMicrosoft(userId, displayName, jobTitle, department);
+            } catch (Exception e) {
+                System.err.println("[MicrosoftGraphService] 구성원 자동 저장 실패 / member=" + member + " / error=" + e.getMessage());
+            }
+        }
     }
 
     private JsonNode graphGet(Long userId, String path) {
