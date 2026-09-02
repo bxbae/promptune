@@ -10,10 +10,13 @@ from typing import Literal
 # 8요소 (흐름도 "8요소 누락 진단")
 ELEMENTS = ["TASK", "AUDIENCE", "CONTEXT", "FORMAT", "TONE", "LENGTH", "CONSTRAINT", "EXAMPLE"]
 
-# 업무유형 7종 (흐름도 "업무 유형 판단")
+# 업무유형 (흐름도 "업무 유형 판단")
+# "general"은 diagnose_rules.detect_task_type()의 매칭 없음 fallback 전용 -
+# 특정 업무 문서 유형이 아닌 일반 질문/요청(날씨, 코드, 개념 설명 등)에 쓰인다.
 TaskType = Literal[
     "email", "report", "report_internal",
     "notice", "notice_internal", "support", "application",
+    "general",
 ]
 
 
