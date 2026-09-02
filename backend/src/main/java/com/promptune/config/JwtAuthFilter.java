@@ -21,19 +21,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     public JwtAuthFilter(JwtService jwt) { this.jwt = jwt; }
 
     @Override
-        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
         String auth = req.getHeader("Authorization");
-        System.out.println("[JWT DEBUG] " + req.getMethod() + " " + req.getRequestURI() + " / auth header 존재: " + (auth != null) + " / content-type: " + req.getContentType());
         if (auth != null && auth.startsWith("Bearer ")) {
             try {
                 String email = jwt.validateAndGetEmail(auth.substring(7));
                 var authentication = new UsernamePasswordAuthenticationToken(email, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                System.out.println("[JWT DEBUG] 인증 성공: " + email);
             } catch (Exception e) {
-                System.out.println("[JWT DEBUG] 인증 실패! 원인: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                e.printStackTrace();
+                // 토큰이 없거나 유효하지 않으면 인증 없이 통과시키고, 이후 SecurityConfig의
+                // 인가 규칙(permitAll이 아닌 엔드포인트는 401)이 알아서 처리한다.
+                // 2026-09-02: 디버그용 println/printStackTrace 제거 — 요청마다 사용자
+                // 이메일이 평문으로 로그에 계속 쌓이고 있던 것 확인되어 정리함.
             }
         }
         chain.doFilter(req, res);
