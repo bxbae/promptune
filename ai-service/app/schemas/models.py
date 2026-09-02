@@ -189,6 +189,10 @@ class GenerateRequest(BaseModel):
     user_context: dict[str, str] = Field(default_factory=dict)
     preference: dict[str, str] = Field(default_factory=dict)
     history: list[ConversationMessage] = Field(default_factory=list)
+    # 2026-09-02: 습관학습 6단계 - 5단계(output_preference.py)와 같은 습관
+    # 데이터를 최종 답변 생성에도 참고시키기 위함.
+    retrieval_hint: str | None = None
+    habit_output_preferences: dict | None = None
 
 
 class GenerateResponse(BaseModel):
