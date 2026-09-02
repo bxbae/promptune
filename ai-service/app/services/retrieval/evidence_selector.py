@@ -181,6 +181,15 @@ _GENERIC_MODIFIER_TOKENS = {
     "지금", "현재", "최근", "최신", "요즘", "방금",
 }
 
+# 2026-09-02(1-B, subject/topic 분리): "어때"/"얼마야"처럼 질문 종결부에
+# 붙는 대화체 잔재는 subject도 topic도 아니다 - _query_tokens()의 조사
+# 제거로는 안 걸러진다("얼마야"는 "야"가 조사 목록에 없어서 그대로 남음).
+# 새 사전을 만들지 않고, topic 토큰 계산에서만 빼는 아주 작은 집합으로
+# 둔다(검색 query cleanup의 종결어미 정리와는 별개 - 이건 scoring 쪽).
+_CONVERSATIONAL_RESIDUAL_TOKENS = {
+    "어때", "얼마", "얼마야",
+}
+
 
 # 2026-09-02(1-B): CURRENT_FACT(날씨/시세/경기 결과 등)에 PROFILE과 같은
 # _contains_entity() exact-string hard filter를 그대로 쓰면 안 된다 -
@@ -243,13 +252,84 @@ def _matches_any_entity_token(
     )
 
 
-def _score_result(
+# 2026-09-02(1-B): _score_result()의 entity 보너스/페널티가 여전히 entity
+# "전체 문자열" exact match였다 - 위 _matches_any_entity_token() gate(단어
+# 단위)와 기준이 달랐다. entity="서울 강남구"인데 정상 결과가 "강남구"만
+# 쓰면(흔함), gate는 통과시키지만 scoring에서는 "서울강남구" 전체가 없다는
+# 이유로 정답/오답 구분 없이 똑같이 -0.08을 받아서 사실상 상수처럼
+# 작동했다(실제 운영 재현: "서울특별시 대기환경정보"와 실제 날씨 기사가
+# 둘 다 -0.08을 받음). entity 단어 중 몇 개가 실제로 있는지 비율로 계산해서
+# 부분 매치에 부분 점수를 준다 - 기존 +0.20/-0.08 범위는 그대로 유지한다
+# (새 계수를 만들지 않음). 단어 수가 1개인 entity(PROFILE 대부분,
+# 예: "BTS")는 비율이 0.0 또는 1.0 둘 중 하나뿐이라 기존 동작과 동일하다.
+def _entity_match_ratio(
+    item: dict,
+    entity: str | None,
+) -> float:
+    tokens = _entity_tokens(entity)
+
+    if not tokens:
+        return 1.0
+
+    haystack = _normalize(
+        " ".join([
+            str(item.get("title") or ""),
+            str(item.get("content") or ""),
+            str(item.get("url") or ""),
+        ])
+    )
+
+    matched = sum(
+        1
+        for token in tokens
+        if _normalize(token) in haystack
+    )
+
+    return matched / len(tokens)
+
+
+# 2026-09-02(1-B): subject(entity) token과 topic token을 분리한다 - 지금까지
+# _query_tokens()가 이 둘을 구분 없이 하나의 bag으로 다뤄서, "서울"/"강남구"
+# (subject)와 "날씨"(topic)가 lexical overlap 점수에서 똑같은 취급을
+# 받았다. topic 자체 가중치를 새로 크게 튜닝하지는 않는다(운영 score
+# 분포를 더 본 뒤 결정) - 이번에는 subject 신호와 topic 신호를 분리해서
+# 계산할 수 있는 구조만 만든다.
+def _topic_tokens(
+    query: str,
+    entity: str | None,
+) -> set[str]:
+    return (
+        _query_tokens(query)
+        - _entity_tokens(entity)
+        - _GENERIC_MODIFIER_TOKENS
+        - _CONVERSATIONAL_RESIDUAL_TOKENS
+    )
+
+
+# 2026-09-02(1-B, scope 최소화): entity 단어 비율/topic 분리는 이번 작업
+# 범위(CURRENT_FACT/FINANCE relevance 개선)에만 쓴다. PROFILE/RESEARCH 등
+# 다른 intent는 기존 scoring(entity 전체 문자열 exact match, query 전체
+# 토큰 lexical overlap)을 그대로 유지해야 하므로, 아래 _score_breakdown()
+# 에서 이 집합에 속한 intent일 때만 새 로직을 쓴다.
+_SUBJECT_TOPIC_SCORING_INTENTS = {"CURRENT_FACT", "FINANCE"}
+
+
+def _score_breakdown(
     item: dict,
     *,
     query: str,
     intent: str,
     entity: str | None,
-) -> float:
+) -> dict[str, float]:
+    """
+    최종 점수를 구성 요소별로 나눠서 반환한다 - 순수 계산 결과만 담고
+    로그는 남기지 않는다(운영 로그를 새로 늘리지 않되, 테스트에서
+    "왜 이 점수가 나왔는지"를 근거 있게 확인할 수 있게 한다).
+
+    CURRENT_FACT/FINANCE만 entity 단어 비율 + subject/topic 분리 scoring을
+    쓰고, 그 외 intent(PROFILE/RESEARCH/GENERAL 등)는 기존 방식(entity
+    전체 문자열 exact match, query 전체 토큰 lexical overlap) 그대로다.
+    """
     tavily_score = float(
         item.get("score") or 0.0
     )
@@ -262,42 +342,92 @@ def _score_result(
     )
     combined = f"{title} {content}"
 
-    final_score = tavily_score
+    use_subject_topic_scoring = (
+        intent in _SUBJECT_TOPIC_SCORING_INTENTS
+    )
+
+    entity_bonus = 0.0
 
     if entity:
-        normalized_entity = _normalize(entity)
-        normalized_result = _normalize(combined)
+        if use_subject_topic_scoring:
+            ratio = _entity_match_ratio(item, entity)
 
-        if (
-            normalized_entity
-            and normalized_entity
-            in normalized_result
-        ):
-            final_score += 0.20
+            entity_bonus = (
+                0.20 * ratio
+                if ratio > 0
+                else -0.08
+            )
         else:
-            final_score -= 0.08
+            # 기존(PROFILE/RESEARCH 등) 방식 - entity 전체 문자열이
+            # 그대로 있어야만 보너스를 준다. 손대지 않는다.
+            normalized_entity = _normalize(entity)
+            normalized_result = _normalize(combined)
 
-    tokens = _query_tokens(query)
+            if (
+                normalized_entity
+                and normalized_entity
+                in normalized_result
+            ):
+                entity_bonus = 0.20
+            else:
+                entity_bonus = -0.08
 
-    if tokens:
+    topic_overlap = 0.0
+
+    topic_tokens = (
+        _topic_tokens(query, entity)
+        if use_subject_topic_scoring
+        else _query_tokens(query)
+    )
+
+    if topic_tokens:
         lowered = combined.lower()
+
         matched = sum(
             1
-            for token in tokens
+            for token in topic_tokens
             if token in lowered
         )
 
-        final_score += min(
+        topic_overlap = min(
             matched * 0.03,
             0.15,
         )
 
-    final_score += _authority_bonus(
+    authority_bonus = _authority_bonus(
         str(item.get("url") or ""),
         intent,
     )
 
-    return final_score
+    final_score = (
+        tavily_score
+        + entity_bonus
+        + topic_overlap
+        + authority_bonus
+    )
+
+    return {
+        "tavily_score": tavily_score,
+        "entity_bonus": entity_bonus,
+        "topic_overlap": topic_overlap,
+        "authority_bonus": authority_bonus,
+        "final_score": final_score,
+    }
+
+
+def _score_result(
+    item: dict,
+    *,
+    query: str,
+    intent: str,
+    entity: str | None,
+) -> float:
+    return _score_breakdown(
+        item,
+        query=query,
+        intent=intent,
+        entity=entity,
+    )["final_score"]
 
 
 def select_web_evidence(

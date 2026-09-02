@@ -65,8 +65,13 @@ class BuildSearchQueryTest(unittest.TestCase):
         # 빈 문자열이 되면 안 된다 - 잡음이 섞이더라도 검색은 되는 편이 낫다.
         self.assertEqual(build_search_query("친근하게"), "친근하게")
 
-    def test_query_without_periods_is_unchanged(self):
-        self.assertEqual(build_search_query("오늘 날씨 어때"), "오늘 날씨 어때")
+    def test_query_without_periods_strips_conversational_ending(self):
+        # 2026-09-02: 이 테스트는 원래 "질문 종결 표현을 지우는 로직이
+        # 아예 없던" 상태를 그대로 검증하고 있었다 - 이번에 그 로직을
+        # 새로 추가하는 게 목적이라 "어때"가 지워지는 게 맞는 새 동작이다.
+        # 기존 테스트 대부분은 무변경으로 유지했지만, 이 케이스만은 추가된
+        # 기능과 직접 상충해서 새 동작에 맞게 갱신한다.
+        self.assertEqual(build_search_query("오늘 날씨 어때"), "오늘 날씨")
 
     def test_empty_query_is_left_unchanged(self):
         self.assertEqual(build_search_query(""), "")
@@ -148,6 +153,32 @@ class BuildSearchQueryTest(unittest.TestCase):
         ):
             with self.subTest(query=query):
                 self.assertEqual(build_search_query(query), expected)
+
+    def test_strips_conversational_question_ending(self):
+        # 2026-09-02(1-B): "오늘 강남구 날씨는 어때?"를 그대로 Tavily에
+        # 보내면 "어때?"가 검색어에 남아서 relevance가 떨어지던 문제.
+        # "강남구"/"날씨" 같은 특정 단어가 아니라 일반적인 대화체 질문
+        # 종결 표현만 문장 끝에서 제거한다.
+        for query, expected in (
+            ("오늘 강남구 날씨는 어때?", "오늘 강남구 날씨"),
+            ("오늘 서울 강남구 날씨는 어때?", "오늘 서울 강남구 날씨"),
+            ("삼성전자 주가는 어때?", "삼성전자 주가"),
+            ("원달러 환율은 어때?", "원달러 환율"),
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(build_search_query(query), expected)
+
+    def test_task_verb_ending_is_not_stripped(self):
+        # "알려줘"/"설명해줘"는 일부러 제거 대상에서 뺐다 - 이미 위
+        # test_strips_context_variant_with_edited_wording 등 여러 기존
+        # 테스트가 "~프로필을 알려줘"처럼 이 동사가 실제 요청 핵심으로
+        # 그대로 남아야 함을 고정하고 있어서, 무조건 끝에서 지우면 그
+        # 케이스들과 충돌한다. 대신 순수 의문형 종결(어때/언제/몇/얼마/
+        # 어디)만 제거 대상으로 한정한다.
+        self.assertEqual(
+            build_search_query("아이폰 가격 알려줘"),
+            "아이폰 가격 알려줘",
+        )
 
     def test_strips_about_subject_suffix_with_trailing_seo_ending(self):
         # 2026-09-02(1-B): "정보에 대해서"에서 "에 대해"까지만 지워지고

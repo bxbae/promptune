@@ -110,6 +110,29 @@ _NUMERIC_FORMAT_RE = re.compile(
 # 그대로 동일하게 지워진다.
 _ABOUT_SUBJECT_SUFFIX_RE = re.compile(r"에\s*(?:대|관)(?:해|하여)서?")
 
+# 2026-09-02(1-B): "오늘 강남구 날씨는 어때?"를 그대로 Tavily에 보내면
+# "어때?"가 검색어에 남는다 - 위 _STOCK_PHRASES는 improve_prompt UI가
+# 붙이는 어조/분량 지시문(절 단위 정확 매치)만 다루고, 사용자가 자연어로
+# 쓴 의문형 종결 표현은 애초에 다루는 로직이 없었다. "강남구"/"날씨" 같은
+# 특정 단어가 아니라, 흔한 대화체 질문 종결 표현만 문장 맨 끝에서 제거한다
+# - 앞의 핵심 명사(주소/주제)는 절대 건드리지 않는다.
+#
+# "알려줘"/"설명해줘"는 일부러 뺐다 - "이강인 소속과 프로필을 알려줘"처럼
+# 실제 요청 동사로 쓰이는 경우가 훨씬 흔해서(기존 PROFILE 테스트가 이
+# 형태를 그대로 보존해야 함을 이미 고정하고 있음), 이 둘을 끝에서 무조건
+# 지우면 "질문의 핵심 의미를 지우면 안 된다"는 원칙과 충돌한다. 반대로
+# 어때/언제/몇/얼마/어디는 그 자체로 검색에 필요한 정보를 담지 않는
+# 순수 의문형 종결이라 위치와 무관하게 제거해도 안전하다.
+_CONVERSATIONAL_ENDING_RE = re.compile(
+    r"(?:은|는|이|가)?\s*"
+    r"(?:어때(?:요)?|"
+    r"언제(?:야|예요|이야|이에요)?|"
+    r"몇\s*(?:이야|이에요|인가요)?|"
+    r"얼마(?:야|예요|인가요)?|"
+    r"어디(?:야|예요|인가요)?)"
+    r"\s*[?!.]*\s*$"
+)
+
 
 def _is_stock_clause(clause: str) -> bool:
     normalized = clause.strip().strip(",").strip()
@@ -163,4 +186,13 @@ def build_search_query(query: str) -> str:
     # 전부 상투구로 판정돼 텅 비면(예: 질의 자체가 짧은 스타일 지시문 하나뿐인
     # 경우) 원문 그대로 쓴다 - 검색어가 아예 없어지는 것보다는 잡음이 섞이더라도
     # 검색이 되는 편이 낫다.
-    return cleaned if cleaned else original
+    if not cleaned:
+        return original
+
+    # 대화체 질문 종결 표현("어때?"/"얼마야?"/"언제야?" 등, "알려줘"/
+    # "설명해줘"는 제외 - 위 _CONVERSATIONAL_ENDING_RE 정의부 주석 참고)을
+    # 문장 맨 끝에서만 제거한다. 제거 후 통째로 비면(예: 질의 자체가
+    # "어때?"뿐인 극단적인 경우) 제거 전 문자열을 그대로 쓴다.
+    without_ending = _CONVERSATIONAL_ENDING_RE.sub("", cleaned).strip()
+
+    return without_ending if without_ending else cleaned
