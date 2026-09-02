@@ -534,11 +534,26 @@ class FinanceScoringStructureTest(unittest.TestCase):
     않는지 확인한다.
     """
 
-    def test_finance_query_has_no_hard_gate_removal(self):
+    def test_stock_query_applies_entity_gate_only(self):
         results = [
-            {"title": "삼성전자 주가 기사", "url": "https://x.com/a", "content": "삼성전자 오늘 주가는 7만원대.", "score": 0.5},
-            {"title": "삼성전자 채용 기사", "url": "https://x.com/b", "content": "삼성전자 신입 공채 시작.", "score": 0.7},
-            {"title": "미국 증시 기사", "url": "https://x.com/c", "content": "다우존스 지수 상승 마감.", "score": 0.6},
+            {
+                "title": "삼성전자 주가 기사",
+                "url": "https://x.com/a",
+                "content": "삼성전자 오늘 주가는 7만원대.",
+                "score": 0.5,
+            },
+            {
+                "title": "삼성전자 채용 기사",
+                "url": "https://x.com/b",
+                "content": "삼성전자 신입 공채 시작.",
+                "score": 0.7,
+            },
+            {
+                "title": "미국 증시 기사",
+                "url": "https://x.com/c",
+                "content": "다우존스 지수 상승 마감.",
+                "score": 0.6,
+            },
         ]
 
         selected = select_web_evidence(
@@ -549,10 +564,13 @@ class FinanceScoringStructureTest(unittest.TestCase):
             limit=3,
         )
 
-        # hard gate가 없으므로 entity와 무관한 "미국 증시 기사"도
-        # 완전히 제거되지는 않는다(순위만 scoring에 맡김).
         titles = [r["title"] for r in selected]
-        self.assertEqual(len(titles), 3)
+
+        # 주가 질문에서는 entity가 전혀 없는 결과만 제거한다.
+        self.assertEqual(len(titles), 2)
+        self.assertIn("삼성전자 주가 기사", titles)
+        self.assertIn("삼성전자 채용 기사", titles)
+        self.assertNotIn("미국 증시 기사", titles)
 
     def test_synonym_denominated_result_is_not_hard_rejected_usd_krw(self):
         # entity="원달러"인데 실제 정상 결과가 "USD/KRW" 표기만 쓰는 경우 -
@@ -617,6 +635,82 @@ class ScoreBreakdownObservabilityTest(unittest.TestCase):
             breakdown["final_score"],
         )
 
+class FinanceStockEntityGateTest(unittest.TestCase):
+
+    def test_stock_query_rejects_result_without_entity(self):
+        results = [
+            {
+                "title": "Samsung Electronics stock outlook",
+                "url": "https://example.com/samsung",
+                "content": "삼성전자 주가와 실적 전망",
+                "score": 0.4,
+            },
+            {
+                "title": "WSJ Invest",
+                "url": "https://example.com/invest",
+                "content": "Global markets and investing news",
+                "score": 0.9,
+            },
+        ]
+
+        selected = select_web_evidence(
+            results,
+            query="삼성전자 주가는 어때?",
+            intent="FINANCE",
+            entity="삼성전자",
+            limit=3,
+        )
+
+        titles = [item["title"] for item in selected]
+
+        self.assertIn(
+            "Samsung Electronics stock outlook",
+            titles,
+        )
+        self.assertNotIn(
+            "WSJ Invest",
+            titles,
+        )
+
+    def test_price_query_does_not_use_stock_entity_gate(self):
+        results = [
+            {
+                "title": "iPhone 17 price",
+                "url": "https://example.com/iphone",
+                "content": "iPhone 17 starts at $999.",
+                "score": 0.4,
+            },
+        ]
+
+        selected = select_web_evidence(
+            results,
+            query="아이폰 가격이 얼마야?",
+            intent="FINANCE",
+            entity="아이폰",
+            limit=3,
+        )
+
+        self.assertEqual(len(selected), 1)
+
+    def test_fx_query_does_not_use_stock_entity_gate(self):
+        results = [
+            {
+                "title": "USD/KRW exchange rate",
+                "url": "https://example.com/fx",
+                "content": "USD/KRW moved during today's trading.",
+                "score": 0.4,
+            },
+        ]
+
+        selected = select_web_evidence(
+            results,
+            query="원달러 환율은?",
+            intent="FINANCE",
+            entity="원달러",
+            limit=3,
+        )
+
+        self.assertEqual(len(selected), 1)
 
 if __name__ == "__main__":
     unittest.main()

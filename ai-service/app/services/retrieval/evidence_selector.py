@@ -498,6 +498,17 @@ def select_web_evidence(
             if _matches_any_entity_token(item, entity)
         ]
 
+    # FINANCE 전체에 entity hard gate를 적용하면
+    # "원달러" ↔ "USD/KRW", "아이폰" ↔ "iPhone" 같은
+    # 정상적인 표기 차이까지 제거될 수 있다.
+    # 운영에서 실제 문제가 확인된 "주가" 질의에만 최소 적용한다.
+    if intent == "FINANCE" and entity and "주가" in str(query or ""):
+        unique = [
+            item
+            for item in unique
+            if _matches_any_entity_token(item, entity)
+        ]
+
     ranked = sorted(
         unique,
         key=lambda item: _score_result(
