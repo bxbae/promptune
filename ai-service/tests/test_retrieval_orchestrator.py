@@ -25,12 +25,14 @@ ConversationMessage = None
 RetrievalExecuteRequest = None
 RetrieveResponse = None
 Document = None
+ConversationRetrievalContext = None
 execute_retrieval = None
 
 
 def setUpModule():
     global _installed_torch_stub, _installed_hcx_runtime_stub
     global ConversationMessage, RetrievalExecuteRequest, RetrieveResponse, Document
+    global ConversationRetrievalContext
     global execute_retrieval
 
     if "torch" not in sys.modules:
@@ -75,11 +77,15 @@ def setUpModule():
     from app.services.retrieval.retrieval_orchestrator import (
         execute_retrieval as _execute_retrieval,
     )
+    from app.services.retrieval.conversation_context import (
+        ConversationRetrievalContext as _ConversationRetrievalContext,
+    )
 
     ConversationMessage = _ConversationMessage
     RetrievalExecuteRequest = _RetrievalExecuteRequest
     RetrieveResponse = _RetrieveResponse
     Document = _Document
+    ConversationRetrievalContext = _ConversationRetrievalContext
     execute_retrieval = _execute_retrieval
 
 
@@ -233,6 +239,140 @@ class DocumentIdsRoutingTest(unittest.TestCase):
         self.assertEqual(
             captured["query"], "lg 트윈스 단장님의 이름과 약력을 안내해줘"
         )
+
+
+class InternalRagObservabilityLogTest(unittest.TestCase):
+    """
+    2026-09-02: internal_rag 경로에 로그가 전혀 없어서 "잘못된 chunk가
+    검색됐는지" vs "HCX가 올바른 chunk를 무시했는지"를 구분할 방법이
+    없었다. 오케스트레이터 레벨에서는 흐름(start/metadata_document_ids/
+    final_documents)만 확인하고, raw/selected 상세는
+    tests/test_rag_retriever.py가 담당한다.
+    """
+
+    def _capture_stdout(self):
+        import contextlib
+        import io
+
+        return contextlib.redirect_stdout(io.StringIO())
+
+    def test_start_log_appears_with_document_ids(self):
+        req = RetrievalExecuteRequest(
+            query="이게 무슨 내용인지 알려줘",
+            owner_user_id=1,
+            top_k=3,
+            history=[],
+            document_ids=[42],
+        )
+
+        def fake_overview(owner_user_id, document_ids):
+            return RetrieveResponse(
+                documents=[
+                    Document(
+                        document_id=42,
+                        chunk_id=1,
+                        chunk_index=0,
+                        title="문서.docx",
+                        document_type="OTHER",
+                        description=None,
+                        content="본문",
+                        score=1.0,
+                    )
+                ]
+            )
+
+        with patch(
+            "app.services.retrieval.retrieval_orchestrator.retrieve_document_overview",
+            side_effect=fake_overview,
+        ), self._capture_stdout() as out:
+            execute_retrieval(req)
+
+        log = out.getvalue()
+        self.assertIn("[RAG] start route='internal_rag'", log)
+        self.assertIn("owner_user_id=1", log)
+        self.assertIn("document_ids=[42]", log)
+
+    def test_metadata_document_ids_log_appears_when_that_path_is_used(self):
+        # 2026-09-02: 이 테스트의 목적은 routing 품질 검증이 아니라
+        # "metadata_document_ids 경로를 탈 때 로그가 남는지"이므로,
+        # 자연어 질의가 우연히 internal_rag로 라우팅되길 기대하지 않고
+        # resolve_conversation_retrieval() 자체를 mock해서 route를
+        # deterministic하게 고정한다 - 실제 BGE/DB는 절대 호출되지 않는다.
+        req = RetrievalExecuteRequest(
+            query="사내 정책 문서 알려줘",
+            owner_user_id=1,
+            top_k=3,
+            history=[],
+            document_ids=[],
+        )
+
+        def fake_conversation_retrieval(query, history):
+            return ConversationRetrievalContext(
+                query=query,
+                route_override="internal_rag",
+                used_history=False,
+            )
+
+        def fake_metadata_ids(owner_user_id, query, limit=5):
+            return [3, 8]
+
+        def fake_overview(owner_user_id, document_ids):
+            return RetrieveResponse(documents=[])
+
+        with patch(
+            "app.services.retrieval.retrieval_orchestrator.resolve_conversation_retrieval",
+            side_effect=fake_conversation_retrieval,
+        ), patch(
+            "app.services.retrieval.retrieval_orchestrator.find_metadata_document_ids",
+            side_effect=fake_metadata_ids,
+        ), patch(
+            "app.services.retrieval.retrieval_orchestrator.retrieve_document_overview",
+            side_effect=fake_overview,
+        ), self._capture_stdout() as out:
+            result = execute_retrieval(req)
+
+        self.assertEqual(result.route, "internal_rag")
+        log = out.getvalue()
+        self.assertIn("[RAG] metadata_document_ids=[3, 8]", log)
+
+    def test_final_documents_log_reflects_returned_documents(self):
+        req = RetrievalExecuteRequest(
+            query="이게 무슨 내용인지 알려줘",
+            owner_user_id=1,
+            top_k=3,
+            history=[],
+            document_ids=[42],
+        )
+
+        def fake_overview(owner_user_id, document_ids):
+            return RetrieveResponse(
+                documents=[
+                    Document(
+                        document_id=42,
+                        chunk_id=7,
+                        chunk_index=1,
+                        title="문서.docx",
+                        document_type="OTHER",
+                        description=None,
+                        content="본문 내용" * 50,
+                        score=0.87,
+                    )
+                ]
+            )
+
+        with patch(
+            "app.services.retrieval.retrieval_orchestrator.retrieve_document_overview",
+            side_effect=fake_overview,
+        ), self._capture_stdout() as out:
+            result = execute_retrieval(req)
+
+        log = out.getvalue()
+        self.assertIn("[RAG] final_documents count=1", log)
+        self.assertIn("'document_id': 42", log)
+        self.assertIn("'chunk_id': 7", log)
+        self.assertIn("'score': 0.87", log)
+        self.assertEqual(len(result.documents), 1)
+        self.assertEqual(result.documents[0].content, "본문 내용" * 50)
 
 
 if __name__ == "__main__":
