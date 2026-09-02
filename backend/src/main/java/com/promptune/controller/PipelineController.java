@@ -50,6 +50,7 @@ public class PipelineController {
     private final com.promptune.repository.DocumentRepository documentRepository; // 추가
     private final com.promptune.service.DocumentIntentResolver documentIntentResolver;
     private final com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier;
+    private final com.promptune.service.RetrievalPatternService retrievalPatternService;
 
     public PipelineController(GateService gate, AiServiceClient ai,
         RecommendService recommend, GraphMockService graph,
@@ -63,7 +64,8 @@ public class PipelineController {
         com.promptune.repository.ReceiverProfileRepository receiverProfileRepository,
         com.promptune.repository.DocumentRepository documentRepository,
         com.promptune.service.DocumentIntentResolver documentIntentResolver,
-        com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier) {
+        com.promptune.service.DocumentFollowupClassifier documentFollowupClassifier,
+        com.promptune.service.RetrievalPatternService retrievalPatternService) {
         this.gate = gate;
         this.ai = ai;
         this.recommend = recommend;
@@ -79,6 +81,7 @@ public class PipelineController {
         this.documentRepository = documentRepository;
         this.documentIntentResolver = documentIntentResolver;
         this.documentFollowupClassifier = documentFollowupClassifier;
+        this.retrievalPatternService = retrievalPatternService;
     }
 
     /**
@@ -439,7 +442,9 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     session.setAiResponseText(aiText.toString());
     // 2026-09-02: 습관학습 1단계 - 검색 방식 기록
     Object route = retrieval != null ? retrieval.get("route") : null;
-    session.setRetrievalRoute(route != null ? route.toString() : "no_retrieval");
+    String resolvedRoute = route != null ? route.toString() : "no_retrieval";
+    session.setRetrievalRoute(resolvedRoute);
+    retrievalPatternService.recordUse(userId, resolvedRoute);
     promptSessionRepository.save(session);
 
     // 첨부 관계는 documents.prompt_session_id 단일 컬럼이 아니라
@@ -652,6 +657,7 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
         session.setAiResponseText(assistantText);
         // 2026-09-02: 습관학습 1단계 - 이 분기는 검색 없이 순수 문서 생성만 함
         session.setRetrievalRoute("no_retrieval");
+        retrievalPatternService.recordUse(userId, "no_retrieval");
         promptSessionRepository.save(session);
 
         linkCurrentAttachments(
@@ -700,10 +706,11 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
         session.setAiResponseText(assistantText);
         // 2026-09-02: 습관학습 1단계 - 이 분기는 첨부 문서를 근거로 생성하는 흐름
-        session.setRetrievalRoute(
-                retrievedDocuments != null && !retrievedDocuments.isEmpty()
-                        ? "internal_rag"
-                        : "no_retrieval");
+        String resolvedRoute = retrievedDocuments != null && !retrievedDocuments.isEmpty()
+                ? "internal_rag"
+                : "no_retrieval";
+        session.setRetrievalRoute(resolvedRoute);
+        retrievalPatternService.recordUse(userId, resolvedRoute);
         promptSessionRepository.save(session);
 
         touchChatSession(
