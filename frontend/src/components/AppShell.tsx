@@ -107,7 +107,7 @@ export default function AppShell({
   function startEditTitle(c: ChatSession) {
     setOpenMenuId(null);
     setEditingId(c.id);
-    setEditTitle(c.title || `대화 #${c.id}`);
+    setEditTitle(c.title || `대화 #${c.userSequence}`);
   }
 
   // 제목 수정 저장 (Enter)
@@ -338,9 +338,9 @@ export default function AppShell({
             <button
               className={`recent-chat-item ${pathname === `/chat/${c.id}` ? "active" : ""}`}
               onClick={() => router.push(`/chat/${c.id}`)}
-              title={c.title || `대화 #${c.id}`}
+              title={c.title || `대화 #${c.userSequence}`}
             >
-              {c.title || `대화 #${c.id}`}
+              {c.title || `대화 #${c.userSequence}`}
             </button>
 
                   <button

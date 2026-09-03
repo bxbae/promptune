@@ -8,8 +8,9 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   microsoftConnect,
   microsoftDisconnect,
-  microsoftEvents,
-  microsoftFiles,
+  // TODO: 죽은코드 삭제
+  // microsoftEvents,
+  // microsoftFiles,
   microsoftMembers,
   microsoftProfile,
   microsoftStatus,
@@ -152,6 +153,7 @@ export default function SettingsPage() {
                 <div className="settings-ms-actions">
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftProfile)}>내 프로필</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftMembers)}>구성원 프로필</button>
+                  {/* TODO: 죽은코드 삭제 */}
                   {/* <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftEvents)}>캘린더</button>
                   <button className="settings-ms-action-btn" onClick={() => runMsQuery(microsoftFiles)}>OneDrive</button> */}
                   <button className="settings-btn-danger" onClick={handleMsDisconnect}>연결 해제</button>
@@ -172,9 +174,10 @@ export default function SettingsPage() {
                   <img src="/icons/microsoft.png" alt="" />
                 </div>
                 <p className="settings-ms-empty-title">Microsoft 업무 계정</p>
-                <p className="settings-ms-empty-desc">
+                {/* TODO: 죽은코드 삭제 */}
+                {/* <p className="settings-ms-empty-desc">
                   연결하면 캘린더·OneDrive·메일 정보를<br />프롬프트 개인화에 활용할 수 있어요.
-                </p>
+                </p> */}
                 <button className="settings-btn-primary" onClick={handleMsConnect}>Microsoft 계정 연결</button>
               </div>
             )}

@@ -142,15 +142,15 @@ export default function PersonalizationDataActions() {
           </button>
         </div>
 
-        <div className="pref-data-row">
+        {/* <div className="pref-data-row">
           <div>
             <div className="pref-data-row-title">내 데이터 내보내기</div>
             <div className="pref-data-row-desc">쌓인 개인화 데이터를 JSON으로 다운로드</div>
           </div>
-        <button onClick={handleExport} disabled={busy !== null} style={buttonStyle()}>
-          {busy === "export" ? "내보내는 중..." : "내보내기"}
-        </button>
-        </div>
+          <button onClick={handleExport} disabled={busy !== null} style={buttonStyle()}>
+            {busy === "export" ? "내보내는 중..." : "내보내기"}
+          </button>
+        </div> */}
 
         {message && <p style={{ marginTop: 12, fontSize: 13, color: "var(--accent)" }}>{message}</p>}
         {error && <p style={{ marginTop: 12, fontSize: 13, color: "var(--block)" }}>{error}</p>}
