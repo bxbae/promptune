@@ -17,21 +17,31 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class RecommendServiceTest {
 
   private PersonalizationScoreRepository scoreRepository;
+  private RetrievalPatternService retrievalPatternService;
   private RecommendService service;
 
   @BeforeEach
   void setUp() {
     scoreRepository = mock(PersonalizationScoreRepository.class);
+    retrievalPatternService = mock(RetrievalPatternService.class);
 
     service = new RecommendService();
 
     ReflectionTestUtils.setField(service, "scoreRepository", scoreRepository);
+    ReflectionTestUtils.setField(
+        service, "retrievalPatternService", retrievalPatternService);
+
+    // 습관학습 3단계(dominantRoute 기반 CONTEXT 가산점)가 기존 테스트의
+    // accept/dismiss 우선순위 기대값을 흔들지 않도록, 기본값은 "쏠림 없음"
+    // (null)으로 고정한다.
+    when(retrievalPatternService.dominantRoute(anyLong())).thenReturn(null);
   }
 
   private PersonalizationScore scoreWith(String element, int accept, int dismiss) {
