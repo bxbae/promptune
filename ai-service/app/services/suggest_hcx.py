@@ -733,27 +733,30 @@ def suggest(
         # 아니라 AUDIENCE guard + KcELECTRA diagnosis guard다.)
         if element == "CONTEXT" and not context:
             logger.info(
-                "Generating ungrounded CONTEXT suggestion without "
-                "explicit context; model must only propose the kind "
-                "of info needed, not invent facts"
+                "Using safe CONTEXT suggestion without HCX "
+                "because explicit context is absent"
             )
+            candidates = [
+                "관련 배경이나 현재 상황이 있다면 함께 반영해줘."
+            ]
 
-        try:
-            candidates = _generate_candidates(
-                text=req.text,
-                context=context,
-                element=element,
-                output_prefs=output_prefs,
-            )
+        else:
+            try:
+                candidates = _generate_candidates(
+                    text=req.text,
+                    context=context,
+                    element=element,
+                    output_prefs=output_prefs,
+                )
 
-        except Exception:
-            # HCX 동적 생성 실패 시 고정 추천으로 fallback하지 않는다.
-            logger.exception(
-                "HCX dynamic suggestion generation failed "
-                "element=%s",
-                element,
-            )
-            continue
+            except Exception:
+                # HCX 동적 생성 실패 시 고정 추천으로 fallback하지 않는다.
+                logger.exception(
+                    "HCX dynamic suggestion generation failed "
+                    "element=%s",
+                    element,
+                )
+                continue
 
         if element == "CONTEXT" and context:
             candidates = [

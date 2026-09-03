@@ -254,7 +254,7 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
         "app.services.suggest_hcx._generate_candidates",
         return_value=[],
     )
-    def test_suggest_attempts_context_generation_without_explicit_context(
+    def test_suggest_skips_context_generation_without_explicit_context(
         self,
         mock_generate,
     ):
@@ -276,21 +276,16 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
         ):
             result = suggest(req)
 
+        self.assertEqual(len(result.suggestions), 1)
         self.assertEqual(
-            result.suggestions,
-            [],
+            result.suggestions[0].element,
+            "CONTEXT",
         )
-        mock_generate.assert_called_once_with(
-            text=req.text,
-            context=None,
-            element="CONTEXT",
-            output_prefs={
-                "format": None,
-                "length": None,
-                "structure": None,
-                "detail_level": None,
-            },
+        self.assertEqual(
+            result.suggestions[0].primary,
+            "관련 배경이나 현재 상황이 있다면 함께 반영해줘.",
         )
+        mock_generate.assert_not_called()
 
     def test_parse_generated_candidates_supports_five_candidates(self):
         raw = """
