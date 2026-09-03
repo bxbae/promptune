@@ -42,35 +42,39 @@ export async function microsoftDisconnect() {
   return res.json();
 }
 
-export async function microsoftEvents() {
-  const res = await fetch(
-    `${API}/api/integrations/microsoft/events`,
-    { headers: authHeaders() }
-  );
+// TODO: 죽은코드 삭제
+// 캘린더 연결 보류
+// export async function microsoftEvents() {
+//   const res = await fetch(
+//     `${API}/api/integrations/microsoft/events`,
+//     { headers: authHeaders() }
+//   );
 
-  if (!res.ok) throw new Error("캘린더 조회 실패");
-  return res.json();
-}
+//   if (!res.ok) throw new Error("캘린더 조회 실패");
+//   return res.json();
+// }
 
-export async function microsoftFiles() {
-  const res = await fetch(
-    `${API}/api/integrations/microsoft/files`,
-    { headers: authHeaders() }
-  );
+// OneDrive 연결 보류
+// export async function microsoftFiles() {
+//   const res = await fetch(
+//     `${API}/api/integrations/microsoft/files`,
+//     { headers: authHeaders() }
+//   );
 
-  if (!res.ok) throw new Error("OneDrive 조회 실패");
-  return res.json();
-}
+//   if (!res.ok) throw new Error("OneDrive 조회 실패");
+//   return res.json();
+// }
 
-export async function microsoftMessages() {
-  const res = await fetch(
-    `${API}/api/integrations/microsoft/messages`,
-    { headers: authHeaders() }
-  );
+// 사용하는 곳 없음
+// export async function microsoftMessages() {
+//   const res = await fetch(
+//     `${API}/api/integrations/microsoft/messages`,
+//     { headers: authHeaders() }
+//   );
 
-  if (!res.ok) throw new Error("메일 조회 실패");
-  return res.json();
-}
+//   if (!res.ok) throw new Error("메일 조회 실패");
+//   return res.json();
+// }
 
 export async function microsoftProfile() {
   const res = await fetch(

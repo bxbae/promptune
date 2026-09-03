@@ -73,7 +73,7 @@ export default function ChatsPage() {
   function startEditTitle(c: ChatSession) {
     setOpenMenuId(null);
     setEditingId(c.id);
-    setEditTitle(c.title || `대화 #${c.id}`);
+    setEditTitle(c.title || `대화 #${c.userSequence}`);
   }
 
   // 제목 수정 저장
@@ -157,7 +157,7 @@ export default function ChatsPage() {
                       className="chat-list-item"
                       onClick={() => router.push(`/chat/${c.id}`)}
                     >
-                      <span className="chat-list-title">{c.title || `대화 #${c.id}`}</span>
+                      <span className="chat-list-title">{c.title || `대화 #${c.userSequence}`}</span>
                       <span className="chat-list-meta">
                         <span className="chat-list-time">{timeAgo(c.updatedAt)}</span>
                       </span>
