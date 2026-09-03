@@ -27,7 +27,7 @@ jobs:
       - name: pytest (mock/stub 기반 lightweight 테스트)
         run: |
           pip install pytest
-          pytest tests/ -q
+          python -m pytest tests/ -q
       - name: 엔드포인트 스모크 테스트
         run: |
           pip install httpx
