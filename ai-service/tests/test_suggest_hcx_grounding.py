@@ -35,7 +35,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         "app.services.suggest_hcx.calculate_similarities",
         return_value=[0.95, 0.84, 0.80],
     )
-    def test_grounding_uses_relative_cutoff_and_preserves_order(
+    def test_grounding_ranks_candidates_without_relative_cutoff(
         self,
         mock_similarities,
     ):
@@ -50,12 +50,13 @@ class SuggestionGroundingTest(unittest.TestCase):
             candidates=candidates,
         )
 
-        # best=0.95 -> cutoff=max(0.70, 0.95-0.12)=0.83
+        # BGE-M3 점수는 후보 제거가 아니라 유사도 순위에만 사용한다.
         self.assertEqual(
             result,
             [
                 "후보 A.",
                 "후보 B.",
+                "후보 C.",
             ],
         )
 
@@ -68,7 +69,7 @@ class SuggestionGroundingTest(unittest.TestCase):
         "app.services.suggest_hcx.calculate_similarities",
         return_value=[0.74, 0.72, 0.69],
     )
-    def test_grounding_uses_minimum_cutoff(
+    def test_grounding_keeps_candidates_below_former_minimum_cutoff(
         self,
         mock_similarities,
     ):
@@ -83,12 +84,13 @@ class SuggestionGroundingTest(unittest.TestCase):
             candidates=candidates,
         )
 
-        # best=0.74 -> best-0.12=0.62 이므로 최소 기준 0.70 적용
+        # 과거 최소 cutoff(0.70) 아래 후보도 제거하지 않고 순위에 유지한다.
         self.assertEqual(
             result,
             [
                 "후보 A.",
                 "후보 B.",
+                "후보 C.",
             ],
         )
 
@@ -274,7 +276,7 @@ class SuggestionGroundingTest(unittest.TestCase):
     @patch(
         "app.services.suggest_hcx._generate_candidates",
     )
-    def test_context_suggest_uses_explicit_context_when_generated_candidates_fail_diagnosis_guard(
+    def test_context_suggest_keeps_number_safe_generated_candidate_without_diagnosis_regate(
         self,
         mock_generate,
         mock_grounding,
@@ -297,20 +299,12 @@ class SuggestionGroundingTest(unittest.TestCase):
         )
 
         mock_generate.return_value = [generated_candidate]
-
-        mock_grounding.side_effect = [
-            [generated_candidate],
-            [context],
-        ]
+        mock_grounding.return_value = [generated_candidate]
 
         with patch(
             "app.services.suggest_hcx.predict_missing_with_rules",
-            side_effect=[
-                state(CONTEXT=1),
-                state(CONTEXT=1),
-                state(CONTEXT=0),
-            ],
-        ):
+            return_value=state(CONTEXT=1),
+        ) as mock_predict_missing:
             result = suggest(req)
 
         self.assertEqual(len(result.suggestions), 1)
@@ -320,21 +314,13 @@ class SuggestionGroundingTest(unittest.TestCase):
         )
         self.assertEqual(
             result.suggestions[0].primary,
-            context,
+            generated_candidate,
         )
 
-        self.assertEqual(
-            mock_grounding.call_count,
-            2,
-        )
-
-        mock_grounding.assert_any_call(
+        mock_predict_missing.assert_called_once_with(req.text)
+        mock_grounding.assert_called_once_with(
             context=context,
             candidates=[generated_candidate],
-        )
-        mock_grounding.assert_any_call(
-            context=context,
-            candidates=[context],
         )
 
 

@@ -13,8 +13,11 @@ import com.promptune.service.DocumentIntentResolver;
 import com.promptune.service.GateService;
 import com.promptune.service.GraphMockService;
 import com.promptune.service.MicrosoftGraphService;
+import com.promptune.service.OutputPreferenceDetector;
 import com.promptune.service.PreferenceResolutionService;
 import com.promptune.service.RecommendService;
+import com.promptune.service.RetrievalPatternService;
+import com.promptune.service.StylePreferenceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,6 +55,12 @@ class PipelineControllerTest {
                 mock(DocumentIntentResolver.class);
         DocumentFollowupClassifier documentFollowupClassifier =
                 mock(DocumentFollowupClassifier.class);
+        RetrievalPatternService retrievalPatternService =
+                mock(RetrievalPatternService.class);
+        StylePreferenceService stylePreferenceService =
+                mock(StylePreferenceService.class);
+        OutputPreferenceDetector outputPreferenceDetector =
+                mock(OutputPreferenceDetector.class);
 
         controller = new PipelineController(
                 gate,
@@ -68,7 +77,10 @@ class PipelineControllerTest {
                 receiverProfileRepository,
                 documentRepository,
                 documentIntentResolver,
-                documentFollowupClassifier);
+                documentFollowupClassifier,
+                retrievalPatternService,
+                stylePreferenceService,
+                outputPreferenceDetector);
     }
 
     @Test
