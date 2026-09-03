@@ -113,7 +113,15 @@ public class ReceiverProfileService {
         }
         if (preferredTone != null) profile.setPreferredTone(preferredTone);
         // 동명이인 통합 시 더 완전한 이름(성+이름+직함)으로 정정하는 용도.
-        if (receiverName != null && !receiverName.isBlank()) profile.setReceiverName(receiverName);
+        // department와 같은 이유로, MS 동기화 프로필은 이름도 MS가 원천 소스라
+        // 사용자가 직접 고치면 다음 동기화 때 다시 덮어써져서 혼란만 생긴다.
+        if (receiverName != null && !receiverName.isBlank()) {
+            if (profile.isMsSynced()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "MS 조직도와 동기화된 수신자는 이름을 직접 수정할 수 없습니다.");
+            }
+            profile.setReceiverName(receiverName);
+        }
 
         return repository.save(profile);
     }
