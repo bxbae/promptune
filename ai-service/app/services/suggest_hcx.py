@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 import torch
 
@@ -195,7 +196,7 @@ def _parse_generated_candidates(
 
     if not isinstance(payload, dict):
         raise RuntimeError(
-            f"Unable to parse HCX generated suggestions: {raw!r}"
+            "Unable to parse HCX generated suggestions"
         )
 
     raw_candidates = payload.get("candidates")
@@ -465,8 +466,14 @@ def _generate_candidates(
 
     inputs = inputs.to(device)
 
+    context_present = bool(context and context.strip())
+    lock_wait_start = time.perf_counter()
+
     with hcx_lock():
+        lock_acquired_at = time.perf_counter()
+
         with torch.inference_mode():
+            generation_start = time.perf_counter()
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=256,
@@ -478,6 +485,20 @@ def _generate_candidates(
                 ],
                 tokenizer=tokenizer,
             )
+            generation_end = time.perf_counter()
+
+    lock_wait_ms = (lock_acquired_at - lock_wait_start) * 1000
+    generation_ms = (generation_end - generation_start) * 1000
+
+    logger.info(
+        "[Suggest][Timing] "
+        "element=%s context_present=%s "
+        "lock_wait_ms=%.2f generation_ms=%.2f",
+        element,
+        context_present,
+        lock_wait_ms,
+        generation_ms,
+    )
 
     generated = outputs[0][
         inputs["input_ids"].shape[-1]:
@@ -494,10 +515,9 @@ def _generate_candidates(
     )
 
     logger.info(
-        "HCX generated suggestions element=%s count=%s raw=%r",
+        "HCX generated suggestions element=%s count=%s",
         element,
         len(candidates),
-        raw,
     )
 
     return candidates
@@ -565,12 +585,10 @@ def _filter_context_grounded_candidates(
         reverse=True,
     )
 
-    for candidate, score in ranked:
+    for _, score in ranked:
         logger.info(
-            "Suggestion grounding ranking "
-            "score=%.4f candidate=%r",
+            "Suggestion grounding ranking score=%.4f",
             score,
-            candidate,
         )
 
     return [candidate for candidate, _ in ranked]
@@ -654,9 +672,7 @@ def _validate_generated_candidates(
             and not _candidate_is_audience_safe(candidate)
         ):
             logger.info(
-                "Generated AUDIENCE suggestion rejected by "
-                "audience guard candidate=%r",
-                candidate,
+                "Generated AUDIENCE suggestion rejected by audience guard"
             )
             continue
 
@@ -670,6 +686,11 @@ def suggest(
 ) -> SuggestResponse:
     target_elements = _normalize_target_elements(
         req.target_elements
+    )
+
+    logger.info(
+        "[Suggest][Timing] target_element_count=%d",
+        len(target_elements),
     )
 
     suggestions: list[Suggestion] = []
@@ -714,8 +735,7 @@ def suggest(
             logger.info(
                 "Generating ungrounded CONTEXT suggestion without "
                 "explicit context; model must only propose the kind "
-                "of info needed, not invent facts text=%r",
-                req.text,
+                "of info needed, not invent facts"
             )
 
         try:
@@ -748,9 +768,7 @@ def suggest(
             if not candidates:
                 logger.warning(
                     "No number-safe CONTEXT suggestion; "
-                    "using explicit context as fallback "
-                    "text=%r",
-                    req.text,
+                    "using explicit context as fallback"
                 )
                 candidates = [context]
 
@@ -771,8 +789,7 @@ def suggest(
             if not candidates:
                 logger.warning(
                     "No number-safe ungrounded CONTEXT suggestion; "
-                    "dropping element text=%r",
-                    req.text,
+                    "dropping element"
                 )
 
         grounded_candidates = candidates
@@ -811,10 +828,8 @@ def suggest(
             )
         else:
             logger.warning(
-                "No context-grounded generated suggestion "
-                "element=%s text=%r",
+                "No context-grounded generated suggestion element=%s",
                 element,
-                req.text,
             )
 
         # CONTEXT 후보가 Grounding 또는 Diagnosis Guard에서 모두 탈락하더라도,
@@ -830,9 +845,7 @@ def suggest(
         ):
             logger.warning(
                 "No safe generated CONTEXT suggestion; "
-                "trying explicit context fallback "
-                "text=%r",
-                req.text,
+                "trying explicit context fallback"
             )
 
             try:
@@ -859,9 +872,8 @@ def suggest(
         if not valid_candidates:
             logger.warning(
                 "No safe suggestion after grounding and diagnosis guard "
-                "element=%s text=%r",
+                "element=%s",
                 element,
-                req.text,
             )
             continue
 
