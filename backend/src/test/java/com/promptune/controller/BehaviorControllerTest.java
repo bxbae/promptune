@@ -77,15 +77,17 @@ class BehaviorControllerTest {
   }
 
   @Test
-  void noPersonalizationConsent_doesNotRecordBehavior() {
-    // when(consentService.canUsePersonalization(1L))
-        // .thenReturn(false);
-
-    BehaviorActionRequest request = new BehaviorActionRequest("tone", "APPLY", null);
+  void validAction_withoutChatSession_recordsBehavior() {
+    BehaviorActionRequest request =
+        new BehaviorActionRequest("tone", "APPLY", null);
 
     controller.recordAction(request, authentication);
 
-    verifyNoInteractions(behaviorLogService);
+    verify(behaviorLogService).recordAction(
+        1L,
+        "tone",
+        "APPLY",
+        null);
   }
 
   @Test
