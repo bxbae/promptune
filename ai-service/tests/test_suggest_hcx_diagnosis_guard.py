@@ -129,17 +129,11 @@ class SuggestionDiagnosisGuardTest(unittest.TestCase):
         )
 
     @patch("app.services.suggest_hcx.predict_missing_with_rules")
-    def test_filters_generated_candidates_and_preserves_generation_order(
+    def test_validation_preserves_non_audience_candidates_in_generation_order(
         self,
         mock_predict_missing,
     ):
         baseline = state(CONTEXT=1)
-
-        mock_predict_missing.side_effect = [
-            state(CONTEXT=0),          # A 통과
-            state(CONTEXT=0, TASK=1),  # B 회귀로 탈락
-            state(CONTEXT=0),          # C 통과
-        ]
 
         result = _validate_generated_candidates(
             text="회의 내용 정리해 줘",
@@ -156,14 +150,11 @@ class SuggestionDiagnosisGuardTest(unittest.TestCase):
             result,
             [
                 "A 후보.",
+                "B 후보.",
                 "C 후보.",
             ],
         )
-
-        self.assertEqual(
-            mock_predict_missing.call_count,
-            3,
-        )
+        mock_predict_missing.assert_not_called()
 
     def test_audience_guard_accepts_prompt_instruction(self):
         self.assertTrue(
@@ -179,12 +170,12 @@ class SuggestionDiagnosisGuardTest(unittest.TestCase):
             )
         )
 
-    def test_audience_guard_rejects_action_only_sentence(self):
-        self.assertFalse(
+    def test_audience_guard_allows_action_instruction(self):
+        self.assertTrue(
             _candidate_is_audience_safe(
                 "프로젝트 일정 연기에 대한 사항을 팀원들에게 공유해 주세요."
             )
         )
-        
+
 if __name__ == "__main__":
     unittest.main()
