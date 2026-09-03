@@ -96,6 +96,8 @@ public class PipelineController {
      */
     @PostMapping("/analyze")
     public AnalyzeResponse analyze(@RequestBody AnalyzeRequest req, org.springframework.security.core.Authentication authentication) {
+        long totalStart = System.nanoTime();
+
         User currentUser = userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
@@ -109,14 +111,21 @@ public class PipelineController {
                     null,
                     null);
         }
+
         // 5번 진단 (ai-service 호출)
+        long diagnoseStart = System.nanoTime();
         DiagnoseResult d = ai.diagnose(req.text());
+        long diagnoseMs = (System.nanoTime() - diagnoseStart) / 1_000_000;
 
         // 6번 수정요소 선정
+        long recommendStart = System.nanoTime();
         RecommendResult r = recommend.select(d, currentUser.getId());
+        long recommendMs = (System.nanoTime() - recommendStart) / 1_000_000;
 
         // 7번 문맥 기반 추천문구 선정
         SuggestResult s;
+        long habitPrefMs = 0L;
+        long suggestMs = 0L;
 
         if (r.targetElements().isEmpty()) {
             s = new SuggestResult(java.util.List.of());
@@ -124,14 +133,28 @@ public class PipelineController {
             // 2026-09-02: 습관학습 5단계 - 과거 습관을 승득님 output_preferences
             // 스키마로 변환해서 폴백 데이터로 함께 전달. 명시적 감지(ai-service)가
             // 우선이고, 이 값은 명시된 게 없을 때만 쓰임.
+            long habitPrefStart = System.nanoTime();
             java.util.Map<String, String> habitOutputPreferences =
                     stylePreferenceService.toOutputPreferences(currentUser.getId());
+            habitPrefMs = (System.nanoTime() - habitPrefStart) / 1_000_000;
 
+            long suggestStart = System.nanoTime();
             s = ai.suggest(
                     req.text(),
                     r.targetElements(),
                     habitOutputPreferences);
+            suggestMs = (System.nanoTime() - suggestStart) / 1_000_000;
         }
+
+        long totalMs = (System.nanoTime() - totalStart) / 1_000_000;
+
+        System.out.println(
+                "[Analyze][Timing] diagnose_ms=" + diagnoseMs
+                        + " recommend_ms=" + recommendMs
+                        + " habit_pref_ms=" + habitPrefMs
+                        + " suggest_ms=" + suggestMs
+                        + " target_element_count=" + r.targetElements().size()
+                        + " total_ms=" + totalMs);
 
         return new AnalyzeResponse(
                 g,
