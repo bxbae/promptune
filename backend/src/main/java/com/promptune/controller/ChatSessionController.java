@@ -43,7 +43,11 @@ public class ChatSessionController {
     public ChatSession create(Authentication authentication) {
         // "+새채팅" 버튼을 누르면 이 API가 호출되어 빈 대화 세션 하나를 만듭니다.
         User user = currentUser(authentication);
-        return chatSessionRepository.save(new ChatSession(user.getId()));
+        // 2026-09-03: 채팅 번호를 사용자별로 표기하기 위해, 그 사용자의
+        // 지금까지 최대 순번 + 1을 생성 시점에 고정 저장 (전체 DB 공통
+        // auto-increment id를 화면에 그대로 노출하던 문제 수정).
+        int nextSequence = chatSessionRepository.findMaxUserSequence(user.getId()) + 1;
+        return chatSessionRepository.save(new ChatSession(user.getId(), nextSequence));
     }
 
     @GetMapping
