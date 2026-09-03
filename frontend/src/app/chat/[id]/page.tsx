@@ -448,16 +448,20 @@ export default function ChatThreadPage() {
       const stored = sessionStorage.getItem(`chat-first-${chatSessionId}`);
       sessionStorage.removeItem(`chat-first-${chatSessionId}`);
       if (stored) {
-        // /chat/page.tsx가 { text, sendText, directEdits, attachments } JSON으로 저장
-        const { text: displayText, sendText, directEdits, attachments } = JSON.parse(stored) as {
+        // /chat/page.tsx가 { text, sendText, directEdits, attachments, receiverProfileId } JSON으로 저장
+        const { text: displayText, sendText, directEdits, attachments, receiverProfileId } = JSON.parse(stored) as {
           text: string;
           sendText?: string;
           directEdits: DirectEdit[];
           attachments?: DocumentItem[];
+          receiverProfileId?: number | null;
         };
         const userMessageId = generateId();
         setMessages([{ id: userMessageId, role: "user", content: displayText.trim(), attachments }]);
-        runAssistant(sendText ?? displayText, directEdits, attachments ?? [], userMessageId);
+        // 두 번째 메시지부터는 상태(selectedReceiverProfileId) 기준으로 동작하니,
+        // 첫 메시지에서 고른 수신자를 여기서도 동기화해둬야 "적용됨" 표시가 이어짐
+        if (receiverProfileId !== undefined) setSelectedReceiverProfileId(receiverProfileId);
+        runAssistant(sendText ?? displayText, directEdits, attachments ?? [], userMessageId, receiverProfileId);
       }
       router.replace(`/chat/${chatSessionId}`);
     }
@@ -505,6 +509,11 @@ export default function ChatThreadPage() {
     directEdits: DirectEdit[] = [],
     attachments: DocumentItem[] = [],
     userMessageId?: string,
+    // 2026-09-03 추가: /chat(새 채팅)에서 넘어온 "첫 메시지"용 오버라이드.
+    // selectedReceiverProfileId state는 setState 직후 같은 틱에서 읽으면 아직 반영 전이라
+    // (React state 업데이트 타이밍 문제) 새 채팅 첫 실행 케이스는 이 인자로 명시적으로 넘긴다.
+    // undefined면 기존처럼 state(selectedReceiverProfileId)를 그대로 쓴다.
+    overrideReceiverProfileId?: number | null,
   ) {
     setIsGenerating(true);
 
@@ -512,10 +521,12 @@ export default function ChatThreadPage() {
     abortControllerRef.current = controller;
 
     // 생성 전에 미리 수신자 감지 - 이미 저장된 프로필과 이름이 일치하면 그 톤을 생성에 반영
+    const effectiveReceiverProfileId =
+      overrideReceiverProfileId !== undefined ? overrideReceiverProfileId : selectedReceiverProfileId;
     const matchedProfile =
-      selectedReceiverProfileId !== null
+      effectiveReceiverProfileId !== null
         ? receiverProfiles.find(
-            (profile) => profile.id === selectedReceiverProfileId,
+            (profile) => profile.id === effectiveReceiverProfileId,
           )
         : undefined;
 

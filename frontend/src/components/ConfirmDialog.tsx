@@ -41,6 +41,7 @@ export default function ConfirmDialog({
             className={`modal-submit${danger ? " modal-submit-danger" : ""}`}
             onClick={onConfirm}
             disabled={loading}
+            autoFocus
           >
             {loading ? "처리 중..." : confirmLabel}
           </button>
