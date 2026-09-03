@@ -180,20 +180,35 @@ export default function PromptEditor({
   // "김ㅇㅇ 대리"로 저장돼있는데 지금 "김대리"라고만 써도 그 프로필(톤 등)을 찾아서 쓸 수 있게.
   // (진짜 동명이인일 위험이 있는 "새로 저장" 판단은 chat/[id]/page.tsx의 동의 카드 쪽에서
   // 사용자에게 직접 확인하고, 여기서는 그냥 "생성에 어떤 톤을 반영할지"만 가볍게 추정한다.)
-  const receiverCandidate =
-    receiverProfiles
+  //
+  // 2026-09-03: "정대리"처럼 겹치는 후보가 여러 명일 수 있어서(정형돈 대리 / 정준하 대리
+  // 둘 다) 첫 번째만 뽑지 않고 전부 배열로 받는다 - 카드 스택 UI에서 화살표로 넘겨가며 고름.
+  const receiverCandidates: ReceiverProfile[] = (() => {
+    const substringMatches = receiverProfiles
       .filter((profile) => profile.receiverName && text.includes(profile.receiverName))
       .sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() -
           new Date(a.updatedAt).getTime(),
-      )[0] ??
-    (() => {
+      );
+    if (substringMatches.length > 0) return substringMatches;
+
       const detected = detectReceiverName(text);
-      if (!detected) return null;
-      const { exact, candidate } = matchReceiverProfile(detected, receiverProfiles);
-      return exact ?? candidate ?? null;
+    if (!detected) return [];
+    const { exact, candidates } = matchReceiverProfile(detected, receiverProfiles);
+    return exact ? [exact] : candidates;
     })();
+
+  // 후보 스택에서 지금 카드 맨 위에 뭘 보여줄지. 후보 집합 자체가 바뀌면(다른 사람 감지
+  // 등) 0번으로 리셋해야 하므로, 후보들의 id를 이어붙인 문자열을 key로 삼아 useEffect에서
+  // 감지한다.
+  const [receiverCardIndex, setReceiverCardIndex] = useState(0);
+  const receiverCandidatesKey = receiverCandidates.map((c) => c.id).join(",");
+  useEffect(() => {
+    setReceiverCardIndex(0);
+  }, [receiverCandidatesKey]);
+  const activeReceiverIndex = Math.min(receiverCardIndex, Math.max(0, receiverCandidates.length - 1));
+  const receiverCandidate = receiverCandidates[activeReceiverIndex] ?? null;
 
   useEffect(() => {
     if (!text && selectedReceiverId !== null) {
@@ -1209,14 +1224,40 @@ export default function PromptEditor({
       )}
 
       <div className="composer-box">
-        {receiverCandidate && (
+        {receiverCandidates.length > 0 && receiverCandidate && (
+          <div className="receiver-candidate-stack">
+            {receiverCandidates.length > 1 && <div className="receiver-candidate-peek" aria-hidden="true" />}
+            {receiverCandidates.length > 2 && (
+              <div className="receiver-candidate-peek receiver-candidate-peek-2" aria-hidden="true" />
+            )}
           <div
             className={`receiver-candidate-card ${selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
               }`}
           >
+              {receiverCandidates.length > 1 && (
+                <button
+                  type="button"
+                  className="receiver-candidate-nav"
+                  aria-label="이전 후보 보기"
+                  onClick={() =>
+                    setReceiverCardIndex(
+                      (i) => (i - 1 + receiverCandidates.length) % receiverCandidates.length,
+                    )
+                  }
+                >
+                  ‹
+                </button>
+              )}
+
             <div className="receiver-candidate-main">
               <div className="receiver-candidate-label">
                 개인화 수신자 후보
+                  {receiverCandidates.length > 1 && (
+                    <span className="receiver-candidate-count">
+                      {" "}
+                      · {activeReceiverIndex + 1}/{receiverCandidates.length}
+                    </span>
+                  )}
               </div>
 
               <div className="receiver-candidate-name">
@@ -1243,6 +1284,19 @@ export default function PromptEditor({
               </div>
             </div>
 
+              {receiverCandidates.length > 1 && (
+                <button
+                  type="button"
+                  className="receiver-candidate-nav"
+                  aria-label="다음 후보 보기"
+                  onClick={() =>
+                    setReceiverCardIndex((i) => (i + 1) % receiverCandidates.length)
+                  }
+                >
+                  ›
+                </button>
+              )}
+
             <button
               type="button"
               className="receiver-candidate-action"
@@ -1258,6 +1312,7 @@ export default function PromptEditor({
                 ? "적용됨 ✓"
                 : "적용"}
             </button>
+          </div>
           </div>
         )}
         {quotedMessage && (

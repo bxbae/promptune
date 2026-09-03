@@ -43,20 +43,44 @@ export function parseReceiverName(raw: string): ReceiverNameParts {
 // 이미 커버됨. 여기서는 그보다 느슨하게 - 아래 세 쌍 중 하나라도 "둘 다 비어있지 않고 값이
 // 같으면" 동명이인 후보로 본다: (성+직함) / (성+이름) / (이름+직함).
 // 한쪽에만 있고 다른 쪽엔 없는 조각(예: 직함)은 그냥 빈 문자열로 취급되어 비교에서 빠진다.
+//
+// + 보강 규칙(2026-09-03): "형돈 대리"처럼 성을 빼고 이름만으로 부르는 경우, parseReceiverName은
+// 첫 글자를 성으로 잘못 쪼갠다("형"을 성으로, "돈"을 이름으로). 이러면 위 세 쌍 중 어느 것도
+// 안 맞아서 "정형돈 대리"/"정형돈"과 전혀 매칭이 안 되는 문제가 있었다. 이를 보완하기 위해,
+// 직함이 같고 한쪽의 "성+이름 전체"가 다른 쪽 "성+이름 전체" 안에 부분 문자열로 포함되면
+// (예: "형돈"이 "정형돈"에 포함) 그것도 후보로 인정한다. 1글자짜리 우연한 일치로 오탐하는 걸
+// 막기 위해 두 글자 이상일 때만 비교한다.
+function fullNamePart(parts: ReceiverNameParts): string {
+  return parts.surname + parts.givenName;
+}
+
 function partsLikelyMatch(a: ReceiverNameParts, b: ReceiverNameParts): boolean {
   const sameSurname = a.surname !== "" && a.surname === b.surname;
   const sameGivenName = a.givenName !== "" && a.givenName === b.givenName;
   const sameTitle = a.title !== "" && a.title === b.title;
 
-  return (sameSurname && sameTitle) || (sameSurname && sameGivenName) || (sameGivenName && sameTitle);
+  if ((sameSurname && sameTitle) || (sameSurname && sameGivenName) || (sameGivenName && sameTitle)) {
+    return true;
+  }
+
+  const aFull = fullNamePart(a);
+  const bFull = fullNamePart(b);
+  const containsMatch =
+    aFull.length >= 2 && bFull.length >= 2 && (aFull.includes(bFull) || bFull.includes(aFull));
+
+  return containsMatch && sameTitle;
 }
 
 export type ReceiverMatchResult = {
   // 저장된 이름과 완전히 똑같은 프로필. 있으면 확실한 매칭이라 더 물어볼 필요 없음.
   exact: ReceiverProfile | null;
-  // exact가 없을 때, 성/이름/직함 중 두 조각이 겹치는 "동명이인일 수 있는" 후보.
-  // 확정이 아니라 후보라서, 실제로 병합할지는 사용자에게 반드시 물어봐야 한다.
+  // 하위 호환용 - candidates[0]과 동일. exact가 없을 때, 성/이름/직함 중 두 조각이
+  // 겹치는 "동명이인일 수 있는" 후보 중 첫 번째.
   candidate: ReceiverProfile | null;
+  // 2026-09-03 추가: 겹치는 후보가 여러 명일 수 있다("정대리"가 "정형돈 대리"와
+  // "정준하 대리" 둘 다와 매칭되는 경우). 예전엔 find()로 첫 번째만 잡고 나머지는
+  // 존재 자체를 감췄는데, 이제 전부 반환해서 UI에서 사용자가 직접 고를 수 있게 한다.
+  candidates: ReceiverProfile[];
 };
 
 export function matchReceiverProfile(
@@ -64,27 +88,30 @@ export function matchReceiverProfile(
   profiles: ReceiverProfile[]
 ): ReceiverMatchResult {
   const exact = profiles.find((p) => p.receiverName === name) ?? null;
-  if (exact) return { exact, candidate: null };
+  if (exact) return { exact, candidate: null, candidates: [] };
 
   const parts = parseReceiverName(name);
-  const candidate =
-    profiles.find((p) => partsLikelyMatch(parts, parseReceiverName(p.receiverName))) ?? null;
-  return { exact: null, candidate };
+  const candidates = profiles.filter((p) => partsLikelyMatch(parts, parseReceiverName(p.receiverName)));
+  return { exact: null, candidate: candidates[0] ?? null, candidates };
 }
 
 // 동명이인 확인 다이얼로그에서 "네, 같은 사람이에요"를 눌렀을 때 쓰는 이름 합성기.
-// 두 표기(기존 저장명 vs 새로 감지된 이름) 중 한쪽에만 있는 조각(성/이름/직함)을 서로
-// 채워 넣어서 "성+이름+직함"이 다 갖춰진 가장 완전한 형태를 만든다.
+// 두 표기(기존 저장명 vs 새로 감지된 이름) 중 성+이름이 더 완전한(긴) 쪽을 채택하고,
+// 직함은 둘 중 있는 쪽을 채운다.
+//
+// 2026-09-03 수정: 예전엔 무조건 nameA(기존 저장명)의 성/이름을 우선했는데, nameA가
+// "형돈 대리"처럼 성 없이 이름만 있는 표기로 먼저 저장돼 있으면 그 잘못 쪼개진 조각이
+// 그대로 채택되어("형돈 대리"+"정형돈" → "형돈 대리") 오히려 정보가 사라지는 문제가
+// 있었다. "더 긴(완전한) 쪽이 이긴다"로 바꾸면 어느 쪽이 먼저 저장돼 있었는지와 무관하게
+// 항상 가장 완전한 형태로 수렴한다.
 export function buildCanonicalReceiverName(nameA: string, nameB: string): string {
   const a = parseReceiverName(nameA);
   const b = parseReceiverName(nameB);
 
-  const surname = a.surname || b.surname;
-  const givenName = a.givenName || b.givenName;
+  const aFull = a.surname + a.givenName;
+  const bFull = b.surname + b.givenName;
+  const fullName = aFull.length >= bFull.length ? aFull : bFull;
   const title = a.title || b.title;
 
-  if (givenName) {
-    return title ? `${surname}${givenName} ${title}` : `${surname}${givenName}`;
-  }
-  return title ? `${surname}${title}` : surname;
+  return title ? `${fullName} ${title}` : fullName;
 }

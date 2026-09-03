@@ -362,19 +362,35 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .msg-bubble.assistant { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 40px 16px 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6; position: relative; }
 
 /* 수신자별 프로필 카드 */
+.receiver-candidate-stack { position: relative; margin-bottom: 10px; }
+.receiver-candidate-stack .receiver-candidate-card { margin-bottom: 0; position: relative; z-index: 3; }
+.receiver-candidate-peek {
+  position: absolute; inset: 0; transform: translate(6px, 6px);
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel-alt);
+  opacity: 0.55; z-index: 1; pointer-events: none;
+}
+.receiver-candidate-peek-2 { transform: translate(12px, 12px); opacity: 0.3; z-index: 0; }
 .receiver-candidate-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; 
-  margin-bottom: 10px; padding: 10px 12px; 
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; 
+  padding: 10px 12px; 
   border: 1px solid var(--line); border-radius: 12px; background: var(--panel-alt);
 }
 .receiver-candidate-card.selected { box-shadow: inset 0 0 0 2px var(--accent);}
-.receiver-candidate-main { min-width: 0; }
+.receiver-candidate-main { min-width: 0; flex: 1 1 auto; }
 .receiver-candidate-label { margin-bottom: 3px; font-size: 11px; color: var(--muted); }
+.receiver-candidate-count { color: var(--muted); font-weight: 400; }
 .receiver-candidate-name { font-size: 14px; font-weight: 700;}
 .receiver-candidate-meta {
   display: flex; flex-wrap: wrap; gap: 4px 10px;
   margin-top: 3px; font-size: 11px; color: var(--muted);
 }
+.receiver-candidate-nav {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.receiver-candidate-nav:hover { background: var(--accent); color: var(--panel); border-color: var(--accent); }
 .receiver-candidate-action {
   flex: 0 0 auto; padding: 6px 11px;
   border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit;
@@ -692,7 +708,8 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .settings-ms-empty-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-tint); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 20px; }
 .settings-ms-empty-icon img { width: 28px; height: 28px; object-fit: contain; }
 .settings-ms-empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin: 0 0 6px; }
-.settings-ms-empty-desc { font-size: 12px; color: var(--muted); margin: 0 0 18px; line-height: 1.6; }
+/* TODO: 죽은코드 삭제 */
+/* .settings-ms-empty-desc { font-size: 12px; color: var(--muted); margin: 0 0 18px; line-height: 1.6; } */
 .ms-profile-view { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 4px; }
 .ms-profile-row { display: grid; grid-template-columns: 140px 1fr; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .ms-profile-row:last-child { border-bottom: none; }
