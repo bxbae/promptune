@@ -21,7 +21,8 @@ function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours() + 9)}:${pad(d.getMinutes())}`;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000); // 9시간을 그냥 밀리초로 더함
+  return `${pad(kst.getUTCMonth() + 1)}.${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`;
 }
 
 export default function LogsPage() {
