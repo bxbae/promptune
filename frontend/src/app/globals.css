@@ -325,8 +325,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .document-export-btn:hover { background: var(--panel-alt); color: var(--ink); }
 .document-export-btn:disabled { opacity: 0.55; cursor: default; }
 .generated-file-card { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 11px 12px; width: calc(100% / 0.9); border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-sizing: border-box; }
-.generated-file-icon { position: relative; width: 30px; height: 34px; flex: 0 0 30px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-alt); font-size: 24px; flex-shrink: 0; }
-.generated-file-icon::after { content: ""; position: absolute; left: 7px; right: 7px; top: 10px; height: 1px; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); opacity: 0.45; }
+.generated-file-icon { position: relative; width: 30px; height: 34px; flex: 0 0 30px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-alt); font-size: 18px; flex-shrink: 0; text-align: center; }
 .generated-file-info { flex: 1; min-width: 0; }
 .generated-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
 .generated-file-type { margin-top: 3px; font-size: 11px; color: var(--muted); }
