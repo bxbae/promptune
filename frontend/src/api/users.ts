@@ -19,3 +19,12 @@ export async function updateCompanyId(companyId: string): Promise<{ ok: boolean;
   if (!res.ok) throw new Error(`회사 ID 저장 실패: ${res.status}`);
   return res.json();
 }
+
+// DELETE /api/users/me - 계정 및 연관 데이터 영구 삭제
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch(`${API}/api/users/me`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`계정 삭제 실패: ${res.status}`);
+}

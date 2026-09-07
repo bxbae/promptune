@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { login, signup, saveToken } from "@/lib/auth";
+import { grantConsent } from "@/api/consents";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -11,14 +12,19 @@ export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => v
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [consentChecked, setConsentChecked] = useState(false);
 
   async function handleSubmit() {
+    if (mode === "signup" && !consentChecked) return;
     setError(""); setLoading(true);
     try {
       const res = mode === "login"
         ? await login(email, password)
         : await signup(email, password, name);
       saveToken(res.token);
+      if (mode === "signup") {
+        await grantConsent("save"); // 회원가입 시 자동으로 동의 처리
+      }
       onSuccess(res.name || res.email);
     } catch (e: any) {
       setError(e.message);
@@ -49,7 +55,14 @@ export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => v
 
       {error && <div className="auth-error">{error}</div>}
 
-      <button className="auth-submit" onClick={handleSubmit} disabled={loading}>
+      {mode === "signup" && (
+        <label className="auth-consent">
+          <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} />
+          <span>(필수) 개인화 습관 저장에 동의</span>
+        </label>
+      )}
+
+      <button className="auth-submit" onClick={handleSubmit} disabled={loading || (mode === "signup" &&!consentChecked)}>
         {loading ? "처리 중…" : mode === "login" ? "로그인" : "가입하기"}
       </button>
 
@@ -59,7 +72,6 @@ export default function AuthForm({ onSuccess }: { onSuccess: (name: string) => v
         <button className="social kakao" onClick={() => social("kakao")}>카카오로 계속</button>
         <button className="social naver" onClick={() => social("naver")}>네이버로 계속</button>
       </div>
-      {/* <p className="auth-note">소셜 로그인은 각 제공자 키 설정 후 작동합니다 (docs/AUTH.md).</p> */}
     </div>
   );
 }

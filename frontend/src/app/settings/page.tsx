@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { deleteAccount } from "@/api/users";
 import { CurrentUser, getCurrentUser, logout } from "@/lib/auth";
 import MicrosoftProfileView from "./components/MicrosoftProfileView";
 import MicrosoftMembersView from "./components/MicrosoftMembersView";
@@ -33,7 +34,7 @@ export default function SettingsPage() {
   const [msError, setMsError] = useState("");
 
   // 로그아웃/MS 연결 해제 확인 모달 - 누른 버튼 기억
-  const [pendingConfirm, setPendingConfirm] = useState<"msDisconnect" | "logout" | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<"msDisconnect" | "logout" | "withdraw" | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   useEffect(() => {
@@ -101,17 +102,37 @@ export default function SettingsPage() {
     window.location.href = "/";
   }
 
+  function handleWithdraw() {
+    setPendingConfirm("withdraw");
+  }
+
+  async function doWithdraw() {
+    setConfirmBusy(true);
+    try {
+      await deleteAccount();
+      logout();
+      window.location.href = "/";
+    } catch (e) {
+      setMsError(e instanceof Error ? e.message : "계정 삭제에 실패했습니다.");
+      setConfirmBusy(false);
+      setPendingConfirm(null);
+    }
+  }
+
   async function handleConfirm() {
     if (pendingConfirm === "msDisconnect") {
       await doMsDisconnect();
     } else if (pendingConfirm === "logout") {
       doLogout(); // 페이지 이동, 모달 닫기 불필요
+    } else if (pendingConfirm === "withdraw") {
+      await doWithdraw();
     }
   }
 
-  const CONFIRM_TEXT: Record<"msDisconnect" | "logout", { title: string; message: string }> = {
+  const CONFIRM_TEXT: Record<"msDisconnect" | "logout" | "withdraw", { title: string; message: string }> = {
     msDisconnect: { title: "Microsoft 연결 해제", message: "Microsoft 계정 연결을 해제할까요?" },
     logout: { title: "로그아웃", message: "로그아웃할까요?" },
+    withdraw: { title: "계정 탈퇴", message: "탈퇴하면 대화 내역, 문서, 개인화 데이터가 모두 영구 삭제되며 복구할 수 없습니다. 정말 탈퇴하시겠습니까?" },
   };
 
   return (
@@ -189,12 +210,19 @@ export default function SettingsPage() {
         )}
       </div>
 
+      <div className="settings-card-danger">
+        <div>
+          <div className="settings-card-title" style={{ color: "var(--block)" }}>계정 탈퇴 <span className="settings-card-desc">탈퇴 시 모든 데이터가 영구적으로 삭제됩니다.</span></div>
+        </div>
+        <button className="settings-btn-danger" onClick={handleWithdraw}>계정 탈퇴</button>
+      </div>
+
       <ConfirmDialog
         open={pendingConfirm !== null}
         title={pendingConfirm ? CONFIRM_TEXT[pendingConfirm].title : ""}
         message={pendingConfirm ? CONFIRM_TEXT[pendingConfirm].message : ""}
-        confirmLabel={pendingConfirm === "logout" ? "로그아웃" : "해제"}
-        danger={pendingConfirm === "msDisconnect"}
+        confirmLabel={pendingConfirm === "logout" ? "로그아웃" : pendingConfirm === "withdraw" ? "탈퇴" : "해제"}
+        danger={pendingConfirm === "msDisconnect" || pendingConfirm === "withdraw"}
         loading={confirmBusy}
         onConfirm={handleConfirm}
         onCancel={() => setPendingConfirm(null)}

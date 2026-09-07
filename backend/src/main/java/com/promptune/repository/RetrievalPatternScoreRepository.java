@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface RetrievalPatternScoreRepository extends JpaRepository<RetrievalPatternScore, Long> {
     Optional<RetrievalPatternScore> findByUserIdAndRoute(Long userId, String route);
     List<RetrievalPatternScore> findByUserId(Long userId);
+    void deleteByUserId(Long userId);
 }

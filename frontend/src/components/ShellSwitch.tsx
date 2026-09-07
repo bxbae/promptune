@@ -1,7 +1,9 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import AppShell, { NavKey } from "./AppShell";
-import { logout } from "@/lib/auth";
+import { logout, getToken } from "@/lib/auth";
+import { getConsentStatus } from "@/api/consents";
 
 // URL ↔ 사이드바 탭 매핑. 새 페이지가 생기면 이 두 곳에 추가
 // "새 채팅"(newChat)과 "채팅"(chat, 목록)은 서로 다른 화면이라 경로도 분리함.
@@ -22,14 +24,42 @@ const KEY_TO_PATH: Record<NavKey, string> = {
   settings: "/settings",
 }
 
-// 로그인 화면(/) - 사이드바 X
-// 나머지 화면 - 사이드바(AppShell) O
-// 이 레이아웃은 고정 (수정 시 레이아웃 대규모 수정 필요)
+// 로그인 화면 + 동의 관련 흐름 - 사이드바(AppShell) X, 인증/동의 체크도 스킵
+const NO_SHELL_PATHS = ["/", "/oauth/callback", "/consent"];
+
 export default function ShellSwitch({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const bypassShell = NO_SHELL_PATHS.includes(pathname);
+  // 인증 확인 → 동의 확인이 끝나기 전까지는 true (보호된 화면을 잠깐이라도 보여주지 않기 위함)
+  const [checking, setChecking] = useState(!bypassShell);
 
-  if (pathname === "/") return <>{children}</>;
+  useEffect(() => {
+    if (bypassShell) return;
+    let cancelled = false;
+    setChecking(true);
+
+    // 1) 로그인 여부 - 토큰 자체가 없으면 동의 조회(API)까지 갈 필요 없이 바로 로그인 화면으로
+    if (!getToken()) {
+      router.replace("/");
+      return;
+    }
+
+    // 2) 동의 여부
+    getConsentStatus()
+      .then((allowed) => {
+        if (cancelled) return;
+        if (!allowed) router.replace("/consent");
+        else setChecking(false);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/consent");
+      });
+    return () => { cancelled = true; };
+  }, [pathname, bypassShell, router]);
+
+  if (bypassShell) return <>{children}</>;
+  if (checking) return null; // 인증/동의 확인 전에는 아무것도 렌더링하지 않음
 
   const topSegment = "/" + (pathname.split("/")[1] ?? "");
   // 채팅 스레드는 "채팅"으로 별도 매핑
