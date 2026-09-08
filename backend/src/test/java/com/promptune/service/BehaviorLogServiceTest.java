@@ -14,23 +14,32 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 class BehaviorLogServiceTest {
 
   private BehaviorLogRepository logRepository;
   private PersonalizationScoreRepository scoreRepository;
+  private ConsentService consentService;
   private BehaviorLogService service;
 
   @BeforeEach
   void setUp() {
     logRepository = mock(BehaviorLogRepository.class);
     scoreRepository = mock(PersonalizationScoreRepository.class);
+    consentService = mock(ConsentService.class);
+
+    // 2026-09-08: recordAction()에 Consent Gate가 추가되면서 이 mock이
+    // 없으면 NPE가 남. 기존 테스트들은 전부 "동의한 사용자"를 전제로
+    // 저장이 정상적으로 일어나는지 검증하는 것이므로, 기본값을 true로 둔다.
+    when(consentService.canUsePersonalization(anyLong())).thenReturn(true);
 
     service = new BehaviorLogService();
 
     ReflectionTestUtils.setField(service, "logRepository", logRepository);
     ReflectionTestUtils.setField(service, "scoreRepository", scoreRepository);
+    ReflectionTestUtils.setField(service, "consentService", consentService);
   }
 
   @Test
@@ -157,6 +166,16 @@ class BehaviorLogServiceTest {
             10L));
 
     verify(logRepository, never()).save(any());
+    verifyNoInteractions(scoreRepository);
+  }
+
+  @Test
+  void notConsented_recordsNothing() {
+    when(consentService.canUsePersonalization(1L)).thenReturn(false);
+
+    service.recordAction(1L, "TONE", "APPLY", 10L);
+
+    verifyNoInteractions(logRepository);
     verifyNoInteractions(scoreRepository);
   }
 }
