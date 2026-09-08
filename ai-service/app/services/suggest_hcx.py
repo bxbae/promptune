@@ -731,32 +731,21 @@ def suggest(
         # 환각 방지는 HCX prompt 규칙에 맡긴다.
         # (_validate_generated_candidates()는 hallucination 검사가
         # 아니라 AUDIENCE guard + KcELECTRA diagnosis guard다.)
-        if element == "CONTEXT" and not context:
-            logger.info(
-                "Using safe CONTEXT suggestion without HCX "
-                "because explicit context is absent"
+        try:
+            candidates = _generate_candidates(
+                text=req.text,
+                context=context,
+                element=element,
+                output_prefs=output_prefs,
             )
-            candidates = [
-                "관련 배경이나 현재 상황이 있다면 함께 반영해줘."
-            ]
 
-        else:
-            try:
-                candidates = _generate_candidates(
-                    text=req.text,
-                    context=context,
-                    element=element,
-                    output_prefs=output_prefs,
-                )
-
-            except Exception:
-                # HCX 동적 생성 실패 시 고정 추천으로 fallback하지 않는다.
-                logger.exception(
-                    "HCX dynamic suggestion generation failed "
-                    "element=%s",
-                    element,
-                )
-                continue
+        except Exception:
+            logger.exception(
+                "HCX dynamic suggestion generation failed "
+                "element=%s",
+                element,
+            )
+            continue
 
         if element == "CONTEXT" and context:
             candidates = [

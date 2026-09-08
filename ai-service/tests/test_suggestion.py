@@ -252,9 +252,11 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
 
     @patch(
         "app.services.suggest_hcx._generate_candidates",
-        return_value=[],
+        return_value=[
+            "회의를 정리하려는 배경이나 현재 상황을 함께 알려줘."
+        ],
     )
-    def test_suggest_skips_context_generation_without_explicit_context(
+    def test_suggest_generates_context_without_explicit_context(
         self,
         mock_generate,
     ):
@@ -283,9 +285,9 @@ class DynamicHcxSuggestionTest(unittest.TestCase):
         )
         self.assertEqual(
             result.suggestions[0].primary,
-            "관련 배경이나 현재 상황이 있다면 함께 반영해줘.",
+            "회의를 정리하려는 배경이나 현재 상황을 함께 알려줘.",
         )
-        mock_generate.assert_not_called()
+        mock_generate.assert_called_once()
 
     def test_parse_generated_candidates_supports_five_candidates(self):
         raw = """
