@@ -12,6 +12,7 @@ import PromptEditor, { DirectEdit } from "@/components/PromptEditor";
 import { generateDocumentFile, fetchDocumentContent, type DocumentFormat, type DocumentItem } from "@/api/documents";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { detectReceiverName, matchReceiverProfile, buildCanonicalReceiverName } from "@/lib/receiverMatching";
+import MarkdownBox from "@/components/MarkdownBox";
 
 interface MessageSource {
   title: string;
@@ -846,7 +847,7 @@ export default function ChatThreadPage() {
                   <div className="msg-assistant-response">
                     <div className="msg-assistant-row">
                       <div className="msg-bubble assistant">
-                        {m.content}
+                        <MarkdownBox content={m.content} />
                         <button
                           type="button"
                           className={`copy-btn ${copiedId === m.id ? "copied" : ""}`}
