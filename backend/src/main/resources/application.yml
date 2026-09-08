@@ -3,6 +3,13 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/promptune}
     username: ${SPRING_DATASOURCE_USERNAME:promptune}
     password: ${SPRING_DATASOURCE_PASSWORD:promptune}
+    hikari:
+      # 2026-09-08: 기존엔 명시적 설정이 없어 Spring Boot 기본값(10)을 그대로
+      # 사용 중이었음. 여러 사용자가 동시에 /api/analyze를 반복 호출하는
+      # 상황(요소별 재진단 구조)에서 풀이 완전히 고갈되어 500 에러 발생
+      # (HikariPool-1 - Connection is not available, timeout, active=10)
+      # 확인됨. 최대치를 늘려 여유를 둔다.
+      maximum-pool-size: 30
   servlet:
     multipart:
       max-file-size: 25MB
