@@ -434,7 +434,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .quote-btn svg { width: 14px; height: 14px; }
 
 /* 응답 생성 실패 시 뜨는 작은 되돌리기(재시도) 아이콘 - 말풍선과 같은 줄, 왼쪽에 배치 */
-.user-retry-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; height: 22px; padding-left: 6px; border: none; border-radius: 50px; background: var(--panel-alt); color: var(--muted); cursor: pointer; font-size: 10px; }
+.user-retry-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 58px; height: 22px; padding-left: 6px; border: none; border-radius: 50px; background: var(--panel-alt); color: var(--muted); cursor: pointer; font-size: 10px; }
 .user-retry-btn:hover { background: var(--panel); color: var(--ink); }
 .user-retry-btn:disabled { opacity: 0.5; cursor: default; }
 .user-retry-btn svg { width: 12px; height: 12px; }
