@@ -184,10 +184,22 @@ def _is_likely_realtime_fact(query: str) -> bool:
         "부동산", "아파트", "전세", "월세", "집값", "매매가", "청약",
     ]
 
+    search_markers = [
+        "찾아줘",
+        "찾아 줘",
+        "검색해줘",
+        "검색해 줘",
+        "조사해줘",
+        "조사해 줘",
+        "알아봐줘",
+        "알아봐 줘",
+    ]
+
     has_time = any(marker in text for marker in time_markers)
     has_fact = any(marker in text for marker in fact_markers)
+    has_search = any(marker in text for marker in search_markers)
 
-    return has_time and has_fact
+    return has_time and (has_fact or has_search)
 
 
 def _is_third_party_profile_query(query: str) -> bool:
