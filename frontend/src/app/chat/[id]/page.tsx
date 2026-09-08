@@ -775,7 +775,7 @@ export default function ChatThreadPage() {
         <div className="no-thread-box">
           <span>
             아직 이 대화에 메시지가 없어요.<br />
-            아래에 새로 작성하시면 같은 대화(#{chatSessionId})로 계속 저장됩니다.
+            아래에 새로 작성하시면 같은 대화로 계속 저장됩니다.
           </span>
         </div>
       )}
