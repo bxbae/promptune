@@ -212,7 +212,7 @@ export default function ChatsPage() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="채팅 삭제"
-        message={`"${deleteTarget?.title || `대화 #${deleteTarget?.id}`}" 대화를 삭제할까요?`}
+        message={`"${deleteTarget?.title || `대화 #${deleteTarget?.userSequence}`}" 대화를 삭제할까요?`}
         confirmLabel="삭제"
         danger
         loading={deleting}
