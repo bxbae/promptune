@@ -123,6 +123,14 @@ type AttachmentState = {
   doc?: DocumentItem;
 };
 
+// 문구 비교용 정규화 - 끝에 붙는 마침표/물음표 등 문장부호와 공백 차이만으로
+// "같은 문구인지" 판정이 어긋나는 걸 막기 위해 여러 곳(재감지 억제, 중복 삽입
+// 방지)에서 공통으로 쓴다. 실제 삽입 시점의 문구와 재진단이 새로 돌려준 문구가
+// 마침표 유무 정도만 다른 경우가 있어, 완전 일치 비교만으론 놓칠 수 있었음.
+function normalizeForCompare(s: string): string {
+  return s.trim().replace(/[.!?。！？\s]+$/g, "");
+}
+
 export default function PromptEditor({
   onSubmit,
   compact = false,
@@ -140,6 +148,13 @@ export default function PromptEditor({
   );
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const directEditsRef = useRef<DirectEdit[]>([]);
+  // 2026-09-08 추가: 방금 사용자가 "적용"한 요소를 한 사이클만 재진단 재감지에서
+  // 봐주기 위한 표시. CONTEXT처럼 fast-path 안내문(실제 맥락 없이 범용 문구만
+  // 들어가는 경우)은 적용 직후 재진단해도 여전히 "부족"으로 나올 수 있는데,
+  // 그렇다고 방금 누른 적용을 곧바로 취소시키면 팝업이 끝없이 반복 재등장하는
+  // 버그가 생긴다. 딱 한 번만 봐주고, 그 다음 사이클부턴 다시 정상적으로
+  // 재감지되게 하기 위해 "본" 순간 바로 지운다 (아래 재진단 useEffect 참고).
+  const justAppliedRef = useRef<Set<string>>(new Set());
 
   const [optIdx, setOptIdx] = useState(0);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
@@ -193,11 +208,11 @@ export default function PromptEditor({
       );
     if (substringMatches.length > 0) return substringMatches;
 
-      const detected = detectReceiverName(text);
+    const detected = detectReceiverName(text);
     if (!detected) return [];
     const { exact, candidates } = matchReceiverProfile(detected, receiverProfiles);
     return exact ? [exact] : candidates;
-    })();
+  })();
 
   // 후보 스택에서 지금 카드 맨 위에 뭘 보여줄지. 후보 집합 자체가 바뀌면(다른 사람 감지
   // 등) 0번으로 리셋해야 하므로, 후보들의 id를 이어붙인 문자열을 key로 삼아 useEffect에서
@@ -254,7 +269,39 @@ export default function PromptEditor({
   // suggestions=[]는 AI가 hallucination 방지 차 의도적으로 비웠을 수 있는 정상 응답이라,
   // 그 경우에도 질문/직접입력/건너뛰기는 그대로 보여줘야 함.
   const targetElements = analysisResult?.recommend?.targetElements ?? [];
-  const unresolvedElements = targetElements.filter((element) => !resolved.has(element));
+  const unresolvedElements = targetElements.filter((element) => {
+    if (resolved.has(element)) return false;
+
+    // 2026-09-08 추가: 그 요소의 추천 문구(primary/alternatives)가 이미 본문에
+    // 그대로 들어있으면, AI 재진단이 뭐라 하든 카드를 다시 띄우지 않는다.
+    // CONTEXT의 fast-path 범용 안내문("관련 배경이나 현재 상황이 있다면
+    // 함께 반영해줘")처럼 실제 맥락은 아니어도 텍스트 자체는 이미 반영된
+    // 경우, 재진단은 정직하게 "여전히 부족"이라고 계속 답할 수 있는데 -
+    // 그렇다고 매번 같은 카드를 다시 띄우면 사용자 입장에서 Enter를 눌러도
+    // (이미 있는 문구라 중복 삽입은 안 되지만) 아무 일도 안 일어나는 것처럼
+    // 보인다. 텍스트에 이미 있다는 사실만으로 프론트가 스스로 판단해서
+    // 걸러내는 규칙이라, 몇 번을 다시 편집해도(직전 적용 여부와 무관하게)
+    // 재발하지 않는다.
+    //
+    // 2026-09-08 보강: 끝에 붙는 마침표(.)·물음표 등 문장부호와 공백 차이만으로
+    // 매칭이 깨지는 걸 막기 위해, 비교 전에 양쪽 다 끝의 문장부호/공백을
+    // 정리(normalize)한다. 실제 삽입 시점의 문구와 재진단이 새로 돌려준
+    // 문구가 마침표 유무 정도만 다른 경우가 있어, 완전 일치(includes)만으론
+    // 놓칠 수 있었음.
+    const normalize = normalizeForCompare;
+    const suggestion = analysisResult?.suggest?.suggestions.find(
+      (s) => s.element === element,
+    );
+    if (suggestion) {
+      const alreadyInText = [suggestion.primary, ...suggestion.alternatives].some((option) => {
+        const normalizedOption = normalize(option);
+        return normalizedOption.length > 0 && normalize(text).includes(normalizedOption);
+      });
+      if (alreadyInText) return false;
+    }
+
+    return true;
+  });
   const activeElement = unresolvedElements[activeSuggestionIndex] ?? unresolvedElements[0] ?? null;
 
   const activeSuggestion = activeElement
@@ -389,15 +436,25 @@ export default function PromptEditor({
 
             for (const [element, missingValue] of missingEntries) {
               if (missingValue === 1) {
-                // 최신 재진단에서 다시 부족하다고 판단되면
-                // 이전 resolved 상태를 제거해서 추천 대상으로 복구한다.
+                if (justAppliedRef.current.has(element)) {
+                  // 방금 이 요소를 적용해서 도는 재진단이다. CONTEXT처럼
+                  // fast-path 안내문(실제 맥락 없는 범용 문구)만 적용된 경우
+                  // 모델이 여전히 "부족"으로 볼 수 있는데, 그렇다고 바로
+                  // 되돌리면 팝업이 끝없이 반복 재등장한다. 딱 한 사이클만
+                  // 봐주고, "본" 순간 바로 지워서 다음 재진단부턴 다시
+                  // 정상적으로 재감지되게 한다 (영구 면제 아님).
+                  justAppliedRef.current.delete(element);
+                  continue;
+                }
+                // 최신 재진단에서 다시 부족하다고 판단되면 이전 resolved 상태를 제거해서 추천 대상으로 복구한다.
                 updated.delete(element);
               } else {
                 // 최신 재진단에서 충족된 요소는 해결 상태로 유지한다.
                 updated.add(element);
+                // 충족된 걸로 확인됐으니 굳이 남겨둘 필요 없음(있어도 무해하지만 정리).
+                justAppliedRef.current.delete(element);
               }
             }
-
             return updated;
           });
         }
@@ -550,6 +607,13 @@ export default function PromptEditor({
       updated.add(activeElement);
       return updated;
     });
+    // 방금 적용했다는 표시 - 이번 텍스트 변경으로 곧바로 도는 재진단에서
+    // 한 사이클만 재감지를 봐주기 위함 (아래 재진단 useEffect에서 소비됨).
+    // skipActiveSuggestion()의 동일 패턴과 달리 여기서만 필요한 이유: 적용은
+    // 텍스트를 바꿔서 곧바로 scheduleAnalyze가 다시 도는데, CONTEXT처럼
+    // fast-path 안내문(실제 맥락 없는 범용 문구)은 그 재진단에서도 여전히
+    // "부족"으로 나올 수 있어 팝업이 끝없이 반복되는 문제가 있었음.
+    justAppliedRef.current.add(activeElement);
 
     setText(nextText);
     setOptIdx(0);
@@ -947,6 +1011,13 @@ export default function PromptEditor({
     let base = text.trim();
     const addition = suggestion.trim();
 
+    // 2026-09-08 추가: 재진단 반복으로 같은 추천이 다시 뜨는 경우, 사용자가
+    // 모르고 "적용"을 또 누르면 같은 문구가 계속 이어붙는 걸 막는다.
+    // 마침표 유무 등만 다른 경우도 같은 문구로 취급하도록 정규화 비교.
+    if (addition && normalizeForCompare(base).includes(normalizeForCompare(addition))) {
+      return base;
+    }
+
     if (base && !/[.!?。！？]$/.test(base)) {
       base = `${base}.`;
     }
@@ -962,6 +1033,13 @@ export default function PromptEditor({
     const addition = suggestion.trim();
 
     if (!addition) {
+      return text;
+    }
+
+    // 2026-09-08 추가: 이미 같은 문구가 본문에 있으면 중복 삽입하지 않음
+    // (재진단 반복으로 같은 추천이 다시 떠서 또 적용되는 경우 대비)
+    // 마침표 유무 등만 다른 경우도 같은 문구로 취급하도록 정규화 비교.
+    if (normalizeForCompare(text).includes(normalizeForCompare(addition))) {
       return text;
     }
 
@@ -1230,10 +1308,10 @@ export default function PromptEditor({
             {receiverCandidates.length > 2 && (
               <div className="receiver-candidate-peek receiver-candidate-peek-2" aria-hidden="true" />
             )}
-          <div
-            className={`receiver-candidate-card ${selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
-              }`}
-          >
+            <div
+              className={`receiver-candidate-card ${selectedReceiverId === receiverCandidate.id ? "selected" : "unselected"
+                }`}
+            >
               {receiverCandidates.length > 1 && (
                 <button
                   type="button"
@@ -1249,40 +1327,40 @@ export default function PromptEditor({
                 </button>
               )}
 
-            <div className="receiver-candidate-main">
-              <div className="receiver-candidate-label">
-                개인화 수신자 후보
+              <div className="receiver-candidate-main">
+                <div className="receiver-candidate-label">
+                  개인화 수신자 후보
                   {receiverCandidates.length > 1 && (
                     <span className="receiver-candidate-count">
                       {" "}
                       · {activeReceiverIndex + 1}/{receiverCandidates.length}
                     </span>
                   )}
+                </div>
+
+                <div className="receiver-candidate-name">
+                  👤 {receiverCandidate.receiverName}
+                </div>
+
+                <div className="receiver-candidate-meta">
+                  {receiverCandidate.relationship && (
+                    <span>{receiverCandidate.relationship}</span>
+                  )}
+
+                  {receiverCandidate.preferredTone && (
+                    <span>선호 톤 {receiverCandidate.preferredTone}</span>
+                  )}
+
+                  {receiverCandidate.updatedAt && (
+                    <span>
+                      최근 학습{" "}
+                      {new Date(
+                        receiverCandidate.updatedAt,
+                      ).toLocaleDateString("ko-KR")}
+                    </span>
+                  )}
+                </div>
               </div>
-
-              <div className="receiver-candidate-name">
-                👤 {receiverCandidate.receiverName}
-              </div>
-
-              <div className="receiver-candidate-meta">
-                {receiverCandidate.relationship && (
-                  <span>{receiverCandidate.relationship}</span>
-                )}
-
-                {receiverCandidate.preferredTone && (
-                  <span>선호 톤 {receiverCandidate.preferredTone}</span>
-                )}
-
-                {receiverCandidate.updatedAt && (
-                  <span>
-                    최근 학습{" "}
-                    {new Date(
-                      receiverCandidate.updatedAt,
-                    ).toLocaleDateString("ko-KR")}
-                  </span>
-                )}
-              </div>
-            </div>
 
               {receiverCandidates.length > 1 && (
                 <button
@@ -1297,22 +1375,22 @@ export default function PromptEditor({
                 </button>
               )}
 
-            <button
-              type="button"
-              className="receiver-candidate-action"
-              aria-pressed={selectedReceiverId === receiverCandidate.id}
-              onClick={() => {
-                const selecting = selectedReceiverId !== receiverCandidate.id;
-                setSelectedReceiverId(selecting ? receiverCandidate.id : null);
-                onReceiverProfileChange?.(selecting ? receiverCandidate : null);
-                textareaRef.current?.focus();
-              }}
-            >
-              {selectedReceiverId === receiverCandidate.id
-                ? "적용됨 ✓"
-                : "적용"}
-            </button>
-          </div>
+              <button
+                type="button"
+                className="receiver-candidate-action"
+                aria-pressed={selectedReceiverId === receiverCandidate.id}
+                onClick={() => {
+                  const selecting = selectedReceiverId !== receiverCandidate.id;
+                  setSelectedReceiverId(selecting ? receiverCandidate.id : null);
+                  onReceiverProfileChange?.(selecting ? receiverCandidate : null);
+                  textareaRef.current?.focus();
+                }}
+              >
+                {selectedReceiverId === receiverCandidate.id
+                  ? "적용됨 ✓"
+                  : "적용"}
+              </button>
+            </div>
           </div>
         )}
         {quotedMessage && (
