@@ -57,6 +57,12 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
         // 2026-09-08: 토큰 만료(401)를 미동의 상태와 혼동해 /consent로
         // 보내던 문제 수정 - 만료면 재로그인이 필요하므로 로그인 화면으로.
         if (err.authError === "token_expired") {
+          // 2026-09-08(추가): 토큰을 지우지 않고 리다이렉트만 하면, "/"의
+          // getToken() 체크가 만료된 토큰도 "로그인됨"으로 오판해 앞으로
+          // 보내고, 그 화면에서 다시 만료 감지 → "/" 되돌림이 반복되며
+          // 무한 리다이렉트 루프에 빠진다(실제 재현 확인됨). 반드시
+          // 토큰을 지운 뒤에 보내야 루프가 끊긴다.
+          logout();
           router.replace("/");
         } else {
           router.replace("/consent");
