@@ -23,12 +23,18 @@ export async function grantConsent(
 }
 
 // GET /api/consents/status - receiverProfileId 없으면 전체 기준으로 조회
+// 2026-09-08: 토큰 만료(401)와 실제 미동의를 프론트가 구분할 수 있도록,
+// 실패 시 백엔드가 보낸 X-Auth-Error 헤더를 에러 객체에 실어서 던진다.
 export async function getConsentStatus(receiverProfileId?: number): Promise<boolean> {
   const url = new URL(`${API}/api/consents/status`);
   if (receiverProfileId != null) url.searchParams.set("receiverProfileId", String(receiverProfileId));
 
   const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) throw new Error(`동의 여부 조회 실패: ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`동의 여부 조회 실패: ${res.status}`) as Error & { authError?: string };
+    err.authError = res.headers.get("X-Auth-Error") ?? undefined;
+    throw err;
+  }
   const data = await res.json();
   return Boolean(data.allowed);
 }

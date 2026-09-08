@@ -51,6 +51,11 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
+        // 2026-09-08: JwtAuthFilter가 토큰 만료 시 보내는 X-Auth-Error 헤더를
+        // 프론트(fetch의 response.headers.get())가 읽을 수 있도록 노출 허용.
+        // 브라우저는 이 설정이 없으면 커스텀 응답 헤더를 JS에서 못 읽는다
+        // (allowedHeaders는 요청 헤더용이라 별개).
+        config.setExposedHeaders(List.of("X-Auth-Error"));
 
         // 2026-08-27: MS 연동(OAuth) 콜백에서 "Invalid CORS request"가 그대로
         // 응답 본문에 노출되는 오류가 확인됨. MicrosoftGraphService.createAuthorizationUrl()이

@@ -26,6 +26,10 @@ public class BehaviorLogService {
     @Autowired
     private PersonalizationScoreRepository scoreRepository;
 
+    // 2026-09-08: Consent Gate 보완용 - ConsentService는 같은 패키지(com.promptune.service)라 import 불필요
+    @Autowired
+    private ConsentService consentService;
+
     @Transactional
     public void recordAction(Long userId, String element, String action) {
         recordAction(userId, element, action, null);
@@ -47,6 +51,13 @@ public class BehaviorLogService {
             String element,
             String action,
             Long chatSessionId) {
+
+        // 2026-09-08: 동의하지 않은 사용자의 행동은 기록하지 않는다(Consent Gate 보완).
+        // 프론트가 이미 전역적으로 미동의 사용자를 이 화면까지 못 오게 막고 있어
+        // 정상 흐름에선 도달할 일이 없으나, API 직접 호출 경로에 대한 최후 방어선.
+        if (!consentService.canUsePersonalization(userId)) {
+            return;
+        }
 
         if (!isSupportedAction(action)) {
             throw new IllegalArgumentException("Unsupported behavior action: " + action);

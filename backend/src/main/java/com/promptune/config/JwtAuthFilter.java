@@ -29,9 +29,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String email = jwt.validateAndGetEmail(auth.substring(7));
                 var authentication = new UsernamePasswordAuthenticationToken(email, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (io.jsonwebtoken.ExpiredJwtException e) {
+                // 2026-09-08: 토큰 만료를 프론트가 구분할 수 있도록 헤더 추가.
+                // 기존에는 만료든 위조든 전부 동일하게 401 처리되어, 프론트
+                // (ShellSwitch)가 "재로그인 필요"와 "동의 필요"를 구분하지
+                // 못하고 기존 회원을 계속 동의 화면으로 잘못 보내던 문제가 있었음.
+                res.setHeader("X-Auth-Error", "token_expired");
             } catch (Exception e) {
-                // 토큰이 없거나 유효하지 않으면 인증 없이 통과시키고, 이후 SecurityConfig의
-                // 인가 규칙(permitAll이 아닌 엔드포인트는 401)이 알아서 처리한다.
+                // 토큰이 없거나 그 외 사유로 유효하지 않으면 인증 없이 통과시키고,
+                // 이후 SecurityConfig의 인가 규칙(permitAll이 아닌 엔드포인트는
+                // 401)이 알아서 처리한다.
                 // 2026-09-02: 디버그용 println/printStackTrace 제거 — 요청마다 사용자
                 // 이메일이 평문으로 로그에 계속 쌓이고 있던 것 확인되어 정리함.
             }

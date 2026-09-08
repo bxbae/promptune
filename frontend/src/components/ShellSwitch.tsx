@@ -52,8 +52,15 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
         if (!allowed) router.replace("/consent");
         else setChecking(false);
       })
-      .catch(() => {
-        if (!cancelled) router.replace("/consent");
+      .catch((err: Error & { authError?: string }) => {
+        if (cancelled) return;
+        // 2026-09-08: 토큰 만료(401)를 미동의 상태와 혼동해 /consent로
+        // 보내던 문제 수정 - 만료면 재로그인이 필요하므로 로그인 화면으로.
+        if (err.authError === "token_expired") {
+          router.replace("/");
+        } else {
+          router.replace("/consent");
+        }
       });
     return () => { cancelled = true; };
   }, [pathname, bypassShell, router]);
