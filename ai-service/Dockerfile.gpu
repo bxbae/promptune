@@ -27,6 +27,17 @@ RUN pip install --no-cache-dir \
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 2026-09-08: GPU용으로 전환하면서 원래 Dockerfile(CPU)에 있던 libreoffice
+# 설치가 빠져서, documents/generate(문서 다운로드 생성)가 항상
+# "FileNotFoundError: 'libreoffice'"로 실패하던 문제 확인. pip install들
+# 뒤에 배치해서, 이후 재빌드 시 앞선 torch/CUDA wheel 레이어는 캐시로
+# 재사용되고 이 레이어만 새로 실행되게 한다.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY app ./app
 
 EXPOSE 8000
