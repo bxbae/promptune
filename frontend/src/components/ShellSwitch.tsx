@@ -1,6 +1,6 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell, { NavKey } from "./AppShell";
 import { logout, getToken } from "@/lib/auth";
 import { getConsentStatus } from "@/api/consents";
@@ -33,9 +33,31 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
   const bypassShell = NO_SHELL_PATHS.includes(pathname);
   // 인증 확인 → 동의 확인이 끝나기 전까지는 true (보호된 화면을 잠깐이라도 보여주지 않기 위함)
   const [checking, setChecking] = useState(!bypassShell);
+  // 2026-09-09: 이번 세션에서 인증+동의 확인이 이미 끝났는지 여부.
+  // 원래는 pathname이 바뀔 때마다(예: /chat -> /chat/[id] 새 채팅 리다이렉트)
+  // 매번 getConsentStatus()를 다시 불렀는데, 응답이 오기 전까지 checking=true라
+  // 그 사이 화면 전체가 unmount됐다가 재검사가 끝나면 다시 mount됐다. 이 순간
+  // 방금 새 채팅에서 넘어온 페이지가 sessionStorage로 복원해둔 "방금 보낸 메시지"
+  // 로컬 state가 통째로 날아가서 화면에 안 뜨는 문제가 있었음(실제 재현 확인됨).
+  // 같은 보호 영역 안에서 페이지만 이동하는 경우는 매번 재검사할 필요가 없어서,
+  // 한 번 통과하면 이 ref로 기억해두고 이후 pathname 변경에는 재검사를 건너뛴다.
+  const verifiedRef = useRef(false);
 
   useEffect(() => {
-    if (bypassShell) return;
+    if (bypassShell) {
+      // 로그인/동의 화면 쪽으로 나가면, 다음에 보호 영역으로 들어올 때는
+      // 다시 검증해야 하므로 리셋해둔다.
+      verifiedRef.current = false;
+      return;
+    }
+
+    if (verifiedRef.current) {
+      // 이미 이번 세션에서 인증/동의 확인을 통과했으면, pathname만 바뀐 걸로는
+      // 재검사(및 그로 인한 화면 unmount)를 하지 않고 그대로 통과시킨다.
+      setChecking(false);
+      return;
+    }
+
     let cancelled = false;
     setChecking(true);
 
@@ -49,8 +71,12 @@ export default function ShellSwitch({ children }: { children: React.ReactNode })
     getConsentStatus()
       .then((allowed) => {
         if (cancelled) return;
-        if (!allowed) router.replace("/consent");
-        else setChecking(false);
+        if (!allowed) {
+          router.replace("/consent");
+        } else {
+          verifiedRef.current = true;
+          setChecking(false);
+        }
       })
       .catch((err: Error & { authError?: string }) => {
         if (cancelled) return;
