@@ -155,6 +155,10 @@ export default function PromptEditor({
   // 버그가 생긴다. 딱 한 번만 봐주고, 그 다음 사이클부턴 다시 정상적으로
   // 재감지되게 하기 위해 "본" 순간 바로 지운다 (아래 재진단 useEffect 참고).
   const justAppliedRef = useRef<Set<string>>(new Set());
+  // 2026-09-08 추가: "건너뛰기" 누른 요소를 영구적으로(이 프롬프트를 지우기 전까지)
+  // 기억해두는 용도. justAppliedRef(한 사이클만 봐줌)와 달리, 건너뛰기는 사용자가
+  // 명시적으로 "이건 필요 없다"고 판단한 거라 재분석마다 계속 다시 물어보면 안 됨.
+  const skippedElementsRef = useRef<Set<string>>(new Set());
 
   const [optIdx, setOptIdx] = useState(0);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
@@ -271,6 +275,7 @@ export default function PromptEditor({
   const targetElements = analysisResult?.recommend?.targetElements ?? [];
   const unresolvedElements = targetElements.filter((element) => {
     if (resolved.has(element)) return false;
+    if (skippedElementsRef.current.has(element)) return false;
 
     // 2026-09-08 추가: 그 요소의 추천 문구(primary/alternatives)가 이미 본문에
     // 그대로 들어있으면, AI 재진단이 뭐라 하든 카드를 다시 띄우지 않는다.
@@ -407,6 +412,9 @@ export default function PromptEditor({
       setGate(null);
       setAnalysisResult(null);
       setResolved(new Set());
+      // 프롬프트를 완전히 지웠으니, "건너뛰기"/"방금 적용" 기억도 같이 초기화
+      skippedElementsRef.current = new Set();
+      justAppliedRef.current = new Set();
       return;
     }
 
@@ -562,7 +570,11 @@ export default function PromptEditor({
     const nextCaret = typo.start + suggestion.length;
 
     setText(nextText);
-    scheduleAnalyze(nextText);
+    // 2026-09-08 수정: 오탈자 수정은 결정적 치환(span -> suggest)이라 전체 재분석이
+    // 필요 없다. scheduleAnalyze를 부르면 8요소 분석까지 통째로 다시 돌면서 "건너뛰기"
+    // 해둔 요소 팝업이 또 뜨는 부작용이 있었음. typoRanges는 매 렌더마다 현재 text에서
+    // span 문자열을 다시 찾아 위치를 계산하므로(위 buildTypoRanges), 방금 고친 오탈자는
+    // 재분석 없이도 다음 렌더에서 자연히 밑줄 목록에서 빠진다.
 
     // 클릭 때문에 textarea 포커스가 빠지지 않게 하고, 교정된 단어 뒤로 커서를 이동한다.
     window.requestAnimationFrame(() => {
@@ -865,6 +877,9 @@ export default function PromptEditor({
       updated.add(activeElement);
       return updated;
     });
+    // 2026-09-08 추가: "건너뛰기"는 이 프롬프트를 지우기 전까지 영구 기억.
+    // 재분석 때마다 다시 부족하다고 나와도 이 요소는 unresolvedElements에서 계속 제외됨.
+    skippedElementsRef.current.add(activeElement);
 
     setOptIdx(0);
     setActiveSuggestionIndex(0);
@@ -1179,6 +1194,9 @@ export default function PromptEditor({
 
     setText("");
     setResolved(new Set());
+    // 메시지 전송 후 입력창 초기화 - "건너뛰기"/"방금 적용" 기억도 새 프롬프트를 위해 초기화
+    skippedElementsRef.current = new Set();
+    justAppliedRef.current = new Set();
     directEditsRef.current = [];
     setOptIdx(0);
     setCustomOpen(false);
