@@ -10,6 +10,7 @@ from app.services.documents.document_planner import (
     _fallback_plan,
     build_document_plan,
     build_fast_notice_plan,
+    build_fast_synthesis_report_plan,
 )
 from app.services.documents.document_content import DocumentBlock, DocumentContent
 from app.services.documents.docx_renderer import render_docx
@@ -413,6 +414,146 @@ def _sanitize_fast_notice_document(
     return document
 
 
+def _prepare_fast_synthesis_report_source(
+    content: str,
+) -> str:
+    """
+    Conversation History를 하나의 보고서용 evidence source로 정규화한다.
+    """
+    raw = str(content or "").strip()
+
+    rules = (
+        "[Fast REPORT 작성 원칙]\n"
+        "- 아래 이전 대화는 참고 근거이며, 시간순 채팅 로그 형태로 출력하지 않는다.\n"
+        "- 업무 목적/배경은 초기 관련 대화에서 추출한다.\n"
+        "- 내부문서 분석 결과는 현행 문제점의 근거로 사용한다.\n"
+        "- Web Search 조사 결과는 최신 솔루션/기술 조사 근거로 사용한다.\n"
+        "- 내부 문제와 외부 솔루션의 대응 관계를 표로 비교한다.\n"
+        "- 대화에 근거가 없는 제품 기능, 가격, 비용, 수치, 성과율은 만들지 않는다.\n"
+        "- 비용/정량 효과 등 확인되지 않은 내용은 추가 확인 필요사항으로 보낸다.\n"
+        "- 공지문, 회의 공지, 공지문 작성 가이드 및 작성 체크리스트는 제외한다.\n"
+        "- 같은 내용을 여러 섹션에서 반복하지 않는다.\n"
+        "- 표는 비교 정보에만 사용하고, 설명은 짧은 문단과 목록으로 정돈한다.\n"
+        "- 최종 출력은 실제 사내 보고서 본문만 작성한다.\n"
+        "- 시스템 규칙, 현재 요청 문구, [이전 대화 근거] 같은 내부 표식은 출력하지 않는다."
+    )
+
+    return (
+        rules
+        + "\n\n"
+        + raw
+    ).strip()
+
+
+def _sanitize_fast_report_document(
+    document,
+):
+    """
+    종합 보고서 최종 렌더 전 불필요한 시스템 표식,
+    무관한 공지문 내용, 빈 metadata를 제거한다.
+    """
+    cleaned = []
+
+    hidden_signals = (
+        "[현재 요청]",
+        "[이전 대화 근거]",
+        "[이전 사용자 요청",
+        "[이전 AI 결과",
+        "[대화 활용 원칙]",
+        "[문서 생성 규칙]",
+        "[종합 보고서 생성 규칙]",
+        "[Fast REPORT 작성 원칙]",
+    )
+
+    unrelated_notice_signals = (
+        "공지문 작성 가이드",
+        "[AI Agent 개발 2 팀] 전체 회의 안내",
+        "작성 전 체크리스트",
+        "회의 전 체크리스트",
+    )
+
+    for block in document.blocks:
+        combined = " ".join(
+            [
+                str(
+                    getattr(
+                        block,
+                        "title",
+                        "",
+                    )
+                    or ""
+                ),
+                str(
+                    getattr(
+                        block,
+                        "content",
+                        "",
+                    )
+                    or ""
+                ),
+                " ".join(
+                    str(x)
+                    for x in (
+                        getattr(
+                            block,
+                            "items",
+                            None,
+                        )
+                        or []
+                    )
+                ),
+            ]
+        )
+
+        if any(
+            signal in combined
+            for signal in hidden_signals
+        ):
+            continue
+
+        if any(
+            signal in combined
+            for signal in unrelated_notice_signals
+        ):
+            continue
+
+        # 값이 하나도 없는 metadata 표만 제거한다.
+        if block.type in {
+            "key_value_table",
+            "metadata",
+        }:
+            data = getattr(
+                block,
+                "data",
+                None,
+            )
+
+            if not data:
+                continue
+
+            if isinstance(data, dict):
+                has_value = any(
+                    str(v).strip()
+                    for v in data.values()
+                    if v is not None
+                )
+
+                if not has_value:
+                    continue
+
+        cleaned.append(block)
+
+    document.blocks = cleaned
+
+    if hasattr(
+        document,
+        "metadata",
+    ):
+        document.metadata = {}
+
+    return document
+
+
 def _build_deterministic_fast_notice(
     plan,
     content: str,
@@ -589,9 +730,22 @@ def generate_smart_document(
         f"{content.strip()}"
     )
 
-    if _is_instruction_only_request(content):
-        # "보고서 만들어줘"처럼 실제 채울 사실이 없는 요청은
-        # HCX 2회 추론을 건너뛰고 기존 fallback 구조를 사용한다.
+    # "지금까지 종합해서 보고서로 만들어줘" 같은 요청은
+    # 현재 한 문장만 보면 instruction-only처럼 보여도
+    # Backend가 전달한 Conversation History를 사용해야 하므로
+    # generic weekly-report fallback으로 보내지 않는다.
+    early_fast_report_plan = (
+        build_fast_synthesis_report_plan(
+            content
+        )
+    )
+
+    if (
+        _is_instruction_only_request(content)
+        and early_fast_report_plan is None
+    ):
+        # 실제 업무 자료가 전혀 없는 일반 문서 생성 요청만
+        # 기존 deterministic fallback을 사용한다.
         plan = _fallback_plan(request)
 
         if title.strip():
@@ -602,13 +756,67 @@ def generate_smart_document(
             content.strip(),
         )
     else:
-        # 문서 종류가 이미 명확한 공지문 요청은
-        # HCX Planner를 생략한다.
-        fast_plan = build_fast_notice_plan(
-            content
+        # 종합 보고서는 이전 history 안에 공지문 생성 요청이
+        # 포함될 수 있으므로 REPORT 의도를 먼저 확정한다.
+        fast_report_plan = early_fast_report_plan
+
+        # REPORT가 확정되면 NOTICE 판정 자체를 하지 않는다.
+        # 따라서 한 요청에서 REPORT와 NOTICE가 동시에 활성화되지 않는다.
+        fast_plan = (
+            None
+            if fast_report_plan is not None
+            else build_fast_notice_plan(
+                content
+            )
         )
 
-        if fast_plan is not None:
+        if fast_report_plan is not None:
+            # "지금까지 종합해서 보고서로"는
+            # 이미 문서 종류가 명확하므로 Planner HCX를 생략한다.
+            plan = fast_report_plan
+
+            incoming_title = title.strip()
+
+            generic_report_titles = {
+                "",
+                "보고서",
+                "업무보고서",
+                "PrompTune 생성 문서",
+            }
+
+            if (
+                incoming_title
+                and incoming_title
+                not in generic_report_titles
+            ):
+                plan.title = incoming_title
+
+            report_source = (
+                _prepare_fast_synthesis_report_source(
+                    content
+                )
+            )
+
+            # STEP 6 종합 보고서는 7개 섹션의 구조화 JSON이 필요해
+            # 기본 384 token으로는 출력이 잘리거나 JSON이 깨질 수 있다.
+            # 이 경로에서만 충분한 출력 예산을 주고,
+            # 파싱 실패를 빈 주간보고서 fallback으로 숨기지 않는다.
+            composed = compose_document(
+                plan,
+                report_source,
+                max_new_tokens=768,
+                raise_on_failure=True,
+            )
+
+            print(
+                "[SmartDocument] "
+                "fast_report=true "
+                "/ planner_hcx=0 "
+                "/ composer_hcx=1 "
+                f"/ source_chars={len(report_source)}"
+            )
+
+        elif fast_plan is not None:
             plan = fast_plan
 
             incoming_title = title.strip()
@@ -674,7 +882,8 @@ def generate_smart_document(
                 )
 
         else:
-            # 공지문이 아닌 문서는 기존 Smart Document 경로 유지
+            # 문서 종류가 명확하지 않은 일반 요청만
+            # 기존 HCX Planner + Composer 경로를 사용한다.
             plan = build_document_plan(
                 request
             )
@@ -709,6 +918,20 @@ def generate_smart_document(
         print(
             "[SmartDocument] "
             "fast_notice_post_layout_cleanup=true "
+            f"/ final_blocks={len(result.blocks)}"
+        )
+
+    if (
+        "fast_report_plan" in locals()
+        and fast_report_plan is not None
+    ):
+        result = _sanitize_fast_report_document(
+            result
+        )
+
+        print(
+            "[SmartDocument] "
+            "fast_report_post_layout_cleanup=true "
             f"/ final_blocks={len(result.blocks)}"
         )
 

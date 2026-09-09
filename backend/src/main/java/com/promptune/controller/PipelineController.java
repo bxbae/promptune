@@ -177,18 +177,37 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     java.util.List<java.util.Map<String, String>> conversationHistory =
             buildConversationHistory(req.chatSessionId(), userId);
 
+    // STEP 6: 종합 보고서 요청은 일반 최근 6개 history 대신
+    // document_generation을 제외한 별도 evidence history를 사용한다.
+    boolean synthesisPrompt =
+            isConversationSynthesisDocumentRequest(
+                    req.finalPrompt());
+
+    java.util.List<java.util.Map<String, String>> documentIntentHistory =
+            synthesisPrompt
+                    ? buildSynthesisConversationHistory(
+                            req.chatSessionId(),
+                            userId)
+                    : conversationHistory;
+
     // 문서 생성 의도와 활성 문서를 먼저 각각 확정한다.
     // "이 파일을 보고서로 만들어줘"처럼 첨부문서를 재료로 쓰는 요청은
     // Retrieval 후 Document Generator로 넘겨야 현재 파일 본문을 잃지 않는다.
     java.util.Optional<com.promptune.service.DocumentIntentResolver.DocumentAction> documentAction =
-            documentIntentResolver.resolve(req.finalPrompt(), conversationHistory);
+            documentIntentResolver.resolve(req.finalPrompt(), documentIntentHistory);
+
+    boolean conversationSynthesisDocumentRequest =
+            documentAction.isPresent()
+                    && synthesisPrompt;
 
     java.util.List<Long> retrievalDocumentIds =
-            resolveRetrievalDocumentIds(
-                    req.documentIds(),
-                    req.chatSessionId(),
-                    userId,
-                    req.finalPrompt());
+            conversationSynthesisDocumentRequest
+                    ? java.util.List.of()
+                    : resolveRetrievalDocumentIds(
+                            req.documentIds(),
+                            req.chatSessionId(),
+                            userId,
+                            req.finalPrompt());
 
     String documentResolutionSource =
             retrievalDocumentIds.isEmpty()
@@ -199,7 +218,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
      * 현재 첨부/대화의 활성 문서가 없을 때만 파일관리 catalog를 본다.
      * 따라서 현재 첨부 > 대화 active document > 파일관리 검색 우선순위가 보존된다.
      */
-    if (retrievalDocumentIds.isEmpty()) {
+    if (retrievalDocumentIds.isEmpty()
+            && !conversationSynthesisDocumentRequest) {
         java.util.List<com.promptune.domain.Document> ownedCatalogDocuments =
                 documentRepository.findByOwnerUserId(userId);
 
@@ -271,6 +291,17 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
     }
 
     ensureActiveDocumentsReady(retrievalDocumentIds, userId);
+
+    if (conversationSynthesisDocumentRequest) {
+        System.out.println(
+                "[DocumentSynthesis] "
+                        + "historyItems="
+                        + conversationHistory.size()
+                        + " / skipActiveDocument=true"
+                        + " / skipCatalog=true"
+                        + " / prompt="
+                        + req.finalPrompt());
+    }
 
     if (documentAction.isPresent() && retrievalDocumentIds.isEmpty()) {
         return executeDocumentAction(
@@ -639,6 +670,156 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
 
         return new java.util.ArrayList<>(byUrl.values());
     }
+
+    private boolean isConversationSynthesisDocumentRequest(
+            String prompt) {
+
+        String value =
+                prompt == null
+                        ? ""
+                        : prompt
+                                .trim()
+                                .toLowerCase()
+                                .replaceAll("\\s+", " ");
+
+        boolean wantsDocument =
+                value.contains("보고서")
+                        || value.contains("문서");
+
+        boolean referencesHistory =
+                value.contains("지금까지")
+                        || value.contains("지금껏")
+                        || value.contains("앞에서")
+                        || value.contains("방금까지")
+                        || value.contains("이전 내용")
+                        || value.contains("이전 대화")
+                        || value.contains("위 내용")
+                        || value.contains("종합해서")
+                        || value.contains("종합하여")
+                        || value.contains("종합해")
+                        || value.contains("전체 내용")
+                        || value.contains("모아서");
+
+        return wantsDocument
+                && referencesHistory;
+    }
+
+
+    /**
+     * STEP 6 종합 보고서 전용 Conversation History.
+     *
+     * 일반 대화는 기존 최근 6개 정책을 유지하고,
+     * 종합 보고서에서만 중간 문서 생성 작업을 Evidence에서 제외한다.
+     */
+    private java.util.List<java.util.Map<String, String>> buildSynthesisConversationHistory(
+            Long chatSessionId,
+            Long userId) {
+
+        if (chatSessionId == null) {
+            return java.util.List.of();
+        }
+
+        com.promptune.domain.ChatSession chat =
+                chatSessionRepository.findById(chatSessionId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "대화를 찾을 수 없습니다."));
+
+        if (!userId.equals(chat.getUserId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "본인 대화만 사용할 수 있습니다.");
+        }
+
+        java.util.List<com.promptune.domain.PromptSession> sessions =
+                promptSessionRepository
+                        .findByChatSessionIdOrderByCreatedAtAsc(chatSessionId);
+
+        java.util.List<com.promptune.domain.PromptSession> relevant =
+                new java.util.ArrayList<>();
+
+        int skippedDocumentGeneration = 0;
+        int skippedFailed = 0;
+
+        for (com.promptune.domain.PromptSession session : sessions) {
+
+            // STEP 4 공지문, 이전 보고서 생성 등은
+            // STEP 6의 업무 Evidence가 아니므로 제외한다.
+            if ("document_generation".equalsIgnoreCase(
+                    session.getTaskType())) {
+                skippedDocumentGeneration++;
+                continue;
+            }
+
+            String assistantText =
+                    compactHistoryText(
+                            session.getAiResponseText());
+
+            // 실패/중단되어 실제 결과가 없는 세션도 Evidence에서 제외한다.
+            if (assistantText == null
+                    || assistantText.isBlank()) {
+                skippedFailed++;
+                continue;
+            }
+
+            relevant.add(session);
+        }
+
+        // 공지문 재시도로 앞선 STEP 2·3이 밀리지 않도록
+        // synthesis에서만 최대 최근 10개의 유효 세션을 사용한다.
+        int startIndex =
+                Math.max(0, relevant.size() - 10);
+
+        java.util.List<java.util.Map<String, String>> history =
+                new java.util.ArrayList<>();
+
+        java.util.List<Long> includedSessionIds =
+                new java.util.ArrayList<>();
+
+        for (int i = startIndex; i < relevant.size(); i++) {
+            com.promptune.domain.PromptSession session =
+                    relevant.get(i);
+
+            includedSessionIds.add(session.getId());
+
+            String userText =
+                    compactHistoryText(
+                            session.getOriginalText());
+
+            String assistantText =
+                    compactHistoryText(
+                            session.getAiResponseText());
+
+            if (userText != null && !userText.isBlank()) {
+                history.add(java.util.Map.of(
+                        "role", "user",
+                        "content", userText));
+            }
+
+            if (assistantText != null && !assistantText.isBlank()) {
+                history.add(java.util.Map.of(
+                        "role", "assistant",
+                        "content", assistantText));
+            }
+        }
+
+        System.out.println(
+                "[DocumentSynthesisHistory] totalSessions="
+                        + sessions.size()
+                        + " / relevantSessions="
+                        + relevant.size()
+                        + " / skippedDocumentGeneration="
+                        + skippedDocumentGeneration
+                        + " / skippedFailed="
+                        + skippedFailed
+                        + " / historyItems="
+                        + history.size()
+                        + " / includedSessionIds="
+                        + includedSessionIds);
+
+        return history;
+    }
+
 
     private java.util.List<java.util.Map<String, String>> buildConversationHistory(
             Long chatSessionId,
