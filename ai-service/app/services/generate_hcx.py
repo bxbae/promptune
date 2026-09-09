@@ -724,7 +724,7 @@ def _build_system_prompt(
         format_labels = {
             "table": "표 형태",
             "markdown": "마크다운 형식",
-            "checklist": "체크리스트 형식",
+            "checklist": "☐ 기호를 사용한 체크박스 형태의 체크리스트",
             "json": "JSON 형식",
             "code_only": "코드 위주",
         }
