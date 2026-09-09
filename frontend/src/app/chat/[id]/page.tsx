@@ -573,9 +573,20 @@ export default function ChatThreadPage() {
       }
     }
 
+    // 현재 프롬프트에 사용자가 직접 지정한 톤이 있으면 이번 응답 생성에 최우선으로 반영한다.
+    // 저장된 수신자 톤은 기본값이고, "캐주얼하게/정중하게/격식 있게" 같은 현재 요청이 우선한다.
+    const explicitTone = detectExplicitTone(prompt);
+
     try {
       const documentIds = attachments.map((a) => a.id);
-      const res = await execute(prompt, chatSessionId, documentIds, matchedProfile?.id, controller.signal);
+      const res = await execute(
+        prompt,
+        chatSessionId,
+        documentIds,
+        matchedProfile?.id,
+        controller.signal,
+        explicitTone,
+      );
       const resultText = res?.result?.result ?? JSON.stringify(res);
       const assistantId = generateId();
 
@@ -688,32 +699,61 @@ export default function ChatThreadPage() {
             } else {
               // 2026-09-08: 이미 동의된(=톤이 저장돼 있는) 프로필인데, 이번 프롬프트에
               // 명시적 톤 표현이 있고 저장된 값과 다르면 바꿀지 확인한다.
-              const detectedTone = detectExplicitTone(prompt);
-              if (detectedTone && detectedTone !== candidate.preferredTone) {
-                setToneConflict({ profile: candidate, detectedTone, forMessageId: assistantId, saving: false });
+              if (
+                explicitTone &&
+                candidate.preferredTone &&
+                explicitTone !== candidate.preferredTone
+              ) {
+                setToneConflict({
+                  profile: candidate,
+                  detectedTone: explicitTone,
+                  forMessageId: assistantId,
+                  saving: false,
+                });
               }
             }
           } catch {
             setDuplicateCandidate({ detectedName: detected, candidateProfile: candidate, forMessageId: assistantId });
           }
         } else {
-        try {
-            const allowed = exact ? await getConsentStatus(exact.id) : false;
-          if (!allowed) {
-            setPendingConsent({ name: detected, forMessageId: assistantId, saving: false, done: false });
-          } else if (exact) {
-            // 2026-09-08: candidate 분기와 동일한 로직 - exact match이면서 이미
-            // 동의된 프로필에도 똑같이 명시적 톤 충돌을 확인한다.
-            const detectedTone = detectExplicitTone(prompt);
-            if (detectedTone && detectedTone !== exact.preferredTone) {
-              setToneConflict({ profile: exact, detectedTone, forMessageId: assistantId, saving: false });
+          // exact match 프로필에 이미 저장된 톤이 있고, 이번 프롬프트에서 사용자가
+          // 다른 톤을 명시했다면 일반 저장 동의보다 톤 변경 확인을 먼저 보여준다.
+          // 이번 응답에는 explicitTone이 이미 적용되고, 이 카드는 이후 기본 톤을
+          // 바꿀지 여부만 묻는다.
+          if (
+            exact &&
+            explicitTone &&
+            exact.preferredTone &&
+            explicitTone !== exact.preferredTone
+          ) {
+            setToneConflict({
+              profile: exact,
+              detectedTone: explicitTone,
+              forMessageId: assistantId,
+              saving: false,
+            });
+          } else {
+            try {
+              const allowed = exact ? await getConsentStatus(exact.id) : false;
+              if (!allowed) {
+                setPendingConsent({
+                  name: detected,
+                  forMessageId: assistantId,
+                  saving: false,
+                  done: false,
+                });
+              }
+            } catch {
+              // 동의 상태 조회 실패 시, 놓치는 것보다 한 번 더 물어보는 쪽이 안전해서 카드 노출
+              setPendingConsent({
+                name: detected,
+                forMessageId: assistantId,
+                saving: false,
+                done: false,
+              });
             }
           }
-        } catch {
-          // 동의 상태 조회 실패 시, 놓치는 것보다 한 번 더 물어보는 쪽이 안전해서 카드 노출
-          setPendingConsent({ name: detected, forMessageId: assistantId, saving: false, done: false });
         }
-      }
       }
 
       // 새로 생성된 채팅 목록의 title을 불러옴
@@ -1040,13 +1080,12 @@ export default function ChatThreadPage() {
 
                   {toneConflict && toneConflict.forMessageId === m.id && (
                     <div className="consent-card">
-                      <div className="consent-title">톤 변경 감지</div>
+                      <div className="consent-title">수신자 프로필 감지</div>
                       <div className="consent-name">{toneConflict.profile.receiverName}</div>
 
                       <div className="consent-question">
-                        <b>{toneConflict.profile.receiverName}</b>님 톤을{" "}
-                        <b>{toneConflict.profile.preferredTone ?? "미설정"}</b> →{" "}
-                        <b>{toneConflict.detectedTone}</b>(으)로 바꿀까요?
+                        <b>{toneConflict.profile.preferredTone ?? "미설정"}</b>에서{" "}
+                        <b>{toneConflict.detectedTone}</b>로 수정할까요?
                       </div>
                       <div className="consent-actions">
                         <button
@@ -1054,14 +1093,14 @@ export default function ChatThreadPage() {
                           onClick={applyToneConflict}
                           disabled={toneConflict.saving}
                         >
-                          {toneConflict.saving ? "저장 중…" : "바꾸기"}
+                          {toneConflict.saving ? "저장 중…" : "수정"}
                         </button>
                         <button
                           className="consent-dismiss"
                           onClick={dismissToneConflict}
                           disabled={toneConflict.saving}
                         >
-                          무시
+                          유지
                         </button>
                       </div>
                     </div>
