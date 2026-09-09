@@ -121,7 +121,7 @@ public final class DocumentReferenceResolver {
 
         List<Candidate> ranked = documents.stream()
                 .filter(Objects::nonNull)
-                .filter(DocumentReferenceResolver::isReadable)
+                .filter(DocumentReferenceResolver::isEligibleSource)
                 .map(doc -> new Candidate(
                         doc.getId(),
                         safe(doc.getTitle()),
@@ -139,7 +139,7 @@ public final class DocumentReferenceResolver {
         // 따라서 "이력서", "계약서", "발표자료"...를 Router에 끝없이 추가하지 않는다.
         Document strongTitleDocument = documents.stream()
                 .filter(Objects::nonNull)
-                .filter(DocumentReferenceResolver::isReadable)
+                .filter(DocumentReferenceResolver::isEligibleSource)
                 .max(Comparator.comparingDouble(
                         doc -> titleReferenceScore(prompt, doc.getTitle())))
                 .orElse(null);
@@ -260,7 +260,7 @@ public final class DocumentReferenceResolver {
 
         Map<Long, Document> owned = ownedDocuments.stream()
                 .filter(Objects::nonNull)
-                .filter(DocumentReferenceResolver::isReadable)
+                .filter(DocumentReferenceResolver::isEligibleSource)
                 .collect(Collectors.toMap(
                         Document::getId,
                         document -> document,
