@@ -312,34 +312,35 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .chat-page.has-thread .no-thread-box { padding: 20px; color: var(--muted); font-size: 13px; flex-grow: 1; position: relative; }
 .chat-page.has-thread .no-thread-box span { position: absolute; top: 50%; transform: translateY(-50%); }
 .chat-page.has-thread .composer-wrap { flex-shrink: 0; position: static; transform: none; max-width: 720px; width: 100%; margin: 0 auto; padding: 10px 20px 20px; }
-.thread { display: flex; flex-direction: column; gap: 5px; margin-bottom: 24px; flex: 1; }
+.thread { display: flex; flex-direction: column; gap: 5px; margin-bottom: 24px; flex: 1; overflow-x: hidden; }
 .thread::-webkit-scrollbar { width: 5px; transform: translateX(-5px); }
 .thread::-webkit-scrollbar-track { background: transparent; }
 .thread::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
 .thread::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+/* flex 아이템은 기본적으로 내용물(예: 줄바꿈 없는 긴 코드블록)보다 좁아지지 못해서, 그대로 두면 .msg-row가 넓어지고 .thread 전체에 가로 스크롤이 생긴다. min-width:0으로 강제로 부모 폭에 맞춰 줄어들 수 있게 하고, 넘치는 내용은 .markdown-content pre 쪽에서 자체적으로 줄바꿈/스크롤 처리한다. */
+.msg-row { min-width: 0; }
 .msg-row.user { display: flex; justify-content: flex-end; }
 .msg-user-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 80%; }
 .msg-bubble.user { background: var(--accent-tint); color: var(--ink); padding: 12px 16px; border-radius: 14px 14px 2px 14px; white-space: pre-wrap; font-size: 15px; }
 
 /* --- 마크다운 결과 렌더링 (MarkdownBox) --- */
-.markdown-content { color: var(--ink); font-size: 14px; line-height: 1.6; }
-/* 블록 요소 사이 간격은 첫 요소를 제외하고 위쪽에만 - 마진 중첩 없이 일관된 간격 */
-.markdown-content > * + * { margin-top: 0.5em; }
-.markdown-content p { margin: 0; }
-.markdown-content ul,
-.markdown-content ol { margin: 0; padding-left: 1.3em; }
-.markdown-content li + li { margin-top: 0.15em; }
-.markdown-content li > p {
-  margin: 0; /* 리스트 안에 문단이 중첩될 때 이중 간격 방지 */
+.markdown-content {
+  color: var(--ink); font-size: 14px; line-height: 1.55; white-space: normal; padding-top: -20px; 
 }
+.markdown-content * { margin: 0; }
+.markdown-content > * + * { margin-top: 10px; } /* 최상위 블록(문단/제목/리스트/코드블록) 사이 */
+.markdown-content ul,
+.markdown-content ol { padding-left: 1.3em; }
+.markdown-content li + li,
+.markdown-content li > ul,
+.markdown-content li > ol { margin-top: 10px; } /* 리스트 항목 사이 + 항목 안 중첩 리스트 */
+.markdown-content ul > *:last-child,
+.markdown-content ol > *:last-child { margin-bottom: 20px; }
 .markdown-content h1,
 .markdown-content h2,
-.markdown-content h3 { margin: 0.5em 0 0.2em; line-height: 1.35; font-weight: 700; }
-.markdown-content h1:first-child,
-.markdown-content h2:first-child,
-.markdown-content h3:first-child { margin-top: 0; }
-.markdown-content blockquote { margin: 0; padding-left: 0.75em; border-left: 3px solid var(--line); color: var(--muted); }
-.markdown-content pre { margin: 0; padding: 10px 12px; background: var(--panel-alt); border-radius: 8px; overflow-x: auto; }
+.markdown-content h3 { margin-top: 20px; line-height: 1.3; font-weight: 700; }
+.markdown-content blockquote { padding-left: 0.75em; border-left: 3px solid var(--line); color: var(--muted); }
+.markdown-content pre { padding: 10px 12px; background: var(--panel-alt); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
 .markdown-content code { font-family: var(--mono); font-size: 13px; }
 .markdown-content pre code { font-size: 13px; }
 
@@ -390,7 +391,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .consent-dismiss { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-alt); color: var(--muted); font-size: 13px; cursor: pointer; }
 .consent-dismiss:disabled { opacity: 0.6; cursor: default; }
 .consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
-.msg-bubble.assistant { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 40px 16px 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.6; position: relative; }
+.msg-bubble.assistant { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0 40px 20px 20px; white-space: pre-wrap; font-size: 15px; line-height: 1.6; position: relative; }
 
 /* 수신자별 프로필 카드 */
 .receiver-candidate-stack { position: relative; margin-bottom: 10px; }
