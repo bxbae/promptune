@@ -56,5 +56,6 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public String getName() { return name; }
     public String getProvider() { return provider; }
+    public void setName(String name) { this.name = name; }
     public void setCompanyId(String companyId) { this.companyId = companyId; }
 }
