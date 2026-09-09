@@ -646,6 +646,9 @@ def _to_document_content(
 def compose_document(
     plan: DocumentPlan,
     source_material: str,
+    *,
+    max_new_tokens: int = 384,
+    raise_on_failure: bool = False,
 ) -> DocumentContent:
     import torch
 
@@ -795,7 +798,7 @@ DocumentPlan과 사용자 자료를 바탕으로
             with torch.inference_mode():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=384,
+                    max_new_tokens=max_new_tokens,
                     do_sample=False,
                     eos_token_id=tokenizer.eos_token_id,
                     stop_strings=[
@@ -839,6 +842,11 @@ DocumentPlan과 사용자 자료를 바탕으로
             exc,
             str(raw_result)[:1000],
         )
+
+        if raise_on_failure:
+            raise RuntimeError(
+                "Document Composer JSON 생성/파싱에 실패했습니다."
+            ) from exc
 
         return _fallback_content(
             plan,

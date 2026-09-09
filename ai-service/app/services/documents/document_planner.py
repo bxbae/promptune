@@ -255,10 +255,28 @@ def build_fast_notice_plan(
     """
     source = str(user_request or "").strip()
 
-    instruction = source.split(
-        "[첨부 문서 원문]",
-        1,
-    )[0]
+    # 종합 보고서용 content에는 이전 대화 전체가 포함될 수 있다.
+    # NOTICE 여부는 과거 history가 아니라 "현재 요청"만 보고 판단한다.
+    if "[현재 요청]" in source:
+        instruction = source.split(
+            "[현재 요청]",
+            1,
+        )[1]
+
+        instruction = instruction.split(
+            "[이전 대화 근거]",
+            1,
+        )[0]
+
+        instruction = instruction.split(
+            "[대화 활용 원칙]",
+            1,
+        )[0]
+    else:
+        instruction = source.split(
+            "[첨부 문서 원문]",
+            1,
+        )[0]
 
     normalized = " ".join(
         instruction.split()
@@ -315,6 +333,95 @@ def build_fast_notice_plan(
         layout_hint="formal",
         blueprint_key="NOTICE",
         style_profile="formal_korean",
+    )
+
+
+def build_fast_synthesis_report_plan(
+    user_request: str,
+) -> DocumentPlan | None:
+    """
+    "지금까지 종합해서 보고서로 만들어줘"처럼
+    문서 종류가 이미 명확한 요청은 HCX Planner를 생략한다.
+
+    실제 내용은 Backend가 전달한 Conversation History를 사용한다.
+    """
+    raw = str(user_request or "").strip()
+    normalized = " ".join(
+        raw.split()
+    ).lower()
+
+    has_report = (
+        "보고서" in normalized
+    )
+
+    has_synthesis = any(
+        token in normalized
+        for token in (
+            "지금까지",
+            "지금껏",
+            "앞에서",
+            "방금까지",
+            "이전 대화 근거",
+            "이전 내용",
+            "위 내용",
+            "종합해서",
+            "종합하여",
+            "종합해",
+            "전체 내용",
+            "모아서",
+        )
+    )
+
+    has_create = any(
+        token in normalized
+        for token in (
+            "만들어",
+            "작성해",
+            "생성해",
+            "정리해",
+        )
+    )
+
+    if not (
+        has_report
+        and has_synthesis
+        and has_create
+    ):
+        return None
+
+    is_agent_report = (
+        "ai agent" in normalized
+        or "ai 에이전트" in normalized
+    )
+
+    title = (
+        "AI Agent 업무 자동화 개선 및 솔루션 도입 검토 보고서"
+        if is_agent_report
+        else "업무 개선 및 솔루션 도입 검토 보고서"
+    )
+
+    return DocumentPlan(
+        document_kind="업무 개선 및 솔루션 도입 검토 보고서",
+        title=title,
+        purpose=(
+            "이전 대화에서 확인한 내부 문제와 "
+            "최신 외부 조사 결과를 종합하여 "
+            "개선 및 도입 방향을 검토"
+        ),
+        audience="내부 의사결정자 및 팀 리더",
+        metadata_fields=[],
+        section_hints=[
+            "검토 배경",
+            "현행 업무 자동화 주요 문제점",
+            "최신 AI Agent 솔루션 조사 결과",
+            "현행 문제점과 후보 솔루션 비교",
+            "종합 검토 의견",
+            "PoC 및 향후 추진안",
+            "추가 확인 필요사항",
+        ],
+        layout_hint="table_focused",
+        blueprint_key="REPORT",
+        style_profile="executive_report",
     )
 
 
