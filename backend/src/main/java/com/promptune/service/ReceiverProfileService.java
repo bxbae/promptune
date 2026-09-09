@@ -38,6 +38,14 @@ public class ReceiverProfileService {
     private static final java.util.Set<String> MID_TITLES =
             java.util.Set.of("차장", "과장", "팀장");
 
+    // 기존 receiver_profile은 receiverName에 직급까지 합쳐 저장돼 있다
+    // (예: "유재석 부장"). 기존 데이터/수신자 매칭 계약을 깨지 않으면서
+    // 히스토리 화면과 기본 톤 백필에 직급을 사용할 수 있도록 마지막 토큰만 해석한다.
+    private static final java.util.Set<String> KNOWN_TITLES =
+            java.util.Set.of(
+                    "대표", "이사", "상무", "전무", "부장",
+                    "차장", "과장", "팀장", "대리", "사원", "인턴");
+
     private String suggestToneFromJobTitle(String jobTitle) {
         if (jobTitle == null || jobTitle.isBlank()) {
             return null;
@@ -49,6 +57,20 @@ public class ReceiverProfileService {
             return "정중체";
         }
         return "편한존댓말";
+    }
+
+    private String extractJobTitleFromReceiverName(String receiverName) {
+        if (receiverName == null || receiverName.isBlank()) {
+            return null;
+        }
+
+        String[] parts = receiverName.trim().split("\\s+");
+        if (parts.length < 2) {
+            return null;
+        }
+
+        String last = parts[parts.length - 1];
+        return KNOWN_TITLES.contains(last) ? last : null;
     }
 
     public ReceiverProfile upsert(Long userId, String receiverName, String tone, int length) {
@@ -81,7 +103,7 @@ public class ReceiverProfileService {
         profile.setMsSynced(true);
         profile.setDepartment(department);
 
-        if (profile.getPreferredTone() == null) {
+        if (profile.getPreferredTone() == null || profile.getPreferredTone().isBlank()) {
             profile.setPreferredTone(suggestToneFromJobTitle(jobTitle));
         }
 
@@ -90,7 +112,23 @@ public class ReceiverProfileService {
 
     public List<ReceiverProfile> list(Long userId) {
         List<ReceiverProfile> profiles = repository.findByUserId(userId);
-        profiles.forEach(profile -> profile.setApplyRate(calculateApplyRate(userId, profile.getId())));
+
+        for (ReceiverProfile profile : profiles) {
+            // 2026-09-09: 직급 기반 기본 톤 도입 전에 생성된 기존 프로필은
+            // preferredTone이 비어 있을 수 있다. receiverName 끝의 직급을 해석해
+            // 한 번만 기본값을 백필한다. 이미 학습/수정된 톤은 절대 덮어쓰지 않는다.
+            if (profile.getPreferredTone() == null || profile.getPreferredTone().isBlank()) {
+                String jobTitle = extractJobTitleFromReceiverName(profile.getReceiverName());
+                String suggestedTone = suggestToneFromJobTitle(jobTitle);
+                if (suggestedTone != null) {
+                    profile.setPreferredTone(suggestedTone);
+                    repository.save(profile);
+                }
+            }
+
+            profile.setApplyRate(calculateApplyRate(userId, profile.getId()));
+        }
+
         return profiles;
     }
 
