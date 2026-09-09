@@ -391,7 +391,7 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .consent-dismiss { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-alt); color: var(--muted); font-size: 13px; cursor: pointer; }
 .consent-dismiss:disabled { opacity: 0.6; cursor: default; }
 .consent-done { font-size: 13px; color: var(--accent); font-weight: 600; }
-.msg-bubble.assistant { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 0 40px 20px 20px; white-space: pre-wrap; font-size: 15px; line-height: 1.6; position: relative; }
+.msg-bubble.assistant { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 40px 20px 20px; white-space: pre-wrap; font-size: 15px; line-height: 1.6; position: relative; }
 
 /* 수신자별 프로필 카드 */
 .receiver-candidate-stack { position: relative; margin-bottom: 10px; }
