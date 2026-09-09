@@ -84,6 +84,7 @@ export async function execute(
   documentIds?: number[],
   receiverProfileId?: number,
   signal?: AbortSignal,
+  explicitTone?: string | null,
 ) {
   const res = await fetch(`${API}/api/execute`, {
     method: "POST",
@@ -93,6 +94,7 @@ export async function execute(
       chatSessionId,
       documentIds,
       receiverProfileId,
+      explicitTone,
     }),
     signal,
   });

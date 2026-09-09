@@ -445,6 +445,13 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                 .ifPresent(tone -> preferenceMap.put("receiverTone", tone));
     }
 
+    // 현재 프롬프트에서 사용자가 톤을 직접 지정했다면 저장된 수신자 기본 톤보다
+    // 이번 요청의 명시적 지시를 우선한다. 프로필 자체의 preferredTone 변경 여부는
+    // 프론트의 "수신자 프로필 감지" 카드에서 별도로 확인한다.
+    if (req.explicitTone() != null && !req.explicitTone().isBlank()) {
+        preferenceMap.put("receiverTone", req.explicitTone().trim());
+    }
+
     // 2026-09-02: 습관학습 6단계 - 5단계와 같은 습관 데이터를 최종 답변
     // 생성에도 참고시킴 (output_preference.py 모듈은 ai-service에서 재사용).
     String retrievalHint = retrievalPatternService.dominantRoute(userId);

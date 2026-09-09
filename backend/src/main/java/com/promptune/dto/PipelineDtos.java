@@ -59,11 +59,21 @@ public class PipelineDtos {
 
         public record ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId,
                         List<ElementAction> elementActions, Boolean useWebSearch, Long receiverProfileId,
-                        List<Long> documentIds) {
+                        String explicitTone, List<Long> documentIds) {
                 // useWebSearch: 사용자가 "웹에서 확인" 버튼을 눌렀을 때만 true. 안 보내면(null) false로 처리.
                 // receiverProfileId: 이 프롬프트가 특정 수신자 앞으로 가는 경우, 그 사람의
                 // receiver_profile.id. 안 보내면(null) 수신자 톤 반영 없이 기존과 동일하게 동작.
+                // explicitTone: 현재 프롬프트에서 사용자가 직접 지정한 톤. 저장된 수신자 톤보다
+                // 이번 응답 생성에서 우선 적용하며, null이면 기존 수신자 톤/기본 동작을 사용.
                 // documentIds: 이 메시지에 첨부된 문서 id 목록. 안 보내면(null) 첨부 없음.
+
+                // 기존 테스트/호출부에서 사용하던 7개 인자 생성자와의 호환성을 유지한다.
+                public ExecuteRequest(String finalPrompt, Long userId, Long chatSessionId,
+                                List<ElementAction> elementActions, Boolean useWebSearch, Long receiverProfileId,
+                                List<Long> documentIds) {
+                        this(finalPrompt, userId, chatSessionId, elementActions, useWebSearch,
+                                        receiverProfileId, null, documentIds);
+                }
         }
 
         public record ClassifyResult(
