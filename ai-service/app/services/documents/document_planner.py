@@ -244,6 +244,80 @@ def _to_document_plan(
     )
 
 
+def build_fast_notice_plan(
+    user_request: str,
+) -> DocumentPlan | None:
+    """
+    공지문 생성이 명확한 요청은 HCX Planner를 생략한다.
+
+    실제 업무 사실은 사용자 요청에서 가져오고,
+    RAG 문서는 작성 형식/규칙으로만 사용한다.
+    """
+    source = str(user_request or "").strip()
+
+    instruction = source.split(
+        "[첨부 문서 원문]",
+        1,
+    )[0]
+
+    normalized = " ".join(
+        instruction.split()
+    ).lower()
+
+    has_notice = (
+        "공지문" in normalized
+        or "공지 문" in normalized
+    )
+
+    has_create = any(
+        token in normalized
+        for token in (
+            "만들어",
+            "작성해",
+            "생성해",
+            "써줘",
+            "제작해",
+        )
+    )
+
+    if not (has_notice and has_create):
+        return None
+
+    is_agent_team = (
+        "ai agent 개발 2팀" in normalized
+        or "ai agent 개발 2 팀" in normalized
+    )
+
+    return DocumentPlan(
+        document_kind="사내 공지문",
+        title=(
+            "[AI Agent 개발 2 팀] 전체 회의 안내"
+            if is_agent_team
+            else "사내 공지 안내"
+        ),
+        purpose=(
+            "공지 대상에게 회의 일정과 "
+            "필요한 안내사항을 명확하게 전달"
+        ),
+        audience=(
+            "AI Agent 개발 2 팀 전원"
+            if is_agent_team
+            else "관련 구성원"
+        ),
+        metadata_fields=[],
+
+        # 작성 가이드의 체크리스트는
+        # 최종 문서 섹션이 아니므로 넣지 않는다.
+        section_hints=[
+            "회의 안건",
+        ],
+
+        layout_hint="formal",
+        blueprint_key="NOTICE",
+        style_profile="formal_korean",
+    )
+
+
 def build_document_plan(
     user_request: str,
 ) -> DocumentPlan:

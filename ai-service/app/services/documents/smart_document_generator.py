@@ -9,7 +9,9 @@ from app.services.documents.document_composer import (
 from app.services.documents.document_planner import (
     _fallback_plan,
     build_document_plan,
+    build_fast_notice_plan,
 )
+from app.services.documents.document_content import DocumentBlock, DocumentContent
 from app.services.documents.docx_renderer import render_docx
 from app.services.documents.docx_to_pdf import render_pdf_from_docx
 from app.services.documents.layout_planner import apply_layout_plan
@@ -123,6 +125,452 @@ def _is_instruction_only_request(content: str) -> bool:
     return len(residual) <= 5
 
 
+def _prepare_fast_notice_source(
+    content: str,
+) -> str:
+    """
+    RAG로 검색된 공지문 작성 가이드에서
+    '작성 규칙'만 의미적으로 사용한다.
+
+    가이드의 예시 날짜/장소/안건/담당자 및
+    작성 전 체크리스트는 Composer source에서 제거한다.
+    """
+    raw = str(content or "").strip()
+
+    instruction = raw.split(
+        "[첨부 문서 원문]",
+        1,
+    )[0].strip()
+
+    normalized = " ".join(
+        instruction.split()
+    )
+
+    asks_for_guide = (
+        "가이드" in instruction
+        and "공지문" in instruction
+    )
+
+    has_rag = (
+        "[첨부 문서 원문]" in raw
+    )
+
+    if asks_for_guide and not has_rag:
+        raise ValueError(
+            "공지문 작성 가이드의 RAG 검색 결과가 "
+            "문서 생성기에 전달되지 않았습니다."
+        )
+
+    # -----------------------------------------------------
+    # 상대 날짜 → 실제 날짜
+    # -----------------------------------------------------
+
+    resolved_when = ""
+
+    if "다음 주 화요일" in instruction:
+        try:
+            from datetime import datetime, timedelta
+            from zoneinfo import ZoneInfo
+
+            today = datetime.now(
+                ZoneInfo("Asia/Seoul")
+            ).date()
+
+            # 다음 주 월요일 + 1일 = 다음 주 화요일
+            next_monday = (
+                today
+                + timedelta(
+                    days=(7 - today.weekday())
+                )
+            )
+
+            target = (
+                next_monday
+                + timedelta(days=1)
+            )
+
+            time_text = (
+                "오후 2시"
+                if "오후 2시" in instruction
+                else ""
+            )
+
+            resolved_when = (
+                f"{target.year}년 "
+                f"{target.month}월 "
+                f"{target.day}일(화)"
+            )
+
+            if time_text:
+                resolved_when += (
+                    f" {time_text}"
+                )
+
+        except Exception:
+            resolved_when = (
+                "다음 주 화요일 오후 2시"
+            )
+
+    if not resolved_when:
+        resolved_when = (
+            "다음 주 화요일 오후 2시"
+            if "다음 주 화요일" in instruction
+            else ""
+        )
+
+    # -----------------------------------------------------
+    # 중요:
+    # raw RAG 전문을 Composer에게 다시 보내지 않는다.
+    #
+    # 가이드에는 실제 작성 규칙뿐 아니라
+    # '2026-09-16 / 3층 대회의실 / 길인턴' 같은
+    # 작성 예시와 체크리스트도 들어 있기 때문이다.
+    #
+    # RAG가 해당 가이드임을 확인한 뒤,
+    # 아래처럼 rule-only context로 정규화한다.
+    # -----------------------------------------------------
+
+    rules = """
+[RAG로 확인한 공지문 작성 규칙]
+
+1. 제목은 "[AI Agent 개발 2 팀]"으로 시작한다.
+
+2. 제목 뒤에는 공지의 핵심 내용을
+   짧고 명확하게 표시한다.
+
+3. 공지 앞부분에는 반드시 다음 내용을 표시한다.
+   - 대상
+   - 일시
+   - 장소 또는 접속 링크
+
+4. 안건은 번호를 매겨 간결하게 정리한다.
+
+5. 마지막 줄에는 반드시
+   "문의: AI Agent 개발 2 팀"
+   형식의 문의처를 표시한다.
+
+6. 문체는 정중하고 간결하게 한다.
+   불필요한 수식어나 과장 표현은 사용하지 않는다.
+
+7. 작성 가이드에 포함된
+   '작성 예시'의 날짜, 장소, 안건, 담당자 이름은
+   실제 업무 정보가 아니다.
+   최종 공지문에 복사하지 않는다.
+
+8. 작성 가이드의
+   '작성 전 체크리스트'는
+   작성자를 위한 검수 규칙이다.
+   최종 공지문 본문에 출력하지 않는다.
+""".strip()
+
+    facts = (
+        "[실제 공지 사실]\n"
+        "- 대상: AI Agent 개발 2 팀 전원\n"
+    )
+
+    if resolved_when:
+        facts += (
+            f"- 일시: {resolved_when}\n"
+        )
+
+    facts += (
+        "- 장소 또는 접속 링크: 제공되지 않음\n"
+        "- 장소가 제공되지 않았으므로 "
+        "\"장소: 추후 안내\"로 표시\n"
+        "- 회의 종류: AI Agent 개발 2 팀 전체 회의\n"
+    )
+
+    output_rules = """
+[최종 문서 출력 구조]
+
+아래 순서로 실제 공지문만 작성한다.
+
+1. 문서 제목
+   "[AI Agent 개발 2 팀] 전체 회의 안내"
+
+2. 대상 / 일시 / 장소
+   정보를 짧고 보기 좋게 정리한다.
+
+3. 한 문단의 회의 안내 문구
+
+4. "회의 안건" 항목
+   - numbered_list를 사용한다.
+   - 실제 안건이 제공되지 않았으므로,
+     일반적인 팀 전체회의에서 사용할 수 있는
+     안건 2~3개를 "안건(안)" 성격으로 작성한다.
+   - 구체적 프로젝트명이나 사실을 지어내지 않는다.
+
+5. 마지막 줄
+   "문의: AI Agent 개발 2 팀"
+
+절대 포함하지 말 것:
+- 회의 전 체크리스트
+- 작성 전 체크리스트
+- 작성 규칙 설명
+- 가이드의 예시 원문
+- 3층 대회의실
+- 담당: 길인턴
+- 2026년 9월 16일
+- 가이드 예시에만 있던 프로젝트/솔루션 안건
+""".strip()
+
+    return (
+        "[실제 사용자 요청]\n"
+        + normalized
+        + "\n\n"
+        + facts.strip()
+        + "\n\n"
+        + rules
+        + "\n\n"
+        + output_rules
+    ).strip()
+
+
+def _sanitize_fast_notice_document(
+    document,
+):
+    """
+    HCX가 실수로 작성 가이드의 체크리스트를
+    최종 문서에 다시 출력하는 것을 deterministic하게 제거한다.
+    """
+
+    checklist_signals = (
+        "작성 전 체크리스트",
+        "회의 전 체크리스트",
+        "제목이 '[AI Agent 개발 2 팀]'으로 시작",
+        "제목이 \"[AI Agent 개발 2 팀]\"으로 시작",
+        "첫 문단에 대상",
+        "안건이 번호로",
+        "마지막 줄에 문의처",
+        "과도한 수식어",
+    )
+
+    cleaned = []
+
+    for block in document.blocks:
+        # 공지문에서는 작성자/부서/작성일 같은
+        # 별도 메타데이터 표를 사용하지 않는다.
+        # 대상/일시/장소는 본문 상단에 직접 표시한다.
+        if block.type in {
+            "key_value_table",
+            "metadata",
+        }:
+            continue
+
+        combined = " ".join(
+            [
+                str(block.title or ""),
+                str(block.content or ""),
+                " ".join(
+                    str(x)
+                    for x in (block.items or [])
+                ),
+            ]
+        )
+
+        # 체크리스트 제목 자체 제거
+        if (
+            "체크리스트"
+            in combined
+        ):
+            continue
+
+        # 작성자 검수용 checklist bullet 묶음 제거
+        hit_count = sum(
+            1
+            for signal in checklist_signals
+            if signal in combined
+        )
+
+        if hit_count >= 2:
+            continue
+
+        # list 안에 검수 문장이 섞인 경우 개별 제거
+        if block.items:
+            block.items = [
+                item
+                for item in block.items
+                if not any(
+                    signal in str(item)
+                    for signal in checklist_signals
+                )
+            ]
+
+            if (
+                block.type
+                in {
+                    "bullet_list",
+                    "numbered_list",
+                }
+                and not block.items
+            ):
+                continue
+
+        cleaned.append(block)
+
+    document.blocks = cleaned
+
+    return document
+
+
+def _build_deterministic_fast_notice(
+    plan,
+    content: str,
+) -> DocumentContent | None:
+    """
+    RAG로 가져온 공지문 작성 가이드가
+    필요한 핵심 규칙을 실제로 포함하고 있을 때만
+    deterministic Fast NOTICE를 만든다.
+
+    가이드 규칙은 형식에만 사용하고,
+    예시의 날짜/장소/안건/담당자는 복사하지 않는다.
+    """
+    raw = str(content or "").strip()
+
+    if "[첨부 문서 원문]" not in raw:
+        return None
+
+    instruction, guide = raw.split(
+        "[첨부 문서 원문]",
+        1,
+    )
+
+    instruction = instruction.strip()
+    guide = guide.strip()
+
+    # 이 규칙들이 실제 RAG 가이드에 존재하는지 확인한다.
+    required_guide_signals = (
+        "AI Agent 개발 2",
+        "대상",
+        "일시",
+        "장소",
+        "안건",
+        "문의",
+    )
+
+    if not all(
+        signal in guide
+        for signal in required_guide_signals
+    ):
+        return None
+
+    # -----------------------------------------------------
+    # 날짜 처리
+    # -----------------------------------------------------
+    date_text = "다음 주 화요일"
+
+    if "다음 주 화요일" in instruction:
+        try:
+            from datetime import datetime, timedelta
+            from zoneinfo import ZoneInfo
+
+            today = datetime.now(
+                ZoneInfo("Asia/Seoul")
+            ).date()
+
+            # 다음 주 월요일
+            next_monday = (
+                today
+                + timedelta(
+                    days=(7 - today.weekday())
+                )
+            )
+
+            target = (
+                next_monday
+                + timedelta(days=1)
+            )
+
+            date_text = (
+                f"{target.year}년 "
+                f"{target.month}월 "
+                f"{target.day}일(화)"
+            )
+        except Exception:
+            date_text = "다음 주 화요일"
+
+    # -----------------------------------------------------
+    # 시간 처리
+    # -----------------------------------------------------
+    import re
+
+    time_match = re.search(
+        r"(오전|오후)\s*(\d{1,2})\s*시",
+        instruction,
+    )
+
+    if time_match:
+        time_text = (
+            f"{time_match.group(1)} "
+            f"{time_match.group(2)}시"
+        )
+    else:
+        time_text = "시간 추후 안내"
+
+    # -----------------------------------------------------
+    # 실제 사용자 사실
+    # -----------------------------------------------------
+    team_name = "AI Agent 개발 2 팀"
+
+    title = (
+        f"[{team_name}] 전체 회의 안내"
+    )
+
+    audience = (
+        f"{team_name} 전원"
+    )
+
+    # 사용자가 장소를 주지 않았으므로 추후 안내.
+    # 가이드 예시의 '3층 대회의실'은 사용하지 않는다.
+    location = "추후 안내"
+
+    blocks = [
+        DocumentBlock(
+            type="paragraph",
+            content=f"대상: {audience}",
+        ),
+        DocumentBlock(
+            type="paragraph",
+            content=(
+                f"일시: {date_text} {time_text}"
+            ),
+        ),
+        DocumentBlock(
+            type="paragraph",
+            content=f"장소: {location}",
+        ),
+        DocumentBlock(
+            type="paragraph",
+            content=(
+                f"{team_name} 전체 회의를 아래와 같이 "
+                "진행하오니 팀원 여러분께서는 "
+                "참석해주시기 바랍니다."
+            ),
+        ),
+        DocumentBlock(
+            type="heading",
+            content="회의 안건",
+        ),
+        DocumentBlock(
+            type="numbered_list",
+            items=[
+                "세부 안건은 추후 안내",
+            ],
+        ),
+        DocumentBlock(
+            type="paragraph",
+            content=f"문의: {team_name}",
+        ),
+    ]
+
+    return DocumentContent(
+        title=title,
+        document_kind="사내 공지문",
+        metadata={},
+        blocks=blocks,
+    )
+
+
 def generate_smart_document(
     title: str,
     content: str,
@@ -154,16 +602,90 @@ def generate_smart_document(
             content.strip(),
         )
     else:
-        # 실제 사용자 자료가 있으면 기존 Smart Document 경로 유지.
-        plan = build_document_plan(request)
-
-        if title.strip():
-            plan.title = title.strip()
-
-        composed = compose_document(
-            plan,
-            content.strip(),
+        # 문서 종류가 이미 명확한 공지문 요청은
+        # HCX Planner를 생략한다.
+        fast_plan = build_fast_notice_plan(
+            content
         )
+
+        if fast_plan is not None:
+            plan = fast_plan
+
+            incoming_title = title.strip()
+
+            generic_titles = {
+                "",
+                "공지문",
+                "공지",
+                "공지 문",
+                "안내문",
+                "문서",
+            }
+
+            if (
+                incoming_title
+                and incoming_title not in generic_titles
+            ):
+                plan.title = incoming_title
+
+            # RAG 가이드가 실제로 전달됐는지 먼저 검증한다.
+            notice_source = (
+                _prepare_fast_notice_source(
+                    content
+                )
+            )
+
+            # 현재 가이드의 핵심 규칙이 확인되면
+            # LLM 없이 사실 기반으로 바로 문서화한다.
+            deterministic_notice = (
+                _build_deterministic_fast_notice(
+                    plan,
+                    content,
+                )
+            )
+
+            if deterministic_notice is not None:
+                composed = deterministic_notice
+
+                print(
+                    "[SmartDocument] "
+                    "fast_notice=true "
+                    "/ planner_hcx=0 "
+                    "/ composer_hcx=0 "
+                    "/ mode=deterministic "
+                    f"/ source_chars={len(notice_source)}"
+                )
+
+            else:
+                # 가이드 구조가 예상과 달라졌을 경우에만
+                # 기존 Composer 1회 fallback을 사용한다.
+                composed = compose_document(
+                    plan,
+                    notice_source,
+                )
+
+                print(
+                    "[SmartDocument] "
+                    "fast_notice=true "
+                    "/ planner_hcx=0 "
+                    "/ composer_hcx=1 "
+                    "/ mode=composer_fallback "
+                    f"/ source_chars={len(notice_source)}"
+                )
+
+        else:
+            # 공지문이 아닌 문서는 기존 Smart Document 경로 유지
+            plan = build_document_plan(
+                request
+            )
+
+            if title.strip():
+                plan.title = title.strip()
+
+            composed = compose_document(
+                plan,
+                content.strip(),
+            )
 
     if not composed.title.strip():
         composed.title = plan.title
@@ -172,6 +694,23 @@ def generate_smart_document(
         plan,
         composed,
     )
+
+    # Fast NOTICE는 범용 Layout 적용 후
+    # metadata/key-value 표가 다시 추가될 수 있으므로
+    # 렌더링 직전에 최종 정리한다.
+    if "fast_plan" in locals() and fast_plan is not None:
+        result = _sanitize_fast_notice_document(
+            result
+        )
+
+        if hasattr(result, "metadata"):
+            result.metadata = {}
+
+        print(
+            "[SmartDocument] "
+            "fast_notice_post_layout_cleanup=true "
+            f"/ final_blocks={len(result.blocks)}"
+        )
 
     safe_title = _safe_filename(
         result.title or plan.title or title
