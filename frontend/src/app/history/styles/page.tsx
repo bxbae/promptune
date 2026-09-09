@@ -8,13 +8,48 @@ import {
 } from "@/api/receiverProfiles";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
+const RECEIVER_JOB_TITLES = new Set([
+  "대표",
+  "이사",
+  "상무",
+  "전무",
+  "부장",
+  "차장",
+  "과장",
+  "팀장",
+  "대리",
+  "사원",
+  "인턴",
+]);
+
+function splitReceiverNameAndJobTitle(receiverName: string): {
+  name: string;
+  jobTitle: string | null;
+} {
+  const trimmed = receiverName.trim();
+  const parts = trimmed.split(/\s+/);
+
+  if (parts.length < 2) {
+    return { name: trimmed, jobTitle: null };
+  }
+
+  const last = parts[parts.length - 1];
+  if (!RECEIVER_JOB_TITLES.has(last)) {
+    return { name: trimmed, jobTitle: null };
+  }
+
+  return {
+    name: parts.slice(0, -1).join(" "),
+    jobTitle: last,
+  };
+}
+
 export default function StylesPage() {
   const [profiles, setProfiles] = useState<ReceiverProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editRelationship, setEditRelationship] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
   const [editTone, setEditTone] = useState("");
 
@@ -33,7 +68,6 @@ export default function StylesPage() {
 
   function startEdit(p: ReceiverProfile) {
     setEditingId(p.id);
-    setEditRelationship(p.relationship ?? "");
     setEditDepartment(p.department ?? "");
     setEditTone(p.preferredTone ?? "");
   }
@@ -41,7 +75,6 @@ export default function StylesPage() {
   async function saveEdit(id: number, msSynced: boolean) {
     try {
       const updated = await updateReceiverProfile(id, {
-        relationship: editRelationship || null,
         // MS 동기화된 수신자는 부서 입력창 자체를 안 보여주니 patch에도 안 실음
         // (백엔드도 한 번 더 막고 있지만, 애초에 안 보내는 게 깔끔함).
         ...(msSynced ? {} : { department: editDepartment || null }),
@@ -100,18 +133,21 @@ export default function StylesPage() {
         <div className="receiver-row receiver-row-head">
           <div>수신자</div>
           <div>부서</div>
-          <div>관계</div>
+          <div>직급</div>
           <div>선호 톤</div>
           <div>평균 길이</div>
           <div>적용률</div>
           <div></div>
         </div>
 
-        {profiles.map((p) => (
+        {profiles.map((p) => {
+          const receiver = splitReceiverNameAndJobTitle(p.receiverName);
+
+          return (
           <div className="receiver-row" key={p.id}>
             {editingId === p.id ? (
               <>
-                <div className="receiver-name">{p.receiverName}</div>
+                <div className="receiver-name">{receiver.name}</div>
                 <div>
                   {p.msSynced ? (
                     p.department || "-"
@@ -124,14 +160,7 @@ export default function StylesPage() {
                     />
                   )}
                 </div>
-                    <div>
-                      <input
-                        className="receiver-edit-input"
-                        value={editRelationship}
-                        onChange={(e) => setEditRelationship(e.target.value)}
-                        placeholder="예: 같은 팀 동료"
-                      />
-                    </div>
+                <div>{receiver.jobTitle || "-"}</div>
                 <div>
                   <input
                     className="receiver-edit-input"
@@ -149,9 +178,9 @@ export default function StylesPage() {
               </>
             ) : (
               <>
-                <div className="receiver-name">{p.receiverName}</div>
+                <div className="receiver-name">{receiver.name}</div>
                 <div>{p.department || "-"}</div>
-                <div>{p.relationship || "-"}</div>
+                <div>{receiver.jobTitle || "-"}</div>
                 <div>{p.preferredTone || "-"}</div>
                 <div>{p.avgLength}자</div>
                 <div>{p.applyRate != null ? `${Math.round(p.applyRate * 100)}%` : "-"}</div>
@@ -162,13 +191,18 @@ export default function StylesPage() {
               </>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
       
     <ConfirmDialog
         open={deleteTarget !== null}
         title="수신자 스타일 초기화"
-        message={`"${deleteTarget?.receiverName}" 수신자의 학습된 스타일을 초기화할까요?`}
+        message={`"${
+          deleteTarget
+            ? splitReceiverNameAndJobTitle(deleteTarget.receiverName).name
+            : ""
+        }" 수신자의 학습된 스타일을 초기화할까요?`}
         confirmLabel="초기화"
         danger
         loading={deleting}
