@@ -488,6 +488,21 @@ public final class DocumentReferenceResolver {
                 || "TEXT_READY".equalsIgnoreCase(status);
     }
 
+    /**
+    * 2026-09-08: 승연님 진단 - AI가 생성해서 파일관리에 자동 저장된 문서
+    * (documentType="GENERATED", DocumentController.java 307행에서 저장됨)는
+    * 검색 가능한 chunk가 없어 RAG 후보에서 제외해야 한다. 그대로 두면
+    * 생성 결과물("공지문.pdf")이 제목이 더 정확히 일치한다는 이유로
+    * 실제 원본 가이드 문서보다 먼저 선택되는 문제가 있었음
+    * (STEP4 백지 버그의 원인 — id=30 선택되어야 할 게 id=29 대신 선택됨).
+    */
+    private static boolean isEligibleSource(Document document) {
+        String type = safe(document.getDocumentType())
+                .toUpperCase(Locale.ROOT);
+
+        return isReadable(document) && !"GENERATED".equals(type);
+    }
+
     private static Set<String> tokens(String value) {
         String normalized = normalize(value);
 
