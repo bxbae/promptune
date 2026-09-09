@@ -27,6 +27,30 @@ public class ReceiverProfileService {
     @Autowired
     private ResponseEditRepository responseEditRepository;
 
+    // 2026-09-08: 프론트 lib/toneMapping.ts의 suggestToneFromJobTitle()과 동일 규칙의
+    // 백엔드 사본. MS 동기화 시점에 즉시 기본 톤을 채우기 위해 필요 - 이 계산은
+    // 대화(applyConsent)를 거치지 않고도 MS 연동 직후에 바로 실행돼야 하므로,
+    // 프론트 로직만으로는 커버가 안 되고 백엔드에도 같은 매핑이 있어야 함.
+    // 두 쪽 매핑이 어긋나면 "MS 연동 직후 기본값"과 "대화 중 재확인 후 값"이
+    // 서로 달라질 수 있으니, 직급 목록을 바꿀 때는 반드시 프론트 쪽도 같이 바꿀 것.
+    private static final java.util.Set<String> SENIOR_TITLES =
+            java.util.Set.of("이사", "부장", "상무", "전무", "대표");
+    private static final java.util.Set<String> MID_TITLES =
+            java.util.Set.of("차장", "과장", "팀장");
+
+    private String suggestToneFromJobTitle(String jobTitle) {
+        if (jobTitle == null || jobTitle.isBlank()) {
+            return null;
+        }
+        if (SENIOR_TITLES.stream().anyMatch(jobTitle::contains)) {
+            return "격식체";
+        }
+        if (MID_TITLES.stream().anyMatch(jobTitle::contains)) {
+            return "정중체";
+        }
+        return "편한존댓말";
+    }
+
     public ReceiverProfile upsert(Long userId, String receiverName, String tone, int length) {
         ReceiverProfile profile = repository.findByUserIdAndReceiverName(userId, receiverName)
                 .orElseGet(() -> new ReceiverProfile(userId, receiverName));
@@ -37,8 +61,13 @@ public class ReceiverProfileService {
 
     // MS 조직도 구성원 목록을 불러올 때, 그 사람들을 자동으로 수신자별 스타일에
     // "풀네임+직함"(예: "정형돈 대리") + 부서로 저장한다.
-    // relationship/preferredTone은 MS가 모르는 정보라 여기서 안 건드리고 그대로 둔다
-    // (기존에 학습된 값이 있으면 보존, 처음이면 null인 채로 시작해서 채팅에서 자연히 학습됨).
+    // relationship은 MS가 모르는 정보라 여기서 안 건드리고 그대로 둔다.
+    //
+    // 2026-09-08(변경): preferredTone은 예전엔 여기서 안 건드리고 null로 시작해
+    // "채팅에서 자연히 학습됨"을 기다렸는데, 그러면 아직 한 번도 대화 안 나눈
+    // 사람은 수신자별 스타일 화면에서 계속 텅 비어 보이는 문제가 있었음.
+    // 이제는 MS 연동 직후 직급 기반 기본값을 즉시 채운다 - 단, 이미 대화로 학습된
+    // 값(preferredTone != null)이 있는 프로필은 재동기화 때마다 덮어쓰지 않고 보존한다.
     public ReceiverProfile upsertFromMicrosoft(Long userId, String displayName, String jobTitle, String department) {
         if (displayName == null || displayName.isBlank()) {
             return null;
@@ -51,6 +80,11 @@ public class ReceiverProfileService {
                 .orElseGet(() -> new ReceiverProfile(userId, receiverName));
         profile.setMsSynced(true);
         profile.setDepartment(department);
+
+        if (profile.getPreferredTone() == null) {
+            profile.setPreferredTone(suggestToneFromJobTitle(jobTitle));
+        }
+
         return repository.save(profile);
     }
 
