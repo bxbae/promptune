@@ -134,6 +134,76 @@ _CONVERSATIONAL_ENDING_RE = re.compile(
 )
 
 
+def is_ai_agent_solution_discovery_query(
+    query: str,
+) -> bool:
+    """
+    기업 업무 맥락에서 AI Agent 솔루션/플랫폼을
+    명시적으로 탐색하는 요청만 True로 본다.
+
+    일반 AI 뉴스, 인물 검색, 문서 질의에는 적용하지 않는다.
+    """
+    text = str(query or "").strip().lower()
+
+    if not text:
+        return False
+
+    has_agent = (
+        "ai agent" in text
+        or "ai 에이전트" in text
+    )
+
+    has_solution = any(
+        marker in text
+        for marker in (
+            "솔루션",
+            "플랫폼",
+            "서비스",
+            "도구",
+        )
+    )
+
+    has_discovery = any(
+        marker in text
+        for marker in (
+            "찾아줘",
+            "찾아 줘",
+            "검색해줘",
+            "검색해 줘",
+            "조사해줘",
+            "조사해 줘",
+            "알아봐줘",
+            "알아봐 줘",
+            "추천해줘",
+            "추천해 줘",
+            "비교해줘",
+            "비교해 줘",
+        )
+    )
+
+    has_business_context = any(
+        marker in text
+        for marker in (
+            "업무",
+            "기업",
+            "사내",
+            "조직",
+            "팀",
+            "자동화",
+            "workflow",
+            "automation",
+            "문제",
+        )
+    )
+
+    return (
+        has_agent
+        and has_solution
+        and has_discovery
+        and has_business_context
+    )
+
+
 def _is_stock_clause(clause: str) -> bool:
     normalized = clause.strip().strip(",").strip()
 
@@ -195,4 +265,26 @@ def build_search_query(query: str) -> str:
     # "어때?"뿐인 극단적인 경우) 제거 전 문자열을 그대로 쓴다.
     without_ending = _CONVERSATIONAL_ENDING_RE.sub("", cleaned).strip()
 
-    return without_ending if without_ending else cleaned
+    final_query = (
+        without_ending
+        if without_ending
+        else cleaned
+    )
+
+    # 기업용 AI Agent solution discovery는 사용자의 자연어 질문을
+    # 그대로 Tavily에 보내면 일반 AI 뉴스/기사 검색으로 흐르기 쉽다.
+    # 최종 답변용 원문은 건드리지 않고, 검색어에만 기업 업무 자동화
+    # 맥락을 보강한다.
+    if is_ai_agent_solution_discovery_query(original):
+        expansion = (
+            "enterprise AI agent workflow automation "
+            "business process automation "
+            "internal knowledge search "
+            "tool integration software platform"
+        )
+
+        return (
+            f"{final_query} {expansion}"
+        ).strip()
+
+    return final_query

@@ -18,7 +18,10 @@ from app.services.retrieval.ml_router import (
 from app.services.retrieval.tavily_search import is_recency_query, search_web
 from app.services.retrieval.conversation_context import resolve_conversation_retrieval
 from app.services.retrieval.date_resolver import resolve_relative_dates
-from app.services.retrieval.search_query_cleanup import build_search_query
+from app.services.retrieval.search_query_cleanup import (
+    build_search_query,
+    is_ai_agent_solution_discovery_query,
+)
 from app.services.retrieval.search_plan import build_search_plan
 from app.services.retrieval.evidence_selector import select_web_evidence
 
@@ -165,10 +168,13 @@ def _should_auto_use_web_with_internal(
     document_ids: list[int],
 ) -> bool:
     """
-    확정된 내부/첨부 문서를 외부의 현재·공식 사실과
-    비교/검증하는 요청일 때만 Web 검색을 함께 실행한다.
+    확정된 내부/첨부 문서가 있어도 외부 근거가 명확히 필요한 요청이면
+    Internal RAG를 유지한 채 Web 검색을 함께 실행한다.
 
-    단순 문서 요약/질의는 Web을 호출하지 않는다.
+    1) 기존: 내부 내용과 외부 현재/공식 사실의 비교·검증 요청
+    2) 추가: 최신 AI Agent 솔루션을 명시적으로 탐색하는 요청
+
+    단순 문서 요약/질의/문서 생성은 Web을 자동 호출하지 않는다.
     """
     if not document_ids:
         return False
@@ -188,7 +194,65 @@ def _should_auto_use_web_with_internal(
         for marker in _EXTERNAL_REFERENCE_MARKERS
     )
 
-    return has_comparison and has_external_reference
+    # STEP 5:
+    # "이 문제들 해결할 만한 요즘 나온 AI Agent 솔루션 좀 찾아줘"
+    #
+    # 이전 문서가 active여도 이 요청은 최신 외부 솔루션 탐색 의도가
+    # 충분히 강하다. document_ids/route는 건드리지 않고 Web만 병행한다.
+    has_freshness = any(
+        marker in text
+        for marker in (
+            "요즘",
+            "최신",
+            "최근",
+            "새로 나온",
+            "새로나온",
+        )
+    )
+
+    has_search_intent = any(
+        marker in text
+        for marker in (
+            "찾아줘",
+            "찾아 줘",
+            "검색해줘",
+            "검색해 줘",
+            "알아봐줘",
+            "알아봐 줘",
+            "조사해줘",
+            "조사해 줘",
+        )
+    )
+
+    has_agent = (
+        "ai agent" in text
+        or "ai 에이전트" in text
+    )
+
+    has_solution = any(
+        marker in text
+        for marker in (
+            "솔루션",
+            "서비스",
+            "도구",
+            "플랫폼",
+        )
+    )
+
+    explicit_solution_discovery = (
+        has_freshness
+        and has_search_intent
+        and has_agent
+        and has_solution
+    )
+
+    return (
+        explicit_solution_discovery
+        or (
+            has_comparison
+            and has_external_reference
+        )
+    )
 
 
 
@@ -457,11 +521,20 @@ def execute_retrieval(
             effective_query
         )
 
+        solution_discovery = (
+            is_ai_agent_solution_discovery_query(
+                effective_query
+            )
+        )
+
         if search_plan.freshness == "DAY":
             time_range = "day"
         elif (
-            search_plan.freshness == "WEEK"
-            or recent_only
+            (
+                search_plan.freshness == "WEEK"
+                or recent_only
+            )
+            and not solution_discovery
         ):
             time_range = "week"
         else:

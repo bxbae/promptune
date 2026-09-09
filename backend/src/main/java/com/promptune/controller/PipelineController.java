@@ -209,6 +209,10 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
                             userId,
                             req.finalPrompt());
 
+    boolean explicitWebSolutionDiscoveryRequest =
+            isExplicitWebSolutionDiscoveryRequest(
+                    req.finalPrompt());
+
     String documentResolutionSource =
             retrievalDocumentIds.isEmpty()
                     ? "NONE"
@@ -219,7 +223,8 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
      * 따라서 현재 첨부 > 대화 active document > 파일관리 검색 우선순위가 보존된다.
      */
     if (retrievalDocumentIds.isEmpty()
-            && !conversationSynthesisDocumentRequest) {
+            && !conversationSynthesisDocumentRequest
+            && !explicitWebSolutionDiscoveryRequest) {
         java.util.List<com.promptune.domain.Document> ownedCatalogDocuments =
                 documentRepository.findByOwnerUserId(userId);
 
@@ -1149,6 +1154,52 @@ public Map<String, Object> execute(@RequestBody ExecuteRequest req, org.springfr
             chat.touch();
             chatSessionRepository.save(chat);
         });
+    }
+
+    private boolean isExplicitWebSolutionDiscoveryRequest(
+            String prompt) {
+
+        String text =
+                prompt == null
+                        ? ""
+                        : prompt.trim().toLowerCase(
+                                java.util.Locale.ROOT);
+
+        if (text.isBlank()) {
+            return false;
+        }
+
+        boolean hasFreshness =
+                text.contains("요즘")
+                        || text.contains("최신")
+                        || text.contains("최근")
+                        || text.contains("새로 나온")
+                        || text.contains("새로나온");
+
+        boolean hasSearchIntent =
+                text.contains("찾아줘")
+                        || text.contains("찾아 줘")
+                        || text.contains("검색해줘")
+                        || text.contains("검색해 줘")
+                        || text.contains("알아봐줘")
+                        || text.contains("알아봐 줘")
+                        || text.contains("조사해줘")
+                        || text.contains("조사해 줘");
+
+        boolean hasAgent =
+                text.contains("ai agent")
+                        || text.contains("ai 에이전트");
+
+        boolean hasSolution =
+                text.contains("솔루션")
+                        || text.contains("서비스")
+                        || text.contains("도구")
+                        || text.contains("플랫폼");
+
+        return hasFreshness
+                && hasSearchIntent
+                && hasAgent
+                && hasSolution;
     }
 
     private java.util.List<Long> resolveRetrievalDocumentIds(
