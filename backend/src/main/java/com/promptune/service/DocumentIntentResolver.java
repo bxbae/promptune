@@ -102,9 +102,30 @@ public class DocumentIntentResolver {
                     ? previousAssistant
                     : previousUser;
         } else {
-            intentContext = current;
-            source = current;
+        intentContext = current;
+
+        // 2026-09-08: 이전 대화(previousUser/previousAssistant)를 안 쓰고
+        // current만 쓰던 문제 수정. 완전히 새로운 화제의 첫 메시지라면
+        // previousUser/previousAssistant가 비어있을 테니 그 경우엔 기존과
+        // 동일하게 current만 쓰이게 됨.
+        StringBuilder combined = new StringBuilder();
+
+        if (!previousAssistant.isBlank()) {
+            combined.append("[이전 대화 - AI 응답]\n")
+                    .append(previousAssistant)
+                    .append("\n\n");
         }
+
+        if (!previousUser.isBlank()) {
+            combined.append("[이전 대화 - 사용자 발화]\n")
+                    .append(previousUser)
+                    .append("\n\n");
+        }
+
+        combined.append("[지금 요청]\n").append(current);
+
+        source = combined.toString();
+    }
 
         String title = detectTitle(current, intentContext);
         boolean templateRequest = containsTemplateRequest(intentContext);
