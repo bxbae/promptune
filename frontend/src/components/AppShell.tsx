@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { listChatSessions, updateChatTitle, deleteChatSession, ChatSession } from "@/api/chatSessions";
-import { getCurrentUser, logout, CurrentUser } from "@/lib/auth";
+import { fetchCurrentUser, getCurrentUser, logout, CurrentUser } from "@/lib/auth";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 export type NavKey = "newChat" | "chat" | "files" | "history" | "dashboard" | "settings";
@@ -190,6 +190,15 @@ export default function AppShell({
   // 달라져 하이드레이션 에러(#418/#423/#425)가 발생하므로, 마운트 후 useEffect에서 설정한다.
   useEffect(() => {
     setCurrentUser(getCurrentUser());
+    fetchCurrentUser().then(setCurrentUser).catch(() => {});
+
+    function handleUserProfileUpdated(event: Event) {
+      const customEvent = event as CustomEvent<CurrentUser>;
+      if (customEvent.detail) setCurrentUser(customEvent.detail);
+    }
+
+    window.addEventListener("user-profile-updated", handleUserProfileUpdated);
+    return () => window.removeEventListener("user-profile-updated", handleUserProfileUpdated);
   }, []);
 
   useEffect(() => {
@@ -201,10 +210,10 @@ export default function AppShell({
     localStorage.setItem("pt_sidebar_collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
-  // 프로필 사진 대신 이메일 첫 글자와 이름 표시
+  // DB에 저장된 이름을 우선 표시하고, 이름이 없는 오래된 계정만 이메일 아이디로 폴백.
   const displayEmail = currentUser?.email || userEmail || "guest@promptune.dev";
-  const initial = displayEmail.slice(0, 1).toUpperCase();
-  const name = displayEmail.split("@")[0].toUpperCase();
+  const displayName = currentUser?.name?.trim() || displayEmail.split("@")[0];
+  const initial = (displayName || displayEmail).slice(0, 1).toUpperCase();
 
   return (
     <div className="shell">
@@ -395,7 +404,7 @@ export default function AppShell({
             >
               <span className="avatar">{initial}</span>
               <span className="user-meta label">
-                <span className="user-name">{name}</span>
+                <span className="user-name">{displayName}</span>
                 <span className="user-email">{displayEmail}</span>
               </span>
             </button>

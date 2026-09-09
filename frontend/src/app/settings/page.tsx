@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { deleteAccount } from "@/api/users";
-import { CurrentUser, getCurrentUser, logout } from "@/lib/auth";
+import { CurrentUser, fetchCurrentUser, getCurrentUser, logout, updateCurrentUserName } from "@/lib/auth";
 import MicrosoftProfileView from "./components/MicrosoftProfileView";
 import MicrosoftMembersView from "./components/MicrosoftMembersView";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -26,6 +26,10 @@ type MsStatus = {
 
 export default function SettingsPage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState("");
 
   const [msStatus, setMsStatus] = useState<MsStatus>({ connected: false });
   const [msLoading, setMsLoading] = useState(true);
@@ -38,7 +42,16 @@ export default function SettingsPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   useEffect(() => {
-    setUser(getCurrentUser());
+    const fallbackUser = getCurrentUser();
+    setUser(fallbackUser);
+    setNameDraft(fallbackUser?.name ?? "");
+
+    fetchCurrentUser()
+      .then((latestUser) => {
+        setUser(latestUser);
+        setNameDraft(latestUser.name ?? "");
+      })
+      .catch(() => {});
   }, []);
 
   async function loadMsStatus() {
@@ -106,6 +119,38 @@ export default function SettingsPage() {
     setPendingConfirm("withdraw");
   }
 
+  function startNameEdit() {
+    setNameDraft(user?.name ?? "");
+    setNameError("");
+    setEditingName(true);
+  }
+
+  function cancelNameEdit() {
+    setNameDraft(user?.name ?? "");
+    setNameError("");
+    setEditingName(false);
+  }
+
+  async function saveName() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setNameError("이름을 입력해주세요.");
+      return;
+    }
+    setNameSaving(true);
+    setNameError("");
+    try {
+      const updated = await updateCurrentUserName(trimmed);
+      setUser(updated);
+      setNameDraft(updated.name);
+      setEditingName(false);
+    } catch (e) {
+      setNameError(e instanceof Error ? e.message : "이름 수정에 실패했습니다.");
+    } finally {
+      setNameSaving(false);
+    }
+  }
+
   async function doWithdraw() {
     setConfirmBusy(true);
     try {
@@ -151,8 +196,44 @@ export default function SettingsPage() {
           </div>
           <div className="settings-account-row">
             <div className="settings-avatar">{(user?.name || user?.email || "?")[0].toUpperCase()}</div>
-            <div>
-              <div className="settings-account-name">{user?.name || "이름 없음"}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {editingName ? (
+                <div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveName();
+                        if (e.key === "Escape") cancelNameEdit();
+                      }}
+                      maxLength={50}
+                      autoFocus
+                      disabled={nameSaving}
+                      aria-label="이름"
+                      style={{
+                        minWidth: 180,
+                        padding: "8px 10px",
+                        border: "1px solid var(--line)",
+                        borderRadius: 8,
+                        background: "var(--surface)",
+                        color: "var(--ink)",
+                        font: "inherit",
+                      }}
+                    />
+                    <button type="button" className="settings-btn" onClick={() => void saveName()} disabled={nameSaving}>
+                      {nameSaving ? "저장 중..." : "저장"}
+                    </button>
+                    <button type="button" className="settings-btn" onClick={cancelNameEdit} disabled={nameSaving}>취소</button>
+                  </div>
+                  {nameError && <div style={{ color: "var(--block)", fontSize: 12, marginTop: 6 }}>{nameError}</div>}
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className="settings-account-name">{user?.name || "이름 없음"}</div>
+                  <button type="button" className="settings-btn" onClick={startNameEdit}>이름 수정</button>
+                </div>
+              )}
               <div className="settings-account-email">{user?.email}</div>
             </div>
           </div>

@@ -37,6 +37,7 @@ export function logout() {
 export interface CurrentUser {
   email: string;
   name: string;
+  provider?: string;
 }
 export function getCurrentUser(): CurrentUser | null {
   const token = getToken();
@@ -51,4 +52,53 @@ export function getCurrentUser(): CurrentUser | null {
   } catch {
     return null;
   }
+}
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  if (!token) throw new Error("로그인이 필요합니다.");
+  return { Authorization: `Bearer ${token}` };
+}
+
+// JWT보다 DB의 최신 users.name을 우선 사용하기 위한 현재 사용자 조회.
+export async function fetchCurrentUser(): Promise<CurrentUser> {
+  const res = await fetch(`${API}/api/users/me`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`계정 정보 조회 실패: ${res.status}`);
+  const data = await res.json();
+  return {
+    email: data.email,
+    name: data.name || data.email?.split("@")[0] || "",
+    provider: data.provider,
+  };
+}
+
+export async function updateCurrentUserName(name: string): Promise<CurrentUser> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("이름을 입력해주세요.");
+
+  const res = await fetch(`${API}/api/users/me/name`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ name: trimmed }),
+  });
+
+  if (!res.ok) {
+    let message = `이름 수정 실패: ${res.status}`;
+    try {
+      const data = await res.json();
+      message = data.message || data.error || message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  const data = await res.json();
+  const updated: CurrentUser = {
+    email: data.email,
+    name: data.name || trimmed,
+    provider: data.provider,
+  };
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<CurrentUser>("user-profile-updated", { detail: updated }));
+  }
+  return updated;
 }

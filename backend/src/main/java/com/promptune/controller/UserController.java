@@ -2,6 +2,7 @@ package com.promptune.controller;
 
 import com.promptune.domain.User;
 import com.promptune.dto.UserDtos.UpdateCompanyRequest;
+import com.promptune.dto.UserDtos.UpdateNameRequest;
 import com.promptune.repository.*;
 import com.promptune.service.S3StorageService;
 import org.springframework.http.HttpStatus;
@@ -60,6 +61,39 @@ public class UserController {
         user.setCompanyId(req.companyId());
         userRepository.save(user);
         return ResponseEntity.ok(java.util.Map.of("ok", true, "companyId", user.getCompanyId()));
+    }
+
+    // 현재 로그인 사용자의 DB 기준 최신 계정 정보를 반환한다.
+    @GetMapping("/me")
+    public ResponseEntity<java.util.Map<String, Object>> getMe(Authentication authentication) {
+        User user = currentUser(authentication);
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("email", user.getEmail());
+        body.put("name", user.getName());
+        body.put("provider", user.getProvider());
+        return ResponseEntity.ok(body);
+    }
+
+    // 일반/소셜 로그인 구분 없이 Promptune 표시 이름을 수정한다.
+    @PatchMapping("/me/name")
+    public ResponseEntity<java.util.Map<String, Object>> updateName(
+            @RequestBody UpdateNameRequest req, Authentication authentication) {
+        User user = currentUser(authentication);
+        String name = req.name() == null ? "" : req.name().trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이름을 입력해주세요.");
+        }
+        if (name.length() > 50) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이름은 50자 이하로 입력해주세요.");
+        }
+        user.setName(name);
+        userRepository.save(user);
+
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("email", user.getEmail());
+        body.put("name", user.getName());
+        body.put("provider", user.getProvider());
+        return ResponseEntity.ok(body);
     }
 
     // 계정 탈퇴 - 개인화 데이터(PersonalizationController.reset()과 동일한 순서) +
