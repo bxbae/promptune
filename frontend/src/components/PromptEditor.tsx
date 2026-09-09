@@ -1022,8 +1022,23 @@ export default function PromptEditor({
     }
   }
 
+  // mergePromptWithSuggestion(anchor 없음, 프롬프트 끝에 추가)과
+  // insertSuggestionAtAnchor(anchor 있음, 특정 위치에 삽입) 둘 다 "추천 문구 앞의
+  // 기존 문장이 이미 끝났다"는 걸 명시적으로 표시해줘야, 두 문장이 경계 없이
+  // 붙어버리는 문제(예: "...찾아줘 최신 AI Agent...")를 막을 수 있다. 삽입 위치를
+  // 정하는 로직은 두 함수가 서로 다르지만(anchor 유무에 따라 다른 정보 소스를
+  // 쓰는 별개의 케이스), 문장 경계를 보장하는 이 부분만은 완전히 동일해서 공용으로 뺌.
+  function ensureSentenceBoundary(text: string): string {
+    const trimmed = text.replace(/\s+$/, "");
+    if (!trimmed) {
+      return "";
+    }
+    const endsWithBoundary = /[.!?。！？]$/.test(trimmed);
+    return trimmed + (endsWithBoundary ? " " : ". ");
+  }
+
   function mergePromptWithSuggestion(text: string, suggestion: string): string {
-    let base = text.trim();
+    const base = text.trim();
     const addition = suggestion.trim();
 
     // 2026-09-08 추가: 재진단 반복으로 같은 추천이 다시 뜨는 경우, 사용자가
@@ -1033,11 +1048,7 @@ export default function PromptEditor({
       return base;
     }
 
-    if (base && !/[.!?。！？]$/.test(base)) {
-      base = `${base}.`;
-    }
-
-    return `${base} ${addition}`.trim();
+    return `${ensureSentenceBoundary(base)}${addition}`;
   }
 
   function insertSuggestionAtAnchor(
@@ -1063,11 +1074,14 @@ export default function PromptEditor({
     const before = text.slice(0, safeOffset);
     const after = text.slice(safeOffset);
 
-    const leadingSpace = before.length > 0 && !/\s$/.test(before) ? " " : "";
-
     const trailingSpace = after.length > 0 && !/^\s/.test(after) ? " " : "";
 
-    return before + leadingSpace + addition + trailingSpace + after;
+    // 2026-09-09 수정: before가 문장 종결부호로 안 끝나도 공백만 넣고 이어붙여서
+    // "...찾아줘 최신 AI Agent..."처럼 두 문장이 하나로 뭉개지는 문제가 있었음.
+    // anchor의 charOffset은 항상 어떤 문장의 끝 지점이므로(ai-service 쪽
+    // anchor_selector.py의 char_offset이 항상 선택된 문장 span의 end) 문장 중간에
+    // 삽입될 일은 없고, 종결부호가 없으면 명시적으로 붙여서 경계를 만들어도 안전하다.
+    return `${ensureSentenceBoundary(before)}${addition}${trailingSpace}${after}`;
   }
 
   // 파일명에 특정 키워드가 있으면 카테고리를 추측한다. 완벽한 분류는 아니고,

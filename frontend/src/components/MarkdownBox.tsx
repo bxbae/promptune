@@ -8,16 +8,14 @@ interface MarkdownBoxProps {
 
 export default function MarkdownBox({ content }: MarkdownBoxProps) {
   return (
-    // 스타일을 위한 박스 테두리와 배경 지정
-    <div className="w-full max-w-3xl p-6 mx-auto my-4 bg-white border border-gray-200 rounded-lg shadow-sm dark:bg-gray-800 dark:border-gray-700">
-      
-      {/* Tailwind Typography(prose)가 있다면 적용, 없다면 개별 스타일링 필요 */}
-      <article className="prose prose-slate dark:prose-invert max-w-none">
+    // 박스 테두리·배경과 문단/리스트 간격은 globals.css의 .markdown-box / .markdown-content에서 관리
+    // (이 프로젝트엔 Tailwind가 설치돼 있지 않아 기존 prose/max-w-3xl 등 클래스는 효과가 없었음)
+    <div className="markdown-box">
+      <article className="markdown-content">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {content}
         </ReactMarkdown>
       </article>
-
     </div>
   );
 }

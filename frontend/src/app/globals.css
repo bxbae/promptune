@@ -321,6 +321,28 @@ white-space:nowrap으로 줄바꿈(세로 나열) 자체를 막아둠. */
 .msg-user-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 80%; }
 .msg-bubble.user { background: var(--accent-tint); color: var(--ink); padding: 12px 16px; border-radius: 14px 14px 2px 14px; white-space: pre-wrap; font-size: 15px; }
 
+/* --- 마크다운 결과 렌더링 (MarkdownBox) --- */
+.markdown-content { color: var(--ink); font-size: 14px; line-height: 1.6; }
+/* 블록 요소 사이 간격은 첫 요소를 제외하고 위쪽에만 - 마진 중첩 없이 일관된 간격 */
+.markdown-content > * + * { margin-top: 0.5em; }
+.markdown-content p { margin: 0; }
+.markdown-content ul,
+.markdown-content ol { margin: 0; padding-left: 1.3em; }
+.markdown-content li + li { margin-top: 0.15em; }
+.markdown-content li > p {
+  margin: 0; /* 리스트 안에 문단이 중첩될 때 이중 간격 방지 */
+}
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 { margin: 0.5em 0 0.2em; line-height: 1.35; font-weight: 700; }
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child { margin-top: 0; }
+.markdown-content blockquote { margin: 0; padding-left: 0.75em; border-left: 3px solid var(--line); color: var(--muted); }
+.markdown-content pre { margin: 0; padding: 10px 12px; background: var(--panel-alt); border-radius: 8px; overflow-x: auto; }
+.markdown-content code { font-family: var(--mono); font-size: 13px; }
+.markdown-content pre code { font-size: 13px; }
+
 /* 메시지에 첨부된 파일 칩 (전송 완료 후 - 제거 버튼 없이 읽기 전용) */
 .msg-attach-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .attach-chip.sent { background: var(--panel); max-width: 200px; }
